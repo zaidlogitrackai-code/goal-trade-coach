@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { analyzeChart } from "@/lib/ai.functions";
 import { fmtDate } from "@/lib/queries";
+import { prepareImage } from "@/lib/image";
 
 export const Route = createFileRoute("/_authenticated/analyst")({
   head: () => ({ meta: [{ title: "المحلل الذكي — نظام هادي" }, { name: "description", content: "ارفع صورة الشارت واحصل على تحليل مبني على قواعدك واستراتيجياتك." }] }),
@@ -38,13 +39,9 @@ function AnalystPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  function onFile(f: File | undefined) {
+  async function onFile(f: File | undefined) {
     if (!f) return;
-    if (!f.type.startsWith("image/")) { toast.error("ارفع صورة فقط"); return; }
-    if (f.size > 5 * 1024 * 1024) { toast.error("الصورة أكبر من ٥ ميجا"); return; }
-    const r = new FileReader();
-    r.onload = () => setImage(String(r.result));
-    r.readAsDataURL(f);
+    try { setImage(await prepareImage(f)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
   }
 
   async function submit() {
@@ -72,7 +69,7 @@ function AnalystPage() {
         <div className="panel space-y-4 p-5">
           <label className="flex min-h-48 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted p-4 text-center text-sm text-muted-foreground">
             {image ? <img src={image} alt="الشارت" className="max-h-72 rounded-md" /> : <>اضغط لاختيار صورة الشارت<span className="text-xs">PNG / JPG — حتى ٥ ميجا</span></>}
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="BTCUSD" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
