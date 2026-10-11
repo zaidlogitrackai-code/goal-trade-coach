@@ -89,7 +89,7 @@ function CloseDialog({ trade, onClose }: { trade: Trade | null; onClose: () => v
   const [exit, setExit] = useState("");
   const [notes, setNotes] = useState("");
   async function save() {
-    if (!trade || pnl === "") return toast.error("أدخل النتيجة");
+    if (!trade || pnl === "") { toast.error("أدخل النتيجة"); return; }
     const { error } = await supabase.from("trades").update({
       status: "closed",
       pnl: Number(pnl),
@@ -97,7 +97,7 @@ function CloseDialog({ trade, onClose }: { trade: Trade | null; onClose: () => v
       close_notes: notes || null,
       closed_at: new Date().toISOString(),
     }).eq("id", trade.id);
-    if (error) return toast.error("تعذر إغلاق الصفقة");
+    if (error) { toast.error("تعذر إغلاق الصفقة"); return; }
     await qc.invalidateQueries({ queryKey: ["trades"] });
     toast.success("تم إغلاق الصفقة");
     setPnl(""); setExit(""); setNotes("");

@@ -51,7 +51,7 @@ function NewTrade() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!f.symbol.trim()) return toast.error("أدخل الأصل");
+    if (!f.symbol.trim()) { toast.error("أدخل الأصل"); return; }
     setBusy(true);
     try {
       const user_id = await currentUserId();
@@ -95,7 +95,7 @@ function NewTrade() {
           <div className="space-y-3">
             {CHECKLIST.map((c, i) => (
               <label key={c} className="flex cursor-pointer items-center gap-3 text-sm">
-                <Checkbox checked={checks[i]} onCheckedChange={(val) => setChecks(checks.map((x, j) => (j === i ? !!val : x)))} />
+                <Checkbox checked={!!checks[i]} onCheckedChange={(val) => setChecks(checks.map((x, j) => (j === i ? !!val : x)))} />
                 {c}
               </label>
             ))}
@@ -109,7 +109,7 @@ function NewTrade() {
             <Label>الاتجاه</Label>
             <div className="grid grid-cols-2 gap-2">
               {[["long", "شراء"], ["short", "بيع"]].map(([k, l]) => (
-                <Button key={k} type="button" variant={f.direction === k ? "default" : "secondary"} onClick={() => setF({ ...f, direction: k })}>{l}</Button>
+                <Button key={k} type="button" variant={f.direction === k ? "default" : "secondary"} onClick={() => setF({ ...f, direction: k! })}>{l}</Button>
               ))}
             </div>
           </div>

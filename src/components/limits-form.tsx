@@ -39,8 +39,8 @@ export function LimitsForm({ initial, submitLabel, onDone }: { initial: Settings
       const user_id = await currentUserId();
       const row: Record<string, unknown> = { user_id, onboarded: true, updated_at: new Date().toISOString(), currency: v.currency || "USD" };
       for (const f of FIELDS) row[f.key] = Number(v[f.key] || 0);
-      row.session_start = v.session_start || null;
-      row.session_end = v.session_end || null;
+      row["session_start"] = v.session_start || null;
+      row["session_end"] = v.session_end || null;
       const { error } = await supabase.from("trading_settings").upsert(row as never);
       if (error) throw error;
       await qc.invalidateQueries({ queryKey: ["settings"] });

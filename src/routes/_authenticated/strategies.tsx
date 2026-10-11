@@ -28,20 +28,20 @@ function Strategies() {
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
-    if (!f.name.trim()) return toast.error("أدخل اسم الاستراتيجية");
+    if (!f.name.trim()) { toast.error("أدخل اسم الاستراتيجية"); return; }
     const { error } = await supabase.from("strategies").insert({ ...f, user_id: await currentUserId() });
-    if (error) return toast.error("تعذر الحفظ");
+    if (error) { toast.error("تعذر الحفظ"); return; }
     setF(EMPTY); setOpen(false); refresh(); toast.success("تمت إضافة الاستراتيجية");
   }
   async function toggle(id: string, allowed: boolean) {
     const { error } = await supabase.from("strategies").update({ allowed }).eq("id", id);
-    if (error) return toast.error("تعذر التحديث");
+    if (error) { toast.error("تعذر التحديث"); return; }
     refresh();
   }
   async function remove(id: string) {
     if (!confirm("حذف هذه الاستراتيجية؟")) return;
     const { error } = await supabase.from("strategies").delete().eq("id", id);
-    if (error) return toast.error("تعذر الحذف");
+    if (error) { toast.error("تعذر الحذف"); return; }
     refresh();
   }
   const field = (k: keyof typeof EMPTY, label: string, area = false) => (

@@ -29,25 +29,25 @@ function Rules() {
     e.preventDefault();
     if (!title.trim()) return;
     const { error } = await supabase.from("trading_rules").insert({ title, description: description || null, user_id: await currentUserId() });
-    if (error) return toast.error("تعذر الحفظ");
+    if (error) { toast.error("تعذر الحفظ"); return; }
     setTitle(""); setDescription(""); refresh();
   }
   async function violate(rule_id: string) {
     const note = prompt("ماذا حدث؟ (اختياري)") ?? "";
     const { error } = await supabase.from("rule_violations").insert({ rule_id, note: note || null, user_id: await currentUserId() });
-    if (error) return toast.error("تعذر التسجيل");
+    if (error) { toast.error("تعذر التسجيل"); return; }
     toast.warning("تم تسجيل المخالفة");
     refresh();
   }
   async function update(id: string, active: boolean) {
     const { error } = await supabase.from("trading_rules").update({ active }).eq("id", id);
-    if (error) return toast.error("تعذر التحديث");
+    if (error) { toast.error("تعذر التحديث"); return; }
     refresh();
   }
   async function remove(id: string) {
     if (!confirm("حذف هذه القاعدة؟")) return;
     const { error } = await supabase.from("trading_rules").delete().eq("id", id);
-    if (error) return toast.error("تعذر الحذف");
+    if (error) { toast.error("تعذر الحذف"); return; }
     refresh();
   }
 

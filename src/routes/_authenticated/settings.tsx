@@ -28,7 +28,7 @@ function SettingsPage() {
       display_name: name ?? data!.display_name,
       timezone: tz ?? data!.timezone,
     }).eq("user_id", data!.user_id);
-    if (error) return toast.error("تعذر الحفظ");
+    if (error) { toast.error("تعذر الحفظ"); return; }
     qc.invalidateQueries({ queryKey: ["settings"] });
     toast.success("تم الحفظ");
   }

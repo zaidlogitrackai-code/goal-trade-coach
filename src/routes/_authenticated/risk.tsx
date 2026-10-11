@@ -19,7 +19,7 @@ function RiskPage() {
   async function togglePause() {
     if (!data) return;
     const { error } = await supabase.from("trading_settings").update({ trading_paused: !data.trading_paused }).eq("user_id", data.user_id);
-    if (error) return toast.error("تعذر التحديث");
+    if (error) { toast.error("تعذر التحديث"); return; }
     qc.invalidateQueries({ queryKey: ["settings"] });
     toast.success(data.trading_paused ? "تم استئناف التداول" : "تم إيقاف التداول");
   }

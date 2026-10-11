@@ -113,7 +113,7 @@ export function EmptyState({ title = "لا توجد بيانات بعد", text =
   );
 }
 
-export function Stat({ label, value, tone }: { label: string; value: ReactNode; tone?: "success" | "destructive" | "warning" }) {
+export function Stat({ label, value, tone }: { label: string; value: ReactNode; tone?: "success" | "destructive" | "warning" | undefined }) {
   const color = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : tone === "warning" ? "text-warning" : "text-foreground";
   return (
     <div className="panel p-4">
