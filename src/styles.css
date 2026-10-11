@@ -102,7 +102,56 @@
   --gradient-brand: linear-gradient(180deg, hsl(0 0% 95%), hsl(0 0% 85%));
 }
 
+/* Light theme: same monochrome system, inverted surfaces */
+:root.light {
+  --background: hsl(0 0% 98%);
+  --foreground: hsl(0 0% 8%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 8%);
+  --card-border: hsl(0 0% 90%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(0 0% 8%);
+  --primary: hsl(0 0% 9%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(0 0% 94%);
+  --secondary-foreground: hsl(0 0% 20%);
+  --muted: hsl(0 0% 95%);
+  --muted-foreground: hsl(0 0% 40%);
+  --accent: hsl(0 0% 94%);
+  --accent-foreground: hsl(0 0% 8%);
+  --indigo: hsl(199 89% 38%);
+  --destructive: hsl(0 72% 45%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --success: hsl(152 70% 32%);
+  --success-foreground: hsl(0 0% 98%);
+  --warning: hsl(0 0% 30%);
+  --warning-foreground: hsl(0 0% 98%);
+  --border: hsl(0 0% 88%);
+  --input: hsl(0 0% 82%);
+  --ring: hsl(0 0% 50%);
+  --chart-1: hsl(0 0% 25%);
+  --chart-2: hsl(142 71% 35%);
+  --chart-3: hsl(199 89% 38%);
+  --chart-4: hsl(280 60% 45%);
+  --chart-5: hsl(0 72% 45%);
+  --sidebar: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(0 0% 35%);
+  --sidebar-primary: hsl(0 0% 9%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(0 0% 94%);
+  --sidebar-accent-foreground: hsl(0 0% 8%);
+  --sidebar-border: hsl(0 0% 90%);
+  --sidebar-ring: hsl(0 0% 50%);
+  --elevate-1: rgba(0,0,0,0.03);
+  --elevate-2: rgba(0,0,0,0.07);
+  --gradient-brand: linear-gradient(180deg, hsl(0 0% 12%), hsl(0 0% 22%));
+}
+
 @layer base {
+  :root.light { color-scheme: light; }
+  :root.light body {
+    background-image: radial-gradient(ellipse 80% 50% at 50% -10%, hsl(0 0% 93%), transparent 70%);
+  }
   * {
     border-color: var(--color-border);
   }
