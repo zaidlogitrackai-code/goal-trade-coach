@@ -91,7 +91,7 @@ export async function runAction(a: AgentAction): Promise<void> {
       if (!closed) {
         // A new open trade from the AI goes through the trade gate. The AI path
         // cannot override: soft reasons must be justified in the trade form.
-        const gate = await gateForAiTrade(t as { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null }, risk_amount ?? null, strategy_id);
+        const gate = await gateForAiTrade(t as { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null; emotion?: string | null }, risk_amount ?? null, strategy_id);
         if (!gate.allowed) throw new Error(`بوابة التداول رفضت الصفقة: ${gate.reasons.map((r) => r.message).join(" ")}${gate.canOverride ? " يمكنك تسجيلها كاستثناء مبرر من صفحة صفقة جديدة." : ""}`);
         gatedRisk = gate.calc.risk;
       }
@@ -120,7 +120,7 @@ export async function runAction(a: AgentAction): Promise<void> {
 }
 
 async function gateForAiTrade(
-  t: { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null },
+  t: { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null; emotion?: string | null },
   riskInput: number | null,
   strategyId: string | null,
 ) {
@@ -139,6 +139,8 @@ async function gateForAiTrade(
     trades: trades.data ?? [],
     violationsToday: violations.data?.length ?? 0,
     hasActiveSession: (session.data?.length ?? 0) > 0,
-    draft: { direction: t.direction, entry: t.entry_price, stop: t.stop_loss, target: t.take_profit, size: t.position_size, riskInput, strategyId },
+    // No emotionCheck: the AI cannot answer the emotional questions for the user,
+    // so a risky emotion blocks here and the trade must go through the form.
+    draft: { direction: t.direction, entry: t.entry_price, stop: t.stop_loss, target: t.take_profit, size: t.position_size, riskInput, strategyId, emotion: t.emotion },
   });
 }

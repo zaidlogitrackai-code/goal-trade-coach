@@ -147,4 +147,39 @@ describe("trade gate", () => {
     expect(note).toContain("لا توجد جلسة");
     expect(note).toContain("دخلت لأن الخبر واضح");
   });
+
+  it("a risky emotion blocks until both questions are answered", () => {
+    const r = gate({ draft: { ...goodDraft, emotion: "طمع" } });
+    expect(codes(r)).toContain("emotion_check_incomplete");
+    expect(r.canOverride).toBe(false);
+    const short = gate({
+      draft: { ...goodDraft, emotion: "طمع", emotionCheck: { motive: "قصير", revenge: false } },
+    });
+    expect(codes(short)).toContain("emotion_check_incomplete");
+    const done = gate({
+      draft: {
+        ...goodDraft,
+        emotion: "طمع",
+        emotionCheck: { motive: "السعر كسر القمة بوضوح", revenge: false },
+      },
+    });
+    expect(done.allowed).toBe(true);
+  });
+
+  it("a calm emotion needs no extra questions", () => {
+    expect(gate({ draft: { ...goodDraft, emotion: "هادئ" } }).allowed).toBe(true);
+  });
+
+  it("a declared revenge trade needs a written exception", () => {
+    const r = gate({
+      draft: {
+        ...goodDraft,
+        emotion: "غاضب",
+        emotionCheck: { motive: "أبي أرجع خسارة الصبح", revenge: true },
+      },
+    });
+    expect(codes(r)).toEqual(["revenge_trade"]);
+    expect(r.canOverride).toBe(true);
+    expect(r.nextAction).toContain("15");
+  });
 });

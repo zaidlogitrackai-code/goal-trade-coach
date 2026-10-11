@@ -28,7 +28,9 @@ export type GateCode =
   | "no_strategy"
   | "no_stop_loss"
   | "risk_unknown"
-  | "risk_per_trade_exceeded";
+  | "risk_per_trade_exceeded"
+  | "emotion_check_incomplete"
+  | "revenge_trade";
 
 export interface GateReason {
   code: GateCode;
@@ -60,7 +62,23 @@ export interface GateDraft {
   size?: number | null | undefined;
   riskInput?: number | null | undefined;
   strategyId?: string | null | undefined;
+  emotion?: string | null | undefined;
+  /** Answers to the mandatory questions shown for risky emotions. */
+  emotionCheck?: EmotionCheck | null | undefined;
 }
+
+export interface EmotionCheck {
+  /** "What is pushing you to enter?" */
+  motive: string;
+  /** "Is this trade making up for a loss?" null = not answered. */
+  revenge: boolean | null;
+}
+
+/** Emotions that require the two extra questions before a trade is recorded. */
+export const RISKY_EMOTIONS = ["متوتر", "خائف", "طمع", "غاضب"] as const;
+export const MOTIVE_MIN_CHARS = 10;
+export const isRiskyEmotion = (e: string | null | undefined) =>
+  !!e && (RISKY_EMOTIONS as readonly string[]).includes(e);
 
 export interface GateInput {
   settings: GateSettings;
@@ -140,6 +158,21 @@ export function evaluateTradeGate(input: GateInput): GateResult {
   // Structural price problems are hard: the numbers do not describe a real trade.
   for (const p of calc.problems) hard("invalid_prices", p);
 
+  // Emotional check: a risky emotion must be explained before recording.
+  if (isRiskyEmotion(draft.emotion)) {
+    const c = draft.emotionCheck;
+    if (!c || c.motive.trim().length < MOTIVE_MIN_CHARS || c.revenge == null)
+      hard(
+        "emotion_check_incomplete",
+        `اخترت "${draft.emotion}": أجب عن سؤالَي الحالة النفسية قبل التسجيل.`,
+      );
+  }
+  if (draft.emotionCheck?.revenge === true)
+    soft(
+      "revenge_trade",
+      "قلت إن هذه الصفقة تعويض عن خسارة. هذه صفقة انتقامية، وهي أكثر صفقة تكسر الخطة.",
+    );
+
   // 7. Active session
   if (!hasActiveSession) soft("no_session", "لا توجد جلسة تداول نشطة. ابدأ جلسة واكتب خطتك أولًا.");
 
@@ -185,6 +218,8 @@ function nextActionFor(reasons: GateReason[]): string | null {
   if (has("paused")) return "راجع سبب الإيقاف قبل استئناف التداول.";
   if (has("daily_risk_exceeded")) return "خفّض حجم الصفقة أو انتظر الغد.";
   if (has("invalid_prices")) return "صحّح أسعار الدخول والوقف والهدف.";
+  if (has("emotion_check_incomplete")) return "أجب عن أسئلة الحالة النفسية.";
+  if (has("revenge_trade")) return "ابتعد عن الشاشة 15 دقيقة قبل أي صفقة.";
   if (has("no_session")) return "ابدأ جلسة التداول.";
   if (has("no_stop_loss")) return "حدد وقف الخسارة قبل الدخول.";
   if (has("no_strategy")) return "اختر الاستراتيجية التي تنطبق على الصفقة.";
@@ -197,4 +232,9 @@ export const OVERRIDE_MIN_CHARS = 15;
 /** Text stored in `rule_violations.note` when the user overrides soft reasons. */
 export function overrideNote(reasons: GateReason[], justification: string) {
   return `استثناء من بوابة التداول: ${reasons.map((r) => r.message).join(" | ")} — سبب المستخدم: ${justification.trim()}`;
+}
+
+/** Plain-text block appended to the trade notes so the answers stay with the trade. */
+export function emotionCheckNote(emotion: string, c: EmotionCheck) {
+  return `— فحص الحالة النفسية (${emotion}) —\nالدافع: ${c.motive.trim()}\nتعويض عن خسارة: ${c.revenge ? "نعم" : "لا"}`;
 }

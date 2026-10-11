@@ -13,7 +13,7 @@ import { AiTradeInput } from "@/components/ai-trade-input";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { activeSessionQuery, currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { computeStatus, startOfToday, STATUS_META } from "@/lib/trading-status";
-import { evaluateTradeGate, OVERRIDE_MIN_CHARS, overrideNote } from "@/lib/trade-gate";
+import { emotionCheckNote, evaluateTradeGate, isRiskyEmotion, MOTIVE_MIN_CHARS, OVERRIDE_MIN_CHARS, overrideNote, type EmotionCheck } from "@/lib/trade-gate";
 import { pct } from "@/lib/risk-limits";
 
 export const Route = createFileRoute("/_authenticated/new-trade")({
@@ -22,11 +22,11 @@ export const Route = createFileRoute("/_authenticated/new-trade")({
 });
 
 const CHECKLIST = [
-  "الإعداد مطابق لاستراتيجيتي",
-  "حددت وقف الخسارة قبل الدخول",
-  "المخاطرة ضمن الحد المسموح",
-  "لست أتداول لتعويض خسارة",
-  "أنا هادئ ومركّز",
+  { label: "الإعداد مطابق لاستراتيجيتي", hint: "كل شروط الدخول متحققة، لا أغلبها." },
+  { label: "حددت وقف الخسارة قبل الدخول", hint: "تعرف أين تخرج إذا كنت مخطئًا، ولن تحركه بعد الدخول." },
+  { label: "المخاطرة ضمن الحد المسموح", hint: "راجع لوحة حساب المخاطرة بالأسفل." },
+  { label: "لست أتداول لتعويض خسارة", hint: "الدخول لاسترجاع خسارة أكثر سبب لكسر الخطة." },
+  { label: "أنا هادئ ومركّز", hint: "لست متعبًا أو غاضبًا أو مستعجلًا." },
 ];
 const EMOTIONS = ["هادئ", "واثق", "متوتر", "متحمس", "خائف", "غاضب", "طمع"];
 
@@ -43,6 +43,8 @@ function NewTrade() {
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<AiTrade[]>([]);
   const [justification, setJustification] = useState("");
+  const [emoCheck, setEmoCheck] = useState<EmotionCheck>({ motive: "", revenge: null });
+  const [aiFilled, setAiFilled] = useState(false);
   // Client-generated id: a retried insert after a network drop hits the same
   // primary key instead of creating a duplicate trade.
   const [draftId, setDraftId] = useState(() => crypto.randomUUID());
@@ -56,7 +58,7 @@ function NewTrade() {
     trades: t.data ?? [],
     violationsToday: (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length,
     hasActiveSession: !!sess.data,
-    draft: { direction: f.direction, entry: num(f.entry), stop: num(f.sl), target: num(f.tp), size: num(f.size), riskInput: num(f.risk), strategyId: f.strategy_id || null },
+    draft: { direction: f.direction, entry: num(f.entry), stop: num(f.sl), target: num(f.tp), size: num(f.size), riskInput: num(f.risk), strategyId: f.strategy_id || null, emotion: f.emotion || null, emotionCheck: isRiskyEmotion(f.emotion) ? emoCheck : null },
   });
   const m = gate.metrics;
   const calc = gate.calc;
@@ -74,6 +76,7 @@ function NewTrade() {
     if (opens.length === 0) { toast.message("هذا إغلاق صفقة — سوّه من سجل الصفقات"); return; }
     setF(toForm(opens[0]!, st.data ?? []));
     setQueue(opens.slice(1));
+    setAiFilled(true);
     toast.success("عبّيت البيانات، راجعها وكمّل قائمة التحقق");
   }
 
@@ -101,7 +104,7 @@ function NewTrade() {
         position_size: num(f.size),
         risk_amount: calc.risk ?? 0,
         emotion: f.emotion || null,
-        notes: f.notes || null,
+        notes: [f.notes.trim(), isRiskyEmotion(f.emotion) ? emotionCheckNote(f.emotion, emoCheck) : ""].filter(Boolean).join("\n\n") || null,
         checklist_passed: allChecked && !isOverride,
       });
       // 23505 = duplicate key: the same draft was already saved by an earlier attempt.
@@ -115,6 +118,8 @@ function NewTrade() {
       toast.success(isOverride ? "سُجلت الصفقة كاستثناء مخالف" : "تم تسجيل الصفقة");
       setDraftId(crypto.randomUUID());
       setJustification("");
+      setEmoCheck({ motive: "", revenge: null });
+      if (queue.length === 0) setAiFilled(false);
       if (queue.length > 0) { setF(toForm(queue[0]!, st.data ?? [])); setQueue(queue.slice(1)); setChecks(CHECKLIST.map(() => false)); toast.message("هذي الصفقة التالية، راجعها"); } else navigate({ to: "/trades" });
     } catch {
       toast.error("تعذر حفظ الصفقة");
@@ -132,21 +137,30 @@ function NewTrade() {
           <div className="panel flex flex-wrap items-center gap-2 p-4 text-sm">
             <span className="text-muted-foreground">صفقات ثانية فهمتها:</span>
             {queue.map((q, i) => (
-              <Button key={i} size="sm" variant="secondary" onClick={() => { setF(toForm(q, st.data ?? [])); setQueue(queue.filter((_, j) => j !== i)); }}>
+              <Button key={i} size="sm" variant="secondary" onClick={() => { setF(toForm(q, st.data ?? [])); setQueue(queue.filter((_, j) => j !== i)); setAiFilled(true); }}>
                 <span dir="ltr">{q.symbol ?? "?"}</span> {q.direction === "short" ? "بيع" : "شراء"}
               </Button>
             ))}
           </div>
         )}
       </div>
+      {aiFilled && (
+        <div className="panel mb-6 flex flex-wrap items-center justify-between gap-3 border-primary/40 p-4 text-sm" role="status">
+          <p>هذه البيانات استخرجها الذكاء الاصطناعي. راجع الأصل والاتجاه والأسعار والحجم؛ لن يُحفظ شيء قبل ضغطك على التسجيل.</p>
+          <Button type="button" size="sm" variant="secondary" onClick={() => { setF({ symbol: "", direction: "long", strategy_id: "", entry: "", sl: "", tp: "", size: "", risk: "", emotion: "", notes: "" }); setQueue([]); setAiFilled(false); }}>مسح البيانات</Button>
+        </div>
+      )}
       <form onSubmit={submit} className="space-y-6">
         <section className="panel p-5">
           <h2 className="mb-4 font-semibold">قائمة التحقق قبل الدخول</h2>
           <div className="space-y-3">
             {CHECKLIST.map((c, i) => (
-              <label key={c} className="flex cursor-pointer items-center gap-3 text-sm">
-                <Checkbox checked={!!checks[i]} onCheckedChange={(val) => setChecks(checks.map((x, j) => (j === i ? !!val : x)))} />
-                {c}
+              <label key={c.label} className="flex cursor-pointer items-start gap-3 text-sm">
+                <Checkbox className="mt-0.5" checked={!!checks[i]} onCheckedChange={(val) => setChecks(checks.map((x, j) => (j === i ? !!val : x)))} />
+                <span>
+                  {c.label}
+                  <span className="block text-xs text-muted-foreground">{c.hint}</span>
+                </span>
               </label>
             ))}
           </div>
@@ -205,13 +219,32 @@ function NewTrade() {
             )}
           </div>
           <div className="space-y-2">
-            <Label>حالتك النفسية</Label>
+            <Label>حالتك النفسية الآن</Label>
+            {sess.data?.mood && <p className="text-xs text-muted-foreground">حالتك عند بدء الجلسة: {sess.data.mood}</p>}
             <div className="flex flex-wrap gap-2">
               {EMOTIONS.map((x) => (
                 <Button key={x} type="button" size="sm" variant={f.emotion === x ? "default" : "secondary"} onClick={() => setF({ ...f, emotion: f.emotion === x ? "" : x })}>{x}</Button>
               ))}
             </div>
           </div>
+          {isRiskyEmotion(f.emotion) && (
+            <div className="space-y-3 rounded-lg border border-warning/50 p-4">
+              <p className="text-sm font-medium text-warning">اخترت "{f.emotion}". أجب قبل التسجيل:</p>
+              <div className="space-y-2">
+                <Label htmlFor="motive">ما الذي يدفعك للدخول؟</Label>
+                <Textarea id="motive" value={emoCheck.motive} onChange={(e) => setEmoCheck({ ...emoCheck, motive: e.target.value })} placeholder="اكتب السبب الحقيقي، لا السبب الفني فقط." />
+                {emoCheck.motive.trim().length < MOTIVE_MIN_CHARS && <p className="text-xs text-muted-foreground">{MOTIVE_MIN_CHARS} أحرف على الأقل.</p>}
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">هل هذه الصفقة تعويض عن خسارة؟</p>
+                <div className="grid max-w-xs grid-cols-2 gap-2" role="radiogroup" aria-label="هل هذه الصفقة تعويض عن خسارة؟">
+                  {([[true, "نعم"], [false, "لا"]] as const).map(([val, l]) => (
+                    <Button key={l} type="button" size="sm" role="radio" aria-checked={emoCheck.revenge === val} variant={emoCheck.revenge === val ? (val ? "destructive" : "default") : "secondary"} onClick={() => setEmoCheck({ ...emoCheck, revenge: val })}>{l}</Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="space-y-2"><Label>ملاحظات</Label><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="ليش دخلت هذه الصفقة؟" /></div>
         </section>
 
