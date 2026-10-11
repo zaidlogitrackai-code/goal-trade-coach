@@ -54,49 +54,60 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Hadi Alajmi brand: Obsidian, Graphite, Electric Violet, Deep Indigo, Reward Green */
+/* Hadi Alajmi brand: Obsidian, Graphite, Electric Violet, Deep Indigo, Reward Green, White, Cool Gray */
 :root {
+  --color-obsidian: #050506;
+  --color-graphite: #171719;
+  --color-electric-violet: #6257FF;
+  --color-deep-indigo: #3025A8;
+  --color-reward-green: #00E85D;
+  --color-white: #F5F5F7;
+  --color-cool-gray: #98989F;
+
+  --background: var(--color-obsidian);
+  --surface: var(--color-graphite);
+  --primary: var(--color-electric-violet);
+  --secondary: var(--color-deep-indigo);
+  --success: var(--color-reward-green);
+  --foreground: var(--color-white);
+  --muted-foreground: var(--color-cool-gray);
+
   --radius: 0.875rem;
-  --background: oklch(0.1 0.002 286);
-  --foreground: oklch(0.97 0.002 286);
-  --card: oklch(0.205 0.004 286);
-  --card-foreground: oklch(0.97 0.002 286);
-  --popover: oklch(0.18 0.004 286);
-  --popover-foreground: oklch(0.97 0.002 286);
-  --primary: oklch(0.56 0.24 280);
-  --primary-foreground: oklch(0.98 0 0);
-  --indigo: oklch(0.37 0.2 278);
-  --secondary: oklch(0.25 0.006 286);
-  --secondary-foreground: oklch(0.97 0.002 286);
-  --muted: oklch(0.24 0.005 286);
-  --muted-foreground: oklch(0.67 0.01 286);
-  --accent: oklch(0.28 0.06 280);
-  --accent-foreground: oklch(0.97 0.002 286);
-  --destructive: oklch(0.65 0.22 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --success: oklch(0.81 0.24 148);
-  --success-foreground: oklch(0.15 0.02 148);
-  --warning: oklch(0.8 0.16 75);
-  --warning-foreground: oklch(0.18 0.03 75);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.56 0.24 280);
-  --chart-1: oklch(0.56 0.24 280);
-  --chart-2: oklch(0.81 0.24 148);
-  --chart-3: oklch(0.65 0.22 25);
-  --chart-4: oklch(0.8 0.16 75);
-  --chart-5: oklch(0.67 0.01 286);
-  --sidebar: oklch(0.13 0.003 286);
-  --sidebar-foreground: oklch(0.97 0.002 286);
-  --sidebar-primary: oklch(0.56 0.24 280);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.04 280);
-  --sidebar-accent-foreground: oklch(0.97 0.002 286);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.56 0.24 280);
-  --glow-primary: 0 0 40px -8px oklch(0.56 0.24 280 / 60%);
-  --glow-success: 0 0 40px -8px oklch(0.81 0.24 148 / 50%);
-  --gradient-brand: linear-gradient(135deg, oklch(0.56 0.24 280), oklch(0.37 0.2 278));
+  --card: var(--color-graphite);
+  --card-foreground: var(--color-white);
+  --popover: var(--color-graphite);
+  --popover-foreground: var(--color-white);
+  --primary-foreground: var(--color-white);
+  --indigo: var(--color-deep-indigo);
+  --secondary-foreground: var(--color-white);
+  --muted: var(--color-graphite);
+  --accent: var(--color-deep-indigo);
+  --accent-foreground: var(--color-white);
+  /* Errors / warnings stay inside the palette: White text, Violet / Indigo emphasis */
+  --destructive: var(--color-white);
+  --destructive-foreground: var(--color-white);
+  --success-foreground: var(--color-obsidian);
+  --warning: var(--color-electric-violet);
+  --warning-foreground: var(--color-white);
+  --border: color-mix(in srgb, var(--color-cool-gray) 22%, transparent);
+  --input: color-mix(in srgb, var(--color-cool-gray) 28%, transparent);
+  --ring: var(--color-electric-violet);
+  --chart-1: var(--color-electric-violet);
+  --chart-2: var(--color-reward-green);
+  --chart-3: var(--color-deep-indigo);
+  --chart-4: var(--color-white);
+  --chart-5: var(--color-cool-gray);
+  --sidebar: var(--color-graphite);
+  --sidebar-foreground: var(--color-white);
+  --sidebar-primary: var(--color-electric-violet);
+  --sidebar-primary-foreground: var(--color-white);
+  --sidebar-accent: var(--color-deep-indigo);
+  --sidebar-accent-foreground: var(--color-white);
+  --sidebar-border: color-mix(in srgb, var(--color-cool-gray) 22%, transparent);
+  --sidebar-ring: var(--color-electric-violet);
+  --glow-primary: 0 0 40px -8px color-mix(in srgb, var(--color-electric-violet) 60%, transparent);
+  --glow-success: 0 0 40px -8px color-mix(in srgb, var(--color-reward-green) 50%, transparent);
+  --gradient-brand: linear-gradient(135deg, var(--color-electric-violet), var(--color-deep-indigo));
 }
 
 @layer base {
@@ -111,9 +122,9 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     background-image:
-      radial-gradient(ellipse 60% 40% at 85% -10%, oklch(0.56 0.24 280 / 18%), transparent 70%),
-      linear-gradient(oklch(1 0 0 / 2.5%) 1px, transparent 1px),
-      linear-gradient(90deg, oklch(1 0 0 / 2.5%) 1px, transparent 1px);
+      radial-gradient(ellipse 60% 40% at 85% -10%, color-mix(in srgb, var(--color-deep-indigo) 45%, transparent), transparent 70%),
+      linear-gradient(color-mix(in srgb, var(--color-cool-gray) 4%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--color-cool-gray) 4%, transparent) 1px, transparent 1px);
     background-size: 100% 100%, 48px 48px, 48px 48px;
     background-attachment: fixed;
   }
@@ -128,7 +139,7 @@
 }
 
 @utility panel {
-  background-color: oklch(0.205 0.004 286 / 80%);
+  background-color: color-mix(in srgb, var(--color-graphite) 85%, transparent);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   backdrop-filter: blur(12px);
