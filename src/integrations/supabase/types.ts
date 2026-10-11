@@ -14,7 +14,254 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      rule_violations: {
+        Row: {
+          id: string
+          note: string | null
+          occurred_at: string
+          rule_id: string | null
+          trade_id: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          rule_id?: string | null
+          trade_id?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          rule_id?: string | null
+          trade_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_violations_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "trading_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_violations_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      strategies: {
+        Row: {
+          allowed: boolean
+          created_at: string
+          description: string | null
+          entry_conditions: string | null
+          exit_conditions: string | null
+          id: string
+          markets: string | null
+          name: string
+          timeframes: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed?: boolean
+          created_at?: string
+          description?: string | null
+          entry_conditions?: string | null
+          exit_conditions?: string | null
+          id?: string
+          markets?: string | null
+          name: string
+          timeframes?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed?: boolean
+          created_at?: string
+          description?: string | null
+          entry_conditions?: string | null
+          exit_conditions?: string | null
+          id?: string
+          markets?: string | null
+          name?: string
+          timeframes?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          checklist_passed: boolean
+          close_notes: string | null
+          closed_at: string | null
+          created_at: string
+          direction: string
+          emotion: string | null
+          entry_price: number | null
+          exit_price: number | null
+          id: string
+          notes: string | null
+          opened_at: string
+          pnl: number | null
+          position_size: number | null
+          risk_amount: number
+          status: string
+          stop_loss: number | null
+          strategy_id: string | null
+          symbol: string
+          take_profit: number | null
+          user_id: string
+        }
+        Insert: {
+          checklist_passed?: boolean
+          close_notes?: string | null
+          closed_at?: string | null
+          created_at?: string
+          direction: string
+          emotion?: string | null
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string
+          pnl?: number | null
+          position_size?: number | null
+          risk_amount?: number
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol: string
+          take_profit?: number | null
+          user_id: string
+        }
+        Update: {
+          checklist_passed?: boolean
+          close_notes?: string | null
+          closed_at?: string | null
+          created_at?: string
+          direction?: string
+          emotion?: string | null
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string
+          pnl?: number | null
+          position_size?: number | null
+          risk_amount?: number
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol?: string
+          take_profit?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trades_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trading_rules: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trading_settings: {
+        Row: {
+          created_at: string
+          currency: string
+          daily_target: number
+          display_name: string | null
+          max_consecutive_losses: number
+          max_daily_loss: number
+          max_daily_profit: number
+          max_daily_risk: number
+          max_risk_per_trade: number
+          max_trades_per_day: number
+          onboarded: boolean
+          session_end: string | null
+          session_start: string | null
+          starting_balance: number
+          timezone: string
+          trading_paused: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          daily_target?: number
+          display_name?: string | null
+          max_consecutive_losses?: number
+          max_daily_loss?: number
+          max_daily_profit?: number
+          max_daily_risk?: number
+          max_risk_per_trade?: number
+          max_trades_per_day?: number
+          onboarded?: boolean
+          session_end?: string | null
+          session_start?: string | null
+          starting_balance?: number
+          timezone?: string
+          trading_paused?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          daily_target?: number
+          display_name?: string | null
+          max_consecutive_losses?: number
+          max_daily_loss?: number
+          max_daily_profit?: number
+          max_daily_risk?: number
+          max_risk_per_trade?: number
+          max_trades_per_day?: number
+          onboarded?: boolean
+          session_end?: string | null
+          session_start?: string | null
+          starting_balance?: number
+          timezone?: string
+          trading_paused?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
