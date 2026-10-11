@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
+import { hasBlockingIssues, validateRiskLimits, type RiskSettingsRow } from "@/lib/risk-limits";
+import { evaluateTradeGate } from "@/lib/trade-gate";
+import { startOfToday } from "@/lib/trading-status";
 
 /** Actions the AI coach proposes; each one runs only after the user approves it. */
 export type AgentAction = { type: ActionType; summary: string; data: string };
@@ -47,7 +50,34 @@ export function parseAction(a: AgentAction) {
 }
 
 const sym = (s?: string | null) => (s ?? "").toUpperCase().replace(/[\s/]/g, "") || "غير محدد";
-...
+
+export async function runAction(a: AgentAction): Promise<void> {
+  const d = parseAction(a) as Record<string, unknown> | null;
+  if (!d) throw new Error("بيانات الإجراء غير صالحة");
+  const user_id = await currentUserId();
+  const check = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
+  switch (a.type) {
+    case "update_settings": {
+      // AI-proposed limits pass the same validation as the settings form.
+      const { data: current } = await supabase.from("trading_settings").select("*").eq("user_id", user_id).maybeSingle();
+      const merged = { currency: "USD", ...(current ?? {}), ...d } as unknown as RiskSettingsRow;
+      const issues = validateRiskLimits(merged);
+      if (hasBlockingIssues(issues)) throw new Error(issues.filter((i) => i.severity === "error").map((i) => i.message).join(" "));
+      const { error } = await supabase.from("trading_settings").upsert({ user_id, ...d, onboarded: true, updated_at: new Date().toISOString() });
+      return check(error);
+    }
+    case "add_strategy": {
+      const { error } = await supabase.from("strategies").insert({ user_id, ...(d as { name: string }) });
+      return check(error);
+    }
+    case "add_rule": {
+      const { error } = await supabase.from("trading_rules").insert({ user_id, ...(d as { title: string }) });
+      return check(error);
+    }
+    case "add_note": {
+      const { error } = await supabase.from("knowledge_notes").insert({ user_id, ...(d as { title: string }) });
+      return check(error);
+    }
     case "create_trade": {
       const { strategy, status, pnl, exit_price, risk_amount, ...t } = d as { strategy?: string | null; status?: string; pnl?: number | null; exit_price?: number | null; risk_amount?: number | null; symbol?: string | null; direction: string };
       let strategy_id: string | null = null;
@@ -57,8 +87,16 @@ const sym = (s?: string | null) => (s ?? "").toUpperCase().replace(/[\s/]/g, "")
       }
       const closed = status === "closed" || (pnl != null && Number.isFinite(pnl));
       const now = new Date().toISOString();
+      let gatedRisk: number | null = null;
+      if (!closed) {
+        // A new open trade from the AI goes through the trade gate. The AI path
+        // cannot override: soft reasons must be justified in the trade form.
+        const gate = await gateForAiTrade(t as { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null }, risk_amount ?? null, strategy_id);
+        if (!gate.allowed) throw new Error(`بوابة التداول رفضت الصفقة: ${gate.reasons.map((r) => r.message).join(" ")}${gate.canOverride ? " يمكنك تسجيلها كاستثناء مبرر من صفحة صفقة جديدة." : ""}`);
+        gatedRisk = gate.calc.risk;
+      }
       const { error } = await supabase.from("trades").insert({
-        user_id, ...t, symbol: sym(t.symbol), direction: t.direction as "long" | "short", risk_amount: risk_amount ?? 0, strategy_id, checklist_passed: false,
+        user_id, ...t, symbol: sym(t.symbol), direction: t.direction as "long" | "short", risk_amount: gatedRisk ?? risk_amount ?? 0, strategy_id, checklist_passed: false,
         ...(closed ? { status: "closed" as const, pnl: pnl ?? 0, exit_price: exit_price ?? null, closed_at: now } : {}),
       });
       return check(error);
@@ -79,4 +117,28 @@ const sym = (s?: string | null) => (s ?? "").toUpperCase().replace(/[\s/]/g, "")
       return check(error);
     }
   }
+}
+
+async function gateForAiTrade(
+  t: { direction: string; entry_price?: number | null; stop_loss?: number | null; take_profit?: number | null; position_size?: number | null },
+  riskInput: number | null,
+  strategyId: string | null,
+) {
+  const since = startOfToday().toISOString();
+  const [settings, trades, violations, session] = await Promise.all([
+    supabase.from("trading_settings").select("*").maybeSingle(),
+    supabase.from("trades").select("status,pnl,risk_amount,opened_at,closed_at"),
+    supabase.from("rule_violations").select("id").gte("occurred_at", since),
+    supabase.from("trading_sessions").select("id").is("ended_at", null).limit(1),
+  ]);
+  const err = settings.error ?? trades.error ?? violations.error ?? session.error;
+  if (err) throw new Error(err.message);
+  if (!settings.data) throw new Error("أكمل إعداد حدود المخاطر قبل تسجيل الصفقات.");
+  return evaluateTradeGate({
+    settings: settings.data,
+    trades: trades.data ?? [],
+    violationsToday: violations.data?.length ?? 0,
+    hasActiveSession: (session.data?.length ?? 0) > 0,
+    draft: { direction: t.direction, entry: t.entry_price, stop: t.stop_loss, target: t.take_profit, size: t.position_size, riskInput, strategyId },
+  });
 }

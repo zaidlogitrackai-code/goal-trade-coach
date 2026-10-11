@@ -99,7 +99,9 @@ export function computeDayMetrics(
     riskUsed,
     riskRemaining: s.max_daily_risk > 0 ? Math.max(0, s.max_daily_risk - riskUsed) : null,
     lossRemaining: s.max_daily_loss > 0 ? Math.max(0, s.max_daily_loss + Math.min(0, todayPnl)) : null,
-    consecutiveLosses: countConsecutiveLosses(allTrades),
+    // Today's streak only: an all-time streak would block trading forever,
+    // because no new trade (and so no win) could ever be recorded.
+    consecutiveLosses: countConsecutiveLosses(closedToday),
     violationsToday,
     weekPnl: pnlSince(allTrades, startOfWeek(now).getTime()),
     monthPnl: pnlSince(allTrades, startOfMonth(now).getTime()),
