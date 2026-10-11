@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/app-shell";
 import { Md } from "@/components/md";
@@ -24,6 +25,13 @@ function CoachPage() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [image, setImage] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  function pick(file?: File) {
+    if (!file) return;
+    if (file.size > 5_000_000) { toast.error("الصورة أكبر من 5MB"); return; }
+    const r = new FileReader(); r.onload = () => setImage(String(r.result)); r.readAsDataURL(file);
+  }
   const endRef = useRef<HTMLDivElement>(null);
 
   const threads = useQuery({
@@ -70,8 +78,9 @@ function CoachPage() {
     try {
       const id = active ?? (await newThread());
       if (!id) return;
-      setText(""); setPending(msg);
-      await send({ data: { threadId: id, message: msg } });
+      const img = image;
+      setText(""); setImage(null); setPending(msg);
+      await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
@@ -85,7 +94,7 @@ function CoachPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="المدرب الذكي" subtitle="اسأله عن صفقاتك، قواعدك، أو كيف تبني خطتك." action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
+      <PageHeader title="المدرب الذكي" subtitle="يحلل معك، ينصحك، ويسجّل وينفّذ عنك بعد موافقتك." action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="panel max-h-[70vh] space-y-1 overflow-y-auto p-2">
           {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
@@ -102,14 +111,26 @@ function CoachPage() {
               <div className="py-16 text-center text-sm text-muted-foreground">ابدأ بسؤال، مثلاً: "راجع آخر صفقاتي وقل لي وين أغلط" أو "ساعدني أكتب قواعد دخول لاستراتيجيتي".</div>
             )}
             {list.map((m) => (
-              <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.role === "assistant" ? <Md>{m.content}</Md> : m.content}</div>
+              <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
+                {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
+                  <AgentActions actions={m.actions as unknown as StoredAction[]} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
+                )}
+              </div>
             ))}
             {showPending && <div className="mr-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">{pending}</div>}
             {busy && <div className="ml-auto rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">يكتب…</div>}
             <div ref={endRef} />
           </div>
+          {image && (
+            <div className="relative mx-3 mt-3 w-fit">
+              <img src={image} alt="الصورة المرفقة" className="max-h-24 rounded-lg border border-border" />
+              <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
+            </div>
+          )}
           <div className="flex gap-2 border-t border-border p-3">
-            <Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب رسالتك…" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+            <Button type="button" variant="secondary" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
+            <Textarea onPaste={(e) => pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
             <Button onClick={submit} disabled={busy || !text.trim()}>إرسال</Button>
           </div>
         </div>
