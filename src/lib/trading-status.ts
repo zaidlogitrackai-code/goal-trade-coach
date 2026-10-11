@@ -15,6 +15,7 @@ export interface StatusSettings {
   max_daily_risk: number;
   max_consecutive_losses: number;
   trading_paused: boolean;
+  cooldown_until?: string | null;
 }
 
 export interface StatusTrade {
@@ -80,8 +81,9 @@ export function computeDayMetrics(
   };
 }
 
-export function computeStatus(s: StatusSettings, m: DayMetrics): TradingStatus {
+export function computeStatus(s: StatusSettings, m: DayMetrics, now: Date = new Date()): TradingStatus {
   if (s.trading_paused) return "stopped";
+  if (s.cooldown_until && new Date(s.cooldown_until).getTime() > now.getTime()) return "stopped";
   if (s.max_daily_loss > 0 && m.todayPnl <= -s.max_daily_loss) return "loss_limit";
   if (s.max_daily_profit > 0 && m.todayPnl >= s.max_daily_profit) return "stopped";
   if (s.max_trades_per_day > 0 && m.tradesToday >= s.max_trades_per_day) return "stopped";
