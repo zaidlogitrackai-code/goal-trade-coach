@@ -6,6 +6,7 @@ import {
   ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import logoHadi from "@/assets/logo-hadi.png";
 
 export const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -28,13 +29,7 @@ const MOBILE = ["/dashboard", "/new-trade", "/trades", "/risk", "/settings"];
 
 export function Logo() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="bg-brand-gradient glow-primary grid size-9 place-items-center rounded-lg font-display text-lg font-bold text-primary-foreground">H</div>
-      <div className="leading-tight">
-        <div className="font-display text-base font-semibold">Hadi Alajmi</div>
-        <div className="text-[10px] tracking-widest text-muted-foreground">TRADING OS</div>
-      </div>
-    </div>
+    <img src={logoHadi} alt="Hadi Alajmi — Trading OS" className="h-10 w-auto" loading="lazy" width={714} height={552} />
   );
 }
 
