@@ -145,7 +145,21 @@ export const reportSummary = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     try {
       const ctx = await buildContext(context.supabase);
-      const text = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب تقرير أداء لفترة "${data.period}" بناءً على هذه الأرقام: ${data.stats}\nالعناوين: الملخص، نقاط القوة، الأخطاء المتكررة، الالتزام بالقواعد والمخاطر، ٣ خطوات عملية للفترة القادمة.` }]);
+      const text = await callAI(
+        `${BASE_PERSONA}\n\n${ctx}`,
+        [
+          {
+            role: "user",
+            content: `اكتب تقرير أداء وتحليل سلوك لفترة "${data.period}" بناءً على هذه الأرقام الحقيقية: ${data.stats}
+التزم بالاختصار الشديد والعناوين التالية:
+1. ملخص الأداء والانضباط (نظرة سريعة)
+2. ما الذي تحسن في تداولك؟
+3. ما السلوك الذي يسبب الخسارة أو استنزاف الرصيد؟
+4. ما هي القاعدة التي تم خرقها أكثر شيء؟
+5. إجراء واحد أو اثنان فقط محدد للأسبوع القادم لمنع تكرار الخطأ.`,
+          },
+        ]
+      );
       return { text };
     } catch (e) { fail(e); }
   });

@@ -8,24 +8,51 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
 
-export const NAV = [
-  { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
-  { to: "/session", label: "جلسة التداول", icon: Timer },
-  { to: "/new-trade", label: "الصفقة الجديدة", icon: PlusCircle },
-  { to: "/trades", label: "سجل الصفقات", icon: ListOrdered },
-  { to: "/analyst", label: "المحلل الذكي", icon: ScanSearch },
-  { to: "/coach", label: "المدرب الذكي", icon: MessagesSquare },
-  { to: "/strategies", label: "استراتيجياتي", icon: Layers },
-  { to: "/risk", label: "إدارة المخاطر", icon: ShieldCheck },
-  { to: "/discipline", label: "الانضباط والطمع", icon: Gauge },
-  { to: "/performance", label: "الأداء", icon: LineChart },
-  { to: "/reports", label: "التقارير", icon: FileText },
-  { to: "/rules", label: "القواعد", icon: ScrollText },
-  { to: "/knowledge", label: "مركز المعرفة", icon: BookOpen },
-  { to: "/settings", label: "الإعدادات", icon: Settings },
+export const NAV_GROUPS = [
+  {
+    title: "التداول",
+    items: [
+      { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
+      { to: "/session", label: "جلسة التداول", icon: Timer },
+      { to: "/new-trade", label: "صفقة جديدة", icon: PlusCircle },
+      { to: "/trades", label: "سجل الصفقات", icon: ListOrdered },
+    ],
+  },
+  {
+    title: "التحليل",
+    items: [
+      { to: "/analyst", label: "المحلل الذكي", icon: ScanSearch },
+      { to: "/coach", label: "المدرب الذكي", icon: MessagesSquare },
+      { to: "/strategies", label: "الاستراتيجيات", icon: Layers },
+    ],
+  },
+  {
+    title: "الانضباط",
+    items: [
+      { to: "/risk", label: "إدارة المخاطر", icon: ShieldCheck },
+      { to: "/discipline", label: "الانضباط والطمع", icon: Gauge },
+      { to: "/performance", label: "الأداء", icon: LineChart },
+      { to: "/reports", label: "التقارير", icon: FileText },
+    ],
+  },
+  {
+    title: "المعرفة",
+    items: [
+      { to: "/rules", label: "القواعد", icon: ScrollText },
+      { to: "/knowledge", label: "مركز المعرفة", icon: BookOpen },
+    ],
+  },
+  {
+    title: "النظام",
+    items: [
+      { to: "/settings", label: "الإعدادات", icon: Settings },
+    ],
+  },
 ] as const;
 
-const MOBILE = ["/dashboard", "/new-trade", "/trades", "/risk", "/settings"];
+export const NAV = NAV_GROUPS.flatMap((g) => g.items);
+
+const MOBILE = ["/dashboard", "/session", "/new-trade", "/trades", "/risk"];
 
 export function LogoMark({ className = "size-8" }: { className?: string }) {
   return (
@@ -61,23 +88,35 @@ export function AppShell({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
   }
+
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-l border-sidebar-border bg-sidebar/90 p-4 lg:flex">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
-        <nav className="mt-6 flex-1 space-y-0.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((n) => (
-            <Link
-              key={n.to}
-              to={n.to}
-              className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-              activeProps={{ className: "bg-sidebar-accent text-foreground font-medium" }}
-            >
-              <n.icon className="size-4" />
-              {n.label}
-            </Link>
+        
+        <nav className="mt-5 flex-1 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <p className="px-3 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                {group.title}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((n) => (
+                  <Link
+                    key={n.to}
+                    to={n.to}
+                    className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                    activeProps={{ className: "bg-sidebar-accent text-foreground font-medium" }}
+                  >
+                    <n.icon className="size-4" />
+                    {n.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
+
         <button onClick={signOut} className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
           <LogOut className="size-4" /> تسجيل الخروج
         </button>
@@ -95,7 +134,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur lg:hidden">
         {NAV.filter((n) => MOBILE.includes(n.to)).map((n) => (
-          <Link key={n.to} to={n.to} className="flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground" activeProps={{ className: "text-primary" }}>
+          <Link key={n.to} to={n.to} className="flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground" activeProps={{ className: "text-primary font-medium" }}>
             <n.icon className="size-5" />
             {n.label}
           </Link>
@@ -105,39 +144,72 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-bold lg:text-3xl">{title}</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground lg:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div>{action}</div>}
     </div>
   );
 }
 
-export function EmptyState({ title = "لا توجد بيانات بعد", text = "ابدأ بإعداد نظام التداول الخاص بك.", action }: { title?: string; text?: string; action?: ReactNode }) {
-  return (
-    <div className="panel flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
-      <div className="mb-2 size-12 rounded-full bg-accent" />
-      <p className="font-display text-lg font-semibold">{title}</p>
-      <p className="text-sm text-muted-foreground">{text}</p>
-      {action && <div className="mt-4">{action}</div>}
-    </div>
-  );
-}
-
-export function Stat({ label, value, tone }: { label: string; value: ReactNode; tone?: "success" | "destructive" | "warning" | undefined }) {
-  const color = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : tone === "warning" ? "text-warning" : "text-foreground";
+export function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: "success" | "warning" | "destructive";
+}) {
+  const toneClasses = {
+    success: "text-success",
+    warning: "text-warning",
+    destructive: "text-destructive",
+  };
   return (
     <div className="panel p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`font-data mt-2 text-xl font-semibold ${color}`} dir="ltr" style={{ textAlign: "right" }}>{value}</p>
+      <p className={`font-data mt-2 text-2xl font-bold ${tone ? toneClasses[tone] : "text-foreground"}`} dir="ltr">
+        {value}
+      </p>
     </div>
   );
 }
 
 export function Loading() {
-  return <div className="py-20 text-center text-sm text-muted-foreground">جارٍ التحميل…</div>;
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+}
+
+export function EmptyState({
+  title = "لا توجد بيانات",
+  text = "لا توجد بيانات لعرضها هنا حالياً.",
+  action,
+}: {
+  title?: string;
+  text?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="panel flex flex-col items-center justify-center p-8 text-center sm:p-12">
+      <h3 className="font-semibold text-lg">{title}</h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{text}</p>
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
 }

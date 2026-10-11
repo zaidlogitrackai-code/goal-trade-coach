@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, Loading } from "@/components/app-shell";
@@ -9,176 +9,659 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AiTradeInput } from "@/components/ai-trade-input";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
-import { computeDayMetrics, computeStatus, startOfToday, STATUS_META } from "@/lib/trading-status";
+import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
+import { evaluateTradeGate, type TradeGateResult } from "@/lib/trade-gate";
+import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/new-trade")({
-  head: () => ({ meta: [{ title: "صفقة جديدة — نظام هادي" }, { name: "description", content: "سجّل صفقة جديدة بعد قائمة التحقق." }] }),
+  head: () => ({
+    meta: [
+      { title: "صفقة جديدة — نظام هادي" },
+      { name: "description", content: "سجّل صفقة جديدة بانضباط مع بوابة المخاطر وفحص قائمة التحقق." },
+    ],
+  }),
   component: NewTrade,
 });
 
-const CHECKLIST = [
-  "الإعداد مطابق لاستراتيجيتي",
-  "حددت وقف الخسارة قبل الدخول",
-  "المخاطرة ضمن الحد المسموح",
-  "لست أتداول لتعويض خسارة",
-  "أنا هادئ ومركّز",
+const CHECKLIST_ITEMS = [
+  { id: "strategy", label: "الإعداد مطابق تماماً للاستراتيجية", desc: "وجود كل شروط الدخول والتأكيد المكتوبة في استراتيجيتك." },
+  { id: "sl", label: "حددت وقف الخسارة مسبقاً قبل الدخول", desc: "نقطة وقف الخسارة واضحة وتلغي فكرة الصفقة إذا وصلها السعر." },
+  { id: "risk", label: "المخاطرة ضمن الحدود المالية المقررة", desc: "حجم العقد محسوب بحيث لا يتجاوز حد المخاطرة للصفقة واليوم." },
+  { id: "not_revenge", label: "لست أتداول لتعويض خسارة سابقة", desc: "الدخول مبني على فرصة سوقية وليس بدافع الانتقام واسترداد المال." },
+  { id: "calm", label: "أنا هادئ ومركّز ومستعد ذهنياً", desc: "خالٍ من التوتر أو الغضب أو الاستعجال الناتج عن FOMO." },
 ];
+
 const EMOTIONS = ["هادئ", "واثق", "متوتر", "متحمس", "خائف", "غاضب", "طمع"];
+const SENSITIVE_EMOTIONS = ["طمع", "خائف", "متوتر", "غاضب"];
 
 function NewTrade() {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
   const st = useQuery(strategiesQuery);
+  const sessions = useQuery({
+    queryKey: ["sessions"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("trading_sessions").select("*").order("started_at", { ascending: false }).limit(5);
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [f, setF] = useState({ symbol: "", direction: "long", strategy_id: "", entry: "", sl: "", tp: "", size: "", risk: "", emotion: "", notes: "" });
-  const [checks, setChecks] = useState<boolean[]>(CHECKLIST.map(() => false));
+
+  const [f, setF] = useState({
+    symbol: "",
+    direction: "long",
+    strategy_id: "",
+    entry: "",
+    sl: "",
+    tp: "",
+    size: "",
+    risk: "",
+    emotion: "",
+    notes: "",
+  });
+
+  // Emotional reflection fields
+  const [reflectionReason, setReflectionReason] = useState("");
+  const [isCompensating, setIsCompensating] = useState<boolean | null>(null);
+
+  // Exception Override Modal
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideNote, setOverrideNote] = useState("");
+
+  const [checks, setChecks] = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<AiTrade[]>([]);
 
-  if (s.isLoading || t.isLoading || !s.data) return <Loading />;
+  const isLoading = s.isLoading || t.isLoading || !s.data;
+  if (isLoading) return <Loading />;
+
   const settings = s.data;
   const start = startOfToday().getTime();
-  const m = computeDayMetrics(settings, t.data ?? [], (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length);
-  const status = computeStatus(settings, m);
-  const blocked = ["stopped", "loss_limit"].includes(status);
-  const risk = Number(f.risk || 0);
-  const overTrade = settings.max_risk_per_trade > 0 && risk > settings.max_risk_per_trade;
-  const overDay = m.riskRemaining != null && risk > m.riskRemaining;
-  const allChecked = checks.every(Boolean);
+  const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
+  const metrics = computeDayMetrics(settings, t.data ?? [], violationsToday);
+
+  const activeSession = (sessions.data ?? []).find((x) => !x.ended_at) ?? null;
   const strategies = (st.data ?? []).filter((x) => x.allowed);
+  const allowedStrategyIds = strategies.map((x) => x.id);
+
+  const num = (x: string) => (x === "" ? null : Number(x));
+  const entryNum = num(f.entry);
+  const slNum = num(f.sl);
+  const tpNum = num(f.tp);
+  const sizeNum = num(f.size);
+  const riskNum = num(f.risk) ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
+
+  const allChecked = checks.every(Boolean);
+
+  // Evaluate Trade Gate
+  const gateResult: TradeGateResult = useMemo(() => {
+    return evaluateTradeGate({
+      settings,
+      metrics,
+      input: {
+        symbol: f.symbol,
+        direction: f.direction,
+        entry_price: entryNum,
+        stop_loss: slNum,
+        take_profit: tpNum,
+        position_size: sizeNum,
+        risk_amount: riskNum,
+        strategy_id: f.strategy_id || null,
+        emotion: f.emotion || null,
+        checklist_passed: allChecked,
+      },
+      activeSession,
+      allowedStrategyIds,
+      openTrades: (t.data ?? []).filter((x) => x.status === "open").map((x) => ({
+        status: x.status,
+        pnl: x.pnl,
+        risk_amount: x.risk_amount,
+        opened_at: x.opened_at,
+        closed_at: x.closed_at,
+      })),
+      currentBalance: settings.starting_balance,
+    });
+  }, [settings, metrics, f, entryNum, slNum, tpNum, sizeNum, riskNum, allChecked, activeSession, allowedStrategyIds, t.data]);
+
+  // Calculations for display
+  const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
+  const potentialProfit = entryNum && tpNum && sizeNum ? Math.abs(tpNum - entryNum) * sizeNum : null;
+
   function load(list: AiTrade[]) {
     const opens = list.filter((x) => x.action === "open");
-    if (opens.length === 0) { toast.message("هذا إغلاق صفقة — سوّه من سجل الصفقات"); return; }
-    setF(toForm(opens[0]!, st.data ?? []));
+    if (opens.length === 0) {
+      toast.message("هذا إغلاق صفقة — سجّله من صفحة سجل الصفقات");
+      return;
+    }
+    const target = opens[0]!;
+    setF(toForm(target, st.data ?? []));
     setQueue(opens.slice(1));
-    toast.success("عبّيت البيانات، راجعها وكمّل قائمة التحقق");
+    toast.success("تم استخراج بيانات الصفقة للمراجعة. تأكد منها قبل الحفظ.");
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!f.symbol.trim()) { toast.error("أدخل الأصل"); return; }
+  async function executeSave(isOverride = false, overrideReasonText = "") {
+    if (!f.symbol.trim()) {
+      toast.error("يرجى إدخال رمز الأصل");
+      return;
+    }
+
     setBusy(true);
     try {
       const user_id = await currentUserId();
-      const num = (x: string) => (x === "" ? null : Number(x));
-      const { error } = await supabase.from("trades").insert({
-        user_id,
-        symbol: f.symbol.trim().toUpperCase(),
-        direction: f.direction,
-        strategy_id: f.strategy_id || null,
-        entry_price: num(f.entry),
-        stop_loss: num(f.sl),
-        take_profit: num(f.tp),
-        position_size: num(f.size),
-        risk_amount: risk,
-        emotion: f.emotion || null,
-        notes: f.notes || null,
-        checklist_passed: allChecked,
-      });
-      if (error) throw error;
+      const nowIso = new Date().toISOString();
+
+      let notesCombined = f.notes.trim();
+      if (isOverride && overrideReasonText) {
+        notesCombined += `\n[مبرر الاستثناء]: ${overrideReasonText}`;
+      }
+      if (f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion)) {
+        if (reflectionReason) notesCombined += `\n[دافع الدخول]: ${reflectionReason}`;
+        if (isCompensating !== null) notesCombined += `\n[هل هو تعويض]: ${isCompensating ? "نعم" : "لا"}`;
+      }
+
+      // 1. Insert trade
+      const { data: newTrade, error: tradeErr } = await supabase
+        .from("trades")
+        .insert({
+          user_id,
+          symbol: f.symbol.trim().toUpperCase(),
+          direction: f.direction,
+          strategy_id: f.strategy_id || null,
+          entry_price: entryNum,
+          stop_loss: slNum,
+          take_profit: tpNum,
+          position_size: sizeNum,
+          risk_amount: riskNum ?? 0,
+          emotion: f.emotion || null,
+          notes: notesCombined || null,
+          checklist_passed: allChecked && !isOverride,
+          opened_at: nowIso,
+        })
+        .select()
+        .single();
+
+      if (tradeErr) throw tradeErr;
+
+      // 2. If this was an override with rule violations or no stop loss, log a rule_violation record!
+      if (isOverride || gateResult.reasons.length > 0 || !slNum) {
+        const violationReasons = [...gateResult.reasons];
+        if (!slNum && !violationReasons.some((r) => r.includes("وقف الخسارة"))) {
+          violationReasons.push("دخول بدون وقف خسارة");
+        }
+        await supabase.from("rule_violations").insert({
+          user_id,
+          trade_id: newTrade?.id ?? null,
+          occurred_at: nowIso,
+          note: `استثناء مصرح: ${violationReasons.join(" · ")}${overrideReasonText ? ` | المبرر: ${overrideReasonText}` : ""}`,
+        });
+      }
+
       await qc.invalidateQueries({ queryKey: ["trades"] });
-      toast.success("تم تسجيل الصفقة");
-      if (queue.length > 0) { setF(toForm(queue[0]!, st.data ?? [])); setQueue(queue.slice(1)); setChecks(CHECKLIST.map(() => false)); toast.message("هذي الصفقة التالية، راجعها"); } else navigate({ to: "/trades" });
+      await qc.invalidateQueries({ queryKey: ["violations"] });
+      toast.success("تم تسجيل الصفقة بنجاح");
+
+      if (queue.length > 0) {
+        setF(toForm(queue[0]!, st.data ?? []));
+        setQueue(queue.slice(1));
+        setChecks(CHECKLIST_ITEMS.map(() => false));
+        toast.message("هذه الصفقة التالية المستخرجة، راجعها");
+      } else {
+        navigate({ to: "/trades" });
+      }
     } catch {
       toast.error("تعذر حفظ الصفقة");
     } finally {
       setBusy(false);
+      setOverrideModalOpen(false);
     }
   }
 
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!f.symbol.trim()) {
+      toast.error("يرجى إدخال الأصل");
+      return;
+    }
+
+    // Hard blocked condition (cooldown, daily loss limit, paused)
+    if (!gateResult.allowed && !gateResult.canOverride) {
+      toast.error("التداول متوقف إجبارياً بحسب قواعد الحماية. لا يمكن فتح صفقات الآن.");
+      return;
+    }
+
+    // If there are gate violations or missing stop loss, require explicit justification modal!
+    if (!gateResult.allowed || slNum == null || slNum === 0) {
+      setOverrideModalOpen(true);
+      return;
+    }
+
+    executeSave(false);
+  }
+
   return (
-    <div className="mx-auto max-w-4xl">
-      <PageHeader title="الصفقة الجديدة" subtitle={`الحالة: ${STATUS_META[status].label}`} />
-      {blocked && (
-        <div className="panel mb-6 border-destructive/50 p-4 text-sm text-destructive">
-          {STATUS_META[status].hint} النظام ينصحك بعدم فتح صفقات جديدة اليوم.
+    <div className="mx-auto max-w-4xl space-y-8">
+      <PageHeader
+        title="الصفقة الجديدة"
+        subtitle="راجع الشروط والمخاطرة قبل الضغط على تنفيذ."
+      />
+
+      {/* Gate Alert Banner */}
+      {!gateResult.allowed && (
+        <div
+          className={`panel p-5 border-2 space-y-2 ${
+            gateResult.canOverride
+              ? "border-warning/50 bg-warning/5 text-warning"
+              : "border-destructive/50 bg-destructive/5 text-destructive"
+          }`}
+        >
+          <div className="flex items-center gap-2 font-bold text-base">
+            {gateResult.canOverride ? (
+              <AlertTriangle className="size-5 shrink-0" />
+            ) : (
+              <ShieldAlert className="size-5 shrink-0" />
+            )}
+            <span>{gateResult.canOverride ? "تنبيه: الصفقة تخالف بعض القيود" : "التداول موقوف اليوم"}</span>
+          </div>
+          <ul className="list-disc list-inside space-y-1 text-xs sm:text-sm pr-1">
+            {gateResult.reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+          <p className="text-xs pt-1 border-t border-border/40 font-medium">
+            الإجراء الموصى به: {gateResult.nextAction}
+          </p>
         </div>
       )}
-      <div className="mb-6 space-y-3">
+
+      {/* AI Assistant Extraction for Review */}
+      <div className="space-y-3">
         <AiTradeInput onResult={load} />
         {queue.length > 0 && (
           <div className="panel flex flex-wrap items-center gap-2 p-4 text-sm">
-            <span className="text-muted-foreground">صفقات ثانية فهمتها:</span>
+            <span className="text-muted-foreground">صفقات تالية جاهزة للمراجعة:</span>
             {queue.map((q, i) => (
-              <Button key={i} size="sm" variant="secondary" onClick={() => { setF(toForm(q, st.data ?? [])); setQueue(queue.filter((_, j) => j !== i)); }}>
+              <Button
+                key={i}
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setF(toForm(q, st.data ?? []));
+                  setQueue(queue.filter((_, j) => j !== i));
+                }}
+              >
                 <span dir="ltr">{q.symbol ?? "?"}</span> {q.direction === "short" ? "بيع" : "شراء"}
               </Button>
             ))}
           </div>
         )}
       </div>
-      <form onSubmit={submit} className="space-y-6">
-        <section className="panel p-5">
-          <h2 className="mb-4 font-semibold">قائمة التحقق قبل الدخول</h2>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Checklist */}
+        <section className="panel p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-base">قائمة التحقق قبل الدخول</h2>
+            <span className={`text-xs font-semibold ${allChecked ? "text-success" : "text-warning"}`}>
+              {allChecked ? "مكتملة بالكامل" : "غير مكتملة"}
+            </span>
+          </div>
+
           <div className="space-y-3">
-            {CHECKLIST.map((c, i) => (
-              <label key={c} className="flex cursor-pointer items-center gap-3 text-sm">
-                <Checkbox checked={!!checks[i]} onCheckedChange={(val) => setChecks(checks.map((x, j) => (j === i ? !!val : x)))} />
-                {c}
+            {CHECKLIST_ITEMS.map((item, i) => (
+              <label
+                key={item.id}
+                className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/50 p-3 transition-colors hover:bg-muted/30"
+              >
+                <Checkbox
+                  checked={!!checks[i]}
+                  onCheckedChange={(val) =>
+                    setChecks(checks.map((x, j) => (j === i ? !!val : x)))
+                  }
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium leading-none text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                </div>
               </label>
             ))}
           </div>
-          {!allChecked && <p className="mt-3 text-xs text-warning">لم تكتمل قائمة التحقق — ستُسجّل الصفقة كغير مطابقة.</p>}
         </section>
 
-        <section className="panel grid gap-4 p-5 sm:grid-cols-2">
-          <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="EURUSD" value={f.symbol} onChange={(e) => setF({ ...f, symbol: e.target.value })} /></div>
+        {/* Trade Parameters */}
+        <section className="panel grid gap-4 p-6 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="symbol">الأصل المالي</Label>
+            <Input
+              id="symbol"
+              dir="ltr"
+              placeholder="EURUSD أو XAUUSD أو 2222"
+              value={f.symbol}
+              onChange={(e) => setF({ ...f, symbol: e.target.value })}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label>الاتجاه</Label>
             <div className="grid grid-cols-2 gap-2">
-              {[["long", "شراء"], ["short", "بيع"]].map(([k, l]) => (
-                <Button key={k} type="button" variant={f.direction === k ? "default" : "secondary"} onClick={() => setF({ ...f, direction: k! })}>{l}</Button>
+              {[
+                ["long", "شراء (Long)"],
+                ["short", "بيع (Short)"],
+              ].map(([k, l]) => (
+                <Button
+                  key={k}
+                  type="button"
+                  variant={f.direction === k ? "default" : "secondary"}
+                  onClick={() => setF({ ...f, direction: k! })}
+                >
+                  {l}
+                </Button>
               ))}
             </div>
           </div>
-          <div className="space-y-2"><Label>سعر الدخول</Label><Input type="number" step="any" dir="ltr" value={f.entry} onChange={(e) => setF({ ...f, entry: e.target.value })} /></div>
-          <div className="space-y-2"><Label>وقف الخسارة</Label><Input type="number" step="any" dir="ltr" value={f.sl} onChange={(e) => setF({ ...f, sl: e.target.value })} /></div>
-          <div className="space-y-2"><Label>الهدف</Label><Input type="number" step="any" dir="ltr" value={f.tp} onChange={(e) => setF({ ...f, tp: e.target.value })} /></div>
-          <div className="space-y-2"><Label>حجم الصفقة</Label><Input type="number" step="any" dir="ltr" value={f.size} onChange={(e) => setF({ ...f, size: e.target.value })} /></div>
+
+          <div className="space-y-2">
+            <Label htmlFor="entry">سعر الدخول</Label>
+            <Input
+              id="entry"
+              type="number"
+              step="any"
+              dir="ltr"
+              value={f.entry}
+              onChange={(e) => setF({ ...f, entry: e.target.value })}
+              placeholder="1.0850"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sl">وقف الخسارة (إلزامي)</Label>
+            <Input
+              id="sl"
+              type="number"
+              step="any"
+              dir="ltr"
+              className={!slNum ? "border-destructive/60" : ""}
+              value={f.sl}
+              onChange={(e) => setF({ ...f, sl: e.target.value })}
+              placeholder="1.0800"
+            />
+            {!slNum && (
+              <p className="text-xs text-destructive">تحديد وقف الخسارة إلزامي لحماية رأس مالك.</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tp">الهدف (أخذ الربح)</Label>
+            <Input
+              id="tp"
+              type="number"
+              step="any"
+              dir="ltr"
+              value={f.tp}
+              onChange={(e) => setF({ ...f, tp: e.target.value })}
+              placeholder="1.0950"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="size">حجم الصفقة (العقد / الكمية)</Label>
+            <Input
+              id="size"
+              type="number"
+              step="any"
+              dir="ltr"
+              value={f.size}
+              onChange={(e) => setF({ ...f, size: e.target.value })}
+              placeholder="1.0"
+            />
+          </div>
+
           <div className="space-y-2 sm:col-span-2">
-            <Label>مبلغ المخاطرة ({settings.currency})</Label>
-            <Input type="number" step="any" min={0} dir="ltr" className="font-data" value={f.risk} onChange={(e) => setF({ ...f, risk: e.target.value })} />
+            <Label htmlFor="risk">مبلغ المخاطرة بالعملة ({settings.currency})</Label>
+            <Input
+              id="risk"
+              type="number"
+              step="any"
+              min={0}
+              dir="ltr"
+              className="font-data"
+              value={f.risk}
+              onChange={(e) => setF({ ...f, risk: e.target.value })}
+              placeholder={potentialLoss ? String(Math.round(potentialLoss * 100) / 100) : "50"}
+            />
             <p className="text-xs text-muted-foreground">
-              الحد لكل صفقة: {settings.max_risk_per_trade > 0 ? fmtMoney(settings.max_risk_per_trade, settings.currency) : "غير محدد"} · المتبقي اليوم: {m.riskRemaining != null ? fmtMoney(m.riskRemaining, settings.currency) : "غير محدد"}
+              الحد الأقصى لكل صفقة:{" "}
+              {settings.max_risk_per_trade > 0
+                ? fmtMoney(settings.max_risk_per_trade, settings.currency)
+                : "غير محدد"}{" "}
+              · المتبقي اليوم:{" "}
+              {metrics.riskRemaining != null
+                ? fmtMoney(metrics.riskRemaining, settings.currency)
+                : "غير محدد"}
             </p>
-            {overTrade && <p className="text-xs text-destructive">المخاطرة أعلى من الحد المسموح لكل صفقة.</p>}
-            {overDay && <p className="text-xs text-destructive">هذه الصفقة تتجاوز المخاطرة اليومية المتبقية.</p>}
           </div>
         </section>
 
-        <section className="panel space-y-4 p-5">
+        {/* Real-time Calculated Metrics Panel */}
+        <section className="panel p-6 bg-muted/20 border-primary/20 space-y-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" />
+            <span>الحسابات الفورية ومؤشرات الصفقة</span>
+          </h3>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">الخسارة المحتملة</span>
+              <p dir="ltr" className="font-data text-lg font-bold text-destructive">
+                {potentialLoss != null ? fmtMoney(potentialLoss, settings.currency) : "—"}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">الربح المحتمل</span>
+              <p dir="ltr" className="font-data text-lg font-bold text-success">
+                {potentialProfit != null ? fmtMoney(potentialProfit, settings.currency) : "—"}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">نسبة العائد للمخاطرة (R:R)</span>
+              <p dir="ltr" className="font-data text-lg font-bold text-foreground">
+                {gateResult.metrics.rewardToRiskRatio != null
+                  ? `1 : ${gateResult.metrics.rewardToRiskRatio}`
+                  : "غير متوفر"}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">نسبة المخاطرة من الرصيد</span>
+              <p dir="ltr" className="font-data text-lg font-bold text-foreground">
+                {gateResult.metrics.riskPercentOfBalance}%
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Strategy & Psychological Reflection */}
+        <section className="panel space-y-5 p-6">
           <div className="space-y-2">
-            <Label>الاستراتيجية</Label>
+            <Label>الاستراتيجية المتبعة</Label>
             {strategies.length === 0 ? (
-              <p className="text-sm text-muted-foreground">لا توجد استراتيجيات بعد. <Link to="/strategies" className="text-primary">أضف استراتيجية</Link></p>
+              <p className="text-sm text-muted-foreground">
+                لا توجد استراتيجيات بعد.{" "}
+                <Link to="/strategies" className="text-primary underline">
+                  أضف استراتيجية موثقة
+                </Link>
+              </p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {strategies.map((x) => (
-                  <Button key={x.id} type="button" size="sm" variant={f.strategy_id === x.id ? "default" : "secondary"} onClick={() => setF({ ...f, strategy_id: f.strategy_id === x.id ? "" : x.id })}>{x.name}</Button>
+                  <Button
+                    key={x.id}
+                    type="button"
+                    size="sm"
+                    variant={f.strategy_id === x.id ? "default" : "secondary"}
+                    onClick={() =>
+                      setF({ ...f, strategy_id: f.strategy_id === x.id ? "" : x.id })
+                    }
+                  >
+                    {x.name}
+                  </Button>
                 ))}
               </div>
             )}
           </div>
+
           <div className="space-y-2">
-            <Label>حالتك النفسية</Label>
+            <Label>الحالة النفسية والمشاعر</Label>
             <div className="flex flex-wrap gap-2">
-              {EMOTIONS.map((x) => (
-                <Button key={x} type="button" size="sm" variant={f.emotion === x ? "default" : "secondary"} onClick={() => setF({ ...f, emotion: f.emotion === x ? "" : x })}>{x}</Button>
+              {EMOTIONS.map((emo) => (
+                <Button
+                  key={emo}
+                  type="button"
+                  size="sm"
+                  variant={f.emotion === emo ? "default" : "secondary"}
+                  onClick={() => setF({ ...f, emotion: f.emotion === emo ? "" : emo })}
+                >
+                  {emo}
+                </Button>
               ))}
             </div>
           </div>
-          <div className="space-y-2"><Label>ملاحظات</Label><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="ليش دخلت هذه الصفقة؟" /></div>
+
+          {/* Mandatory Reflection Question if sensitive emotion chosen */}
+          {f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion) && (
+            <div className="rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-3 text-xs">
+              <p className="font-semibold text-warning flex items-center gap-1.5">
+                <AlertCircle className="size-4" />
+                <span>فحص المشاعر (إلزامي للتهدئة):</span>
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">ما الذي يدفعك للدخول في هذه اللحظة تحديداً؟</Label>
+                <Input
+                  placeholder="اكتب سبب دخولك بموضوعية..."
+                  value={reflectionReason}
+                  onChange={(e) => setReflectionReason(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">هل هذه الصفقة محاولة لتعويض خسارة سابقة؟</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isCompensating === true ? "destructive" : "secondary"}
+                    onClick={() => setIsCompensating(true)}
+                  >
+                    نعم
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isCompensating === false ? "default" : "secondary"}
+                    onClick={() => setIsCompensating(false)}
+                  >
+                    لا، إعداد مستقل
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">ملاحظات الصفقة</Label>
+            <Textarea
+              id="notes"
+              value={f.notes}
+              onChange={(e) => setF({ ...f, notes: e.target.value })}
+              placeholder="لماذا اخترت هذا الإعداد؟ ما هي علامات الإلغاء؟"
+            />
+          </div>
         </section>
 
-        <Button type="submit" size="lg" disabled={busy} variant={blocked || overTrade || overDay ? "destructive" : "default"}>
-          {busy ? "جارٍ الحفظ…" : blocked || overTrade || overDay ? "تسجيل رغم التحذير" : "تسجيل الصفقة"}
+        {/* Submit Button */}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={busy || (!gateResult.allowed && !gateResult.canOverride)}
+          variant={
+            !gateResult.allowed
+              ? "destructive"
+              : slNum == null || slNum === 0
+              ? "warning"
+              : "default"
+          }
+          className="w-full sm:w-auto text-base"
+        >
+          {busy
+            ? "جارٍ الحفظ…"
+            : !gateResult.allowed && !gateResult.canOverride
+            ? "التداول موقوف اليوم"
+            : !gateResult.allowed || slNum == null
+            ? "تسجيل مع مبرر استثناء"
+            : "تسجيل الصفقة بانضباط"}
         </Button>
       </form>
+
+      {/* Override Reason Modal */}
+      <Dialog open={overrideModalOpen} onOpenChange={setOverrideModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <ShieldAlert className="size-5" />
+              <span>تسجيل صفقة مخالفة للقواعد (استثناء)</span>
+            </DialogTitle>
+            <DialogDescription>
+              النظام لا يسمح بتجاوز قواعد التداول بصمت. لتسجيل هذه الصفقة، يجب توثيق مبرر الاستثناء وسيتم قيده كمخالفة في تقرير الانضباط.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg bg-muted p-3 text-xs space-y-1">
+              <span className="font-semibold block">المخالفات المرصودة:</span>
+              <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
+                {gateResult.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+                {!slNum && <li>لم يتم تحديد وقف الخسارة قبل الدخول</li>}
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overrideReason">سبب كسر القاعدة / الاستثناء (إلزامي)</Label>
+              <Textarea
+                id="overrideReason"
+                placeholder="اكتب سبب رغبتك بتنفيذ الصفقة رغم التحذير..."
+                value={overrideNote}
+                onChange={(e) => setOverrideNote(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOverrideModalOpen(false)}>
+              إلغاء والالتزام بالقاعدة
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!overrideNote.trim()}
+              onClick={() => executeSave(true, overrideNote.trim())}
+            >
+              تأكيد الاستثناء والتسجيل
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+export default NewTrade;

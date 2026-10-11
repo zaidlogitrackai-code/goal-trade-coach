@@ -3,16 +3,22 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
+import { Loading, PageHeader, Stat } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { currentUserId, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { disciplineReport } from "@/lib/stats";
 import { countConsecutiveLosses } from "@/lib/trading-status";
+import { Gauge, ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/discipline")({
-  head: () => ({ meta: [{ title: "الانضباط والطمع — نظام هادي" }, { name: "description", content: "يكشف سلوكك قبل لا يكلفك." }] }),
+  head: () => ({
+    meta: [
+      { title: "الانضباط والطمع — نظام هادي" },
+      { name: "description", content: "يكشف سلوكك الحقيقي، يحميك من الطمع والانتقام، ويوضح أسباب درجة انضباطك بدقة." },
+    ],
+  }),
   component: DisciplinePage,
 });
 
@@ -23,66 +29,272 @@ function DisciplinePage() {
   const v = useQuery(violationsQuery);
   const [mins, setMins] = useState<number | "">("");
   const [now, setNow] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
-  useEffect(() => { if (s.data && mins === "") setMins(s.data.cooldown_minutes); }, [s.data, mins]);
-  if (s.isLoading || t.isLoading) return <Loading />;
-  const trades = t.data ?? [];
-  const rep = disciplineReport(trades, v.data ?? [], Number(s.data?.max_risk_per_trade) || 0);
-  const until = s.data?.cooldown_until ? new Date(s.data.cooldown_until).getTime() : 0;
-  const left = Math.max(0, until - now);
-  const streak = countConsecutiveLosses(trades.map((x) => ({ status: x.status, pnl: x.pnl == null ? null : Number(x.pnl), opened_at: x.opened_at, closed_at: x.closed_at })) as never);
-  const maxStreak = s.data?.max_consecutive_losses ?? 0;
 
-  async function save(patch: { cooldown_until?: string | null; cooldown_minutes?: number }) {
+  useEffect(() => {
+    const i = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  useEffect(() => {
+    if (s.data && mins === "") setMins(s.data.cooldown_minutes || 30);
+  }, [s.data, mins]);
+
+  if (s.isLoading || t.isLoading || v.isLoading) return <Loading />;
+
+  const trades = t.data ?? [];
+  const violations = v.data ?? [];
+  const settings = s.data!;
+
+  const rep = disciplineReport(trades, violations, Number(settings.max_risk_per_trade) || 0);
+  const until = settings.cooldown_until ? new Date(settings.cooldown_until).getTime() : 0;
+  const left = Math.max(0, until - now);
+  const streak = countConsecutiveLosses(
+    trades.map((x) => ({
+      status: x.status,
+      pnl: x.pnl == null ? null : Number(x.pnl),
+      opened_at: x.opened_at,
+      closed_at: x.closed_at,
+      risk_amount: x.risk_amount,
+    }))
+  );
+  const maxStreak = settings.max_consecutive_losses ?? 0;
+
+  // Additional discipline calculations
+  const tradesWithSL = trades.filter((x) => x.stop_loss != null && x.stop_loss > 0).length;
+  const slRate = trades.length > 0 ? Math.round((tradesWithSL / trades.length) * 100) : 100;
+
+  async function saveCooldown(patch: { cooldown_until?: string | null; cooldown_minutes?: number }) {
     const user_id = await currentUserId();
     const { error } = await supabase.from("trading_settings").update(patch).eq("user_id", user_id);
-    if (error) { toast.error("ما قدرت أحفظ"); return; }
+    if (error) {
+      toast.error("تعذر تحديث فترة التهدئة");
+      return;
+    }
     qc.invalidateQueries({ queryKey: ["settings"] });
   }
+
   const m = Number(mins) || 30;
-  const fmt = (ms: number) => { const sec = Math.ceil(ms / 1000); return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`; };
+  const fmt = (ms: number) => {
+    const sec = Math.ceil(ms / 1000);
+    return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="الانضباط والطمع" subtitle="يقيس التزامك من صفقاتك أنت، ويوقفك وقت ما تحتاج." />
+    <div className="mx-auto max-w-5xl space-y-8">
+      <PageHeader
+        title="الانضباط ومكافحة الطمع"
+        subtitle="يقيس التزامك الحقيقي من صفقاتك فقط، ويكشف قرارات الانتقام والطمع بالأدلة."
+      />
 
-      <div className="panel p-6">
-        <h2 className="font-semibold">فترة التهدئة</h2>
+      {/* COOLDOWN INTERVENTION PANEL */}
+      <div className="panel p-6 space-y-4 border-2 border-border/80">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="size-5 text-primary" />
+            <h2 className="font-bold text-base">فترة التهدئة الإلزامية (Cooldown)</h2>
+          </div>
+          {left > 0 && (
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-warning/10 text-warning animate-pulse">
+              التهدئة جارية
+            </span>
+          )}
+        </div>
+
         {left > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-            <div><p className="text-sm text-muted-foreground">التداول موقوف لين تخلص المدة</p><p className="font-data mt-1 text-4xl font-bold" dir="ltr">{fmt(left)}</p></div>
-            <Button variant="secondary" onClick={() => save({ cooldown_until: null })}>إنهاء التهدئة الآن</Button>
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-warning/40 bg-warning/5 p-4">
+            <div>
+              <p className="text-xs text-muted-foreground">التداول موقوف لحمايتك من القرارات الانفعالية حتى نهاية العداد:</p>
+              <p className="font-data mt-1 text-4xl font-bold tracking-tight text-warning" dir="ltr">
+                {fmt(left)}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={() => saveCooldown({ cooldown_until: null })}>
+              إنهاء التهدئة مبكراً
+            </Button>
           </div>
         ) : (
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div className="space-y-2"><Label>المدة بالدقائق</Label><Input type="number" min={1} className="w-32" value={mins} onChange={(e) => setMins(e.target.value === "" ? "" : Number(e.target.value))} /></div>
-            <Button onClick={() => save({ cooldown_minutes: m, cooldown_until: new Date(Date.now() + m * 60000).toISOString() })}>ابدأ فترة تهدئة</Button>
-            <Button variant="ghost" onClick={() => save({ cooldown_minutes: m }).then(() => toast.success("حُفظت المدة الافتراضية"))}>حفظ كمدة افتراضية</Button>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              إذا شعرت بتوتر، أو بعد خسارتين متتاليتين، خذ استراحة فورية. التهدئة تمنع فتح الصفقات من شاشة الصفقة الجديدة.
+            </p>
+            <div className="flex flex-wrap items-end gap-3 pt-1">
+              <div className="space-y-1">
+                <Label className="text-xs">مدة التهدئة (دقائق)</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  className="w-32 font-data"
+                  value={mins}
+                  onChange={(e) => setMins(e.target.value === "" ? "" : Number(e.target.value))}
+                />
+              </div>
+              <Button
+                onClick={() =>
+                  saveCooldown({
+                    cooldown_minutes: m,
+                    cooldown_until: new Date(Date.now() + m * 60000).toISOString(),
+                  })
+                }
+              >
+                بدء فترة تهدئة الآن
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  saveCooldown({ cooldown_minutes: m }).then(() => toast.success("حُفظت المدة الافتراضية"))
+                }
+              >
+                تعيين كمدة افتراضية
+              </Button>
+            </div>
           </div>
         )}
-        {maxStreak > 0 && streak >= maxStreak && left === 0 && (
-          <p className="mt-4 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">وصلت {streak} خسائر متتالية (حدك {maxStreak}). ننصحك تبدأ فترة تهدئة الحين.</p>
+
+        {maxStreak > 0 && streak >= 2 && left === 0 && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3.5 text-xs text-destructive flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>لديك {streak} خسائر متتالية. ننصحك بقوة ببدء فترة تهدئة 20 دقيقة قبل فتح أي صفقة جديدة.</span>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() =>
+                saveCooldown({
+                  cooldown_minutes: 20,
+                  cooldown_until: new Date(Date.now() + 20 * 60000).toISOString(),
+                })
+              }
+            >
+              تهدئة 20 دقيقة
+            </Button>
+          </div>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">أثناء التهدئة تظهر حالة اليوم "التداول متوقف" وتنبهك صفحة الصفقة الجديدة.</p>
       </div>
 
-      {rep.score == null ? <EmptyState text="سجّل صفقات عشان نحسب درجة انضباطك." /> : (
-        <>
+      {/* DISCIPLINE SCORE & BREAKDOWN */}
+      {rep.score == null ? (
+        /* DEMO EXAMPLE WHEN NO DATA (Required by Phase 6) */
+        <div className="space-y-6">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3 text-xs">
+            <Info className="size-4 text-primary shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-foreground">مثال توضيحي افتراضي لكيفية قياس الانضباط</p>
+              <p className="text-muted-foreground leading-relaxed">
+                لم تسجل صفقات كافية بعد. هذا نموذج حي يوضح كيف سيقوم النظام بتقييم صفقاتك الحقيقية وشرح الأسباب خلف درجتك.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 opacity-70">
+            <Stat label="درجة الانضباط (مثال)" value="82/100" tone="success" />
+            <Stat label="الالتزام بوقف الخسارة (مثال)" value="90%" />
+            <Stat label="قائمة التحقق (مثال)" value="85%" />
+            <Stat label="تداول انتقامي (مثال)" value="1" tone="warning" />
+            <Stat label="صفقات الطمع (مثال)" value="0" />
+          </div>
+
+          <div className="panel p-6 space-y-3 opacity-80">
+            <h3 className="font-bold text-sm">شرح أسباب الدرجة (نموذج تفسيري)</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <strong>درجة الانضباط: 82/100</strong> — السبب: التزمت بوقف الخسارة في 9 من أصل 10 صفقات، وأكملت قائمة التحقق بنسبة 85%، لكن تم رصد صفقة واحدة فُتحت خلال 7 دقائق بعد خسارة (تداول انتقامي محتمل).
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* REAL DISCIPLINE STATS */
+        <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Stat label="درجة الانضباط" value={`${rep.score}/100`} tone={rep.score >= 75 ? "success" : rep.score < 50 ? "destructive" : undefined} />
-            <Stat label="الالتزام بقائمة التحقق" value={`${Math.round(rep.checklistRate)}%`} />
-            <Stat label="تجاوز المخاطرة" value={rep.overRisk} tone={rep.overRisk ? "destructive" : undefined} />
-            <Stat label="تداول انتقامي" value={rep.revenge} tone={rep.revenge ? "destructive" : undefined} />
-            <Stat label="صفقات بدافع الطمع" value={rep.greedy} tone={rep.greedy ? "destructive" : undefined} />
+            <Stat
+              label="درجة الانضباط"
+              value={`${rep.score}/100`}
+              tone={rep.score >= 80 ? "success" : rep.score < 60 ? "destructive" : "warning"}
+            />
+            <Stat
+              label="الالتزام بوقف الخسارة"
+              value={`${slRate}%`}
+              tone={slRate >= 90 ? "success" : "destructive"}
+            />
+            <Stat
+              label="الالتزام بقائمة التحقق"
+              value={`${Math.round(rep.checklistRate)}%`}
+            />
+            <Stat
+              label="تداول انتقامي محتمل"
+              value={rep.revenge}
+              tone={rep.revenge > 0 ? "destructive" : undefined}
+            />
+            <Stat
+              label="صفقات بمشاعر طمع"
+              value={rep.greedy}
+              tone={rep.greedy > 0 ? "warning" : undefined}
+            />
           </div>
-          <div className="panel p-6">
-            <h2 className="font-semibold">مؤشرات السلوك</h2>
-            {rep.signals.length === 0 ? <p className="mt-3 text-sm text-success">ما فيه إشارات سلبية. استمر على نفس الانضباط.</p> : (
-              <ul className="mt-3 space-y-2 text-sm">{rep.signals.map((x) => <li key={x} className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-destructive" />{x}</li>)}</ul>
-            )}
+
+          {/* RATIONALE BEHIND SCORE */}
+          <div className="panel p-6 space-y-4">
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" />
+              <span>السبب والتفسير الموضوعي لدرجة الانضباط ({rep.score}/100)</span>
+            </h3>
+
+            <div className="rounded-lg bg-muted/40 p-4 text-sm leading-relaxed text-foreground/90 space-y-2">
+              <p>
+                تم احتساب درجتك استناداً إلى تحليل {trades.length} صفقات مسجلة ومقارنتها بقواعدك:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground pr-2">
+                <li>
+                  الالتزام بوقف الخسارة: {tradesWithSL} من أصل {trades.length} صفقات تضمنت وقف خسارة مسبق ({slRate}%).
+                </li>
+                <li>
+                  إكمال قائمة التحقق قبل الدخول: {Math.round(rep.checklistRate)}% من صفقاتك استوفت كافة الشروط.
+                </li>
+                {rep.revenge > 0 ? (
+                  <li className="text-destructive font-medium">
+                    خصم {rep.revenge * 5} نقاط بسبب {rep.revenge} صفقات فُتحت مباشرة خلال 15 دقيقة بعد خسارة (سلوك انتقامي).
+                  </li>
+                ) : (
+                  <li className="text-success font-medium">
+                    صفر صفقات انتقامية بعد الخسائر (تحكم انفعالي ممتاز).
+                  </li>
+                )}
+                {rep.overRisk > 0 && (
+                  <li className="text-destructive font-medium">
+                    خصم {rep.overRisk * 5} نقاط لتجاوز سقف المخاطرة المسموح للصفقة الواحدة في {rep.overRisk} صفقات.
+                  </li>
+                )}
+                {violations.length > 0 && (
+                  <li className="text-destructive">
+                    تم قيد {violations.length} مخالفات استثنائية مسجلة في السجل.
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {/* Behavioral Signals */}
+            <div className="pt-2">
+              <h4 className="font-semibold text-xs text-muted-foreground mb-2">إشارات السلوك المسجلة:</h4>
+              {rep.signals.length === 0 ? (
+                <div className="flex items-center gap-2 text-xs text-success">
+                  <CheckCircle2 className="size-4" />
+                  <span>لا توجد أي إشارات سلبية. سلوكك التداولي يتسم بالانضباط والهدوء.</span>
+                </div>
+              ) : (
+                <ul className="space-y-2 text-xs">
+                  {rep.signals.map((sig, i) => (
+                    <li key={i} className="flex items-start gap-2 text-foreground/90">
+                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-destructive" />
+                      <span>{sig}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
 }
+
+export default DisciplinePage;
