@@ -121,6 +121,6 @@ export const parseTrade = createServerFn({ method: "POST" })
       const content: Record<string, unknown>[] = [{ type: "input_text", text: data.text || "استخرج الصفقة من الصورة." }];
       if (data.image) content.push({ type: "input_image", image_url: data.image });
       const out = await callAI(instructions, [{ role: "user", content }], TRADE_SCHEMA);
-      return JSON.parse(out) as { trades: unknown[] };
+      return JSON.parse(out) as { trades: import("./ai-trade").AiTrade[] };
     } catch (e) { fail(e); }
   });
