@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader, EmptyState } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { settingsQuery, tradesQuery, violationsQuery, fmtMoney } from "@/lib/queries";
+import { settingsQuery, strategiesQuery, tradesQuery, violationsQuery, fmtMoney } from "@/lib/queries";
 import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
 import { disciplineReport } from "@/lib/stats";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { LimitsProgress } from "@/components/dashboard/limits-progress";
 import { SessionWidget } from "@/components/dashboard/session-widget";
 import { BehaviorWidget } from "@/components/dashboard/behavior-widget";
 import { ActivityList, type ActivityFeedItem } from "@/components/dashboard/activity-list";
+import { FocusCard } from "@/components/dashboard/focus-card";
 import { RefreshCw, AlertCircle, PlusCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -50,6 +51,7 @@ function Dashboard() {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
+  const strategies = useQuery(strategiesQuery);
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -202,6 +204,9 @@ function Dashboard() {
         consecutiveLosses={metrics.consecutiveLosses}
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
+
+      {/* 2.1 Focus: what the trader told the coach, next to what their trades show */}
+      <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
 
       {/* 3. Four Core Metric Cards */}
       <CoreMetrics

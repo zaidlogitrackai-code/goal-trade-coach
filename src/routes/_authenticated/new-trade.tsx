@@ -15,6 +15,8 @@ import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
 import { evaluateTradeGate } from "@/lib/trade-gate";
+import { inMarkets, splitMarkets } from "@/lib/focus";
+import { focusQuery } from "@/lib/focus-store";
 import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/new-trade")({
@@ -47,6 +49,7 @@ function NewTrade() {
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
   const st = useQuery(strategiesQuery);
+  const focus = useQuery(focusQuery);
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -93,6 +96,19 @@ function NewTrade() {
   const activeSession = (sessions.data ?? []).find((x) => !x.ended_at) ?? null;
   const strategies = (st.data ?? []).filter((x) => x.allowed);
   const allowedStrategyIds = strategies.map((x) => x.id);
+
+  // Keep the trade on the trader's own markets (focus profile) and the strategy's markets.
+  const focusMarkets = focus.data?.markets ?? [];
+  const chosenStrategy = strategies.find((x) => x.id === f.strategy_id);
+  const strategyMarkets = splitMarkets(chosenStrategy?.markets);
+  const marketWarnings = [
+    inMarkets(f.symbol, focusMarkets) === false
+      ? `هذا الأصل برّا سوقك (${focusMarkets.join("، ")}). متأكد إنه مش تشتت؟`
+      : null,
+    chosenStrategy && inMarkets(f.symbol, strategyMarkets) === false
+      ? `استراتيجية "${chosenStrategy.name}" مكتوبة لـ ${strategyMarkets.join("، ")}، مش لهذا الأصل.`
+      : null,
+  ].filter((x): x is string => !!x);
 
   const num = (x: string) => (x === "" ? null : Number(x));
   const entryNum = num(f.entry);
@@ -363,7 +379,33 @@ function NewTrade() {
               placeholder="EURUSD أو XAUUSD أو 2222"
               value={f.symbol}
               onChange={(e) => setF({ ...f, symbol: e.target.value })}
+              aria-describedby={marketWarnings.length ? "symbol-warn" : undefined}
             />
+            {focusMarkets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" aria-label="أسواقك">
+                {focusMarkets.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    dir="ltr"
+                    onClick={() => setF({ ...f, symbol: m })}
+                    className={`rounded-full border px-2.5 py-0.5 font-data text-xs transition-colors ${f.symbol.toUpperCase() === m ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+            {marketWarnings.length > 0 && (
+              <ul id="symbol-warn" className="space-y-1 text-xs text-warning">
+                {marketWarnings.map((w) => (
+                  <li key={w} className="flex items-start gap-1.5">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -5,6 +5,8 @@ import { currentUserId } from "@/lib/queries";
 import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import { evaluateTradeGate, type TradeInput } from "@/lib/trade-gate";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
+import { FOCUS_CATEGORY, inMarkets, type FocusPatch } from "@/lib/focus";
+import { readFocus, saveFocus } from "@/lib/focus-store";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
@@ -30,6 +32,7 @@ export const ACTION_TYPES = [
   "end_session",
   "start_cooldown",
   "mark_notifications_read",
+  "update_focus",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -51,6 +54,7 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   end_session: "إنهاء الجلسة",
   start_cooldown: "بدء فترة تهدئة",
   mark_notifications_read: "تعليم الإشعارات كمقروءة",
+  update_focus: "تحديث ملف التركيز",
 };
 
 /** Always wait for an explicit click, even in auto mode. */
@@ -202,6 +206,15 @@ export const SCHEMAS = {
   end_session: z.object({ review: z.string().max(4000).default("") }),
   start_cooldown: z.object({ minutes: z.coerce.number().int().min(1).max(1440).nullish() }),
   mark_notifications_read: z.object({}).passthrough(),
+  update_focus: z.object({
+    markets: z.union([z.string().max(200), z.array(z.string().max(30)).max(10)]).nullish(),
+    goal: opt,
+    weakness: opt,
+    focus_rule: opt,
+    style: opt,
+    add_note: opt,
+    remove_note: opt,
+  }),
 };
 
 export function parseAction(a: AgentAction) {
@@ -238,7 +251,7 @@ async function listNamed(
     if (error) throw new Error(error.message);
     return (data ?? []).map((r) => ({ id: r.id, label: r.title }));
   }
-  const { data, error } = await supabase.from("knowledge_notes").select("id,title");
+  const { data, error } = await supabase.from("knowledge_notes").select("id,title").neq("category", FOCUS_CATEGORY);
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({ id: r.id, label: r.title }));
 }
@@ -315,8 +328,17 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
     case "add_note": {
       const { error } = await supabase
         .from("knowledge_notes")
-        .insert({ user_id, ...(d as { title: string }) });
+        .insert({
+          user_id,
+          ...(d as { title: string; category: string }),
+          // The focus profile row is written only through update_focus.
+          ...((d as { category?: string }).category === FOCUS_CATEGORY ? { category: "عام" } : {}),
+        });
       return check(error);
+    }
+    case "update_focus": {
+      await saveFocus(d as FocusPatch);
+      return;
     }
     case "create_trade": {
       const { strategy, status, pnl, exit_price, risk_amount, ...t } = d as {
@@ -336,6 +358,12 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const closed = status === "closed" || (pnl != null && Number.isFinite(pnl));
       const now = new Date().toISOString();
       let gatedRisk: number | null = null;
+      if (!closed && opts.auto) {
+        // Staying on the trader's own markets is the point of the focus profile.
+        const focus = await readFocus();
+        if (inMarkets(t.symbol, focus.markets) === false)
+          throw new NeedsConfirmation(`${sym(t.symbol)} برّا سوقك (${focus.markets.join("، ")}). بدها موافقتك.`);
+      }
       if (!closed) {
         // A new open trade from the AI goes through the trade gate. The AI path
         // cannot override: soft reasons must be justified in the trade form.

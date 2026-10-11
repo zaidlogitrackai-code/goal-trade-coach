@@ -1,12 +1,18 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
   LayoutDashboard, Timer, PlusCircle, ListOrdered, ScanSearch, MessagesSquare, Layers,
-  ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut,
+  ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut, ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
+import {
+  activeSessionQuery, rulesQuery, settingsQuery, strategiesQuery, tradesQuery, violationsQuery,
+} from "@/lib/queries";
+import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
+import { FOCUS_CATEGORY } from "@/lib/focus";
+import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
 
 export const NAV_GROUPS = [
   {
@@ -50,9 +56,60 @@ export const NAV_GROUPS = [
   },
 ] as const;
 
-export const NAV = NAV_GROUPS.flatMap((g) => g.items);
+type NavItem = (typeof NAV_GROUPS)[number]["items"][number];
+export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => [...g.items] as NavItem[]);
 
-const MOBILE = ["/dashboard", "/session", "/new-trade", "/trades", "/risk"];
+const ITEM = Object.fromEntries(NAV.map((n) => [n.to, n])) as Record<NavPath, NavItem>;
+
+/** Reorders the menu around what the trader is doing and has set up (see nav-plan.ts). */
+function useNavPlan(): NavPlan {
+  const s = useQuery(settingsQuery);
+  const t = useQuery(tradesQuery);
+  const st = useQuery(strategiesQuery);
+  const r = useQuery(rulesQuery);
+  const v = useQuery(violationsQuery);
+  const a = useQuery(activeSessionQuery);
+  const notes = useQuery({
+    queryKey: ["notes", "count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("knowledge_notes")
+        .select("id", { count: "exact", head: true })
+        .neq("category", FOCUS_CATEGORY);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  if (!s.data || !t.data || !st.data || !r.data || !v.data || a.isLoading || notes.data == null) return planNav(null);
+
+  const today = startOfToday().getTime();
+  const week = Date.now() - 7 * 86_400_000;
+  const violationsToday = v.data.filter((x) => new Date(x.occurred_at).getTime() >= today).length;
+  const status = computeStatus(s.data, computeDayMetrics(s.data, t.data, violationsToday));
+  return planNav({
+    strategies: st.data.length,
+    rules: r.data.length,
+    trades: t.data.length,
+    closed: t.data.filter((x) => x.status === "closed").length,
+    notes: notes.data,
+    activeSession: !!a.data,
+    violationsWeek: v.data.filter((x) => new Date(x.occurred_at).getTime() >= week).length,
+    blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
+  });
+}
+
+function NavLink({ n, pinned }: { n: NavItem; pinned?: boolean }) {
+  return (
+    <Link
+      to={n.to}
+      className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-foreground ${pinned ? "text-foreground" : "text-muted-foreground"}`}
+      activeProps={{ className: "bg-sidebar-accent text-foreground font-medium" }}
+    >
+      <n.icon className={`size-4 ${pinned ? "text-primary" : ""}`} />
+      {n.label}
+    </Link>
+  );
+}
 
 export function LogoMark({ className = "size-8" }: { className?: string }) {
   return (
@@ -82,6 +139,8 @@ export function Logo({ className = "" }: { className?: string }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const plan = useNavPlan();
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
@@ -95,26 +154,45 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
         <nav className="mt-5 flex-1 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.title} className="space-y-1">
-              <p className="px-3 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
-                {group.title}
-              </p>
+          {plan.pinned.length > 0 && (
+            <div className="space-y-1 rounded-lg bg-primary/5 py-2">
+              <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-primary/80">لك الآن</p>
               <div className="space-y-0.5">
-                {group.items.map((n) => (
-                  <Link
-                    key={n.to}
-                    to={n.to}
-                    className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-                    activeProps={{ className: "bg-sidebar-accent text-foreground font-medium" }}
-                  >
-                    <n.icon className="size-4" />
-                    {n.label}
-                  </Link>
+                {plan.pinned.map((p) => (
+                  <NavLink key={p} n={ITEM[p]} pinned />
                 ))}
               </div>
             </div>
-          ))}
+          )}
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((n) => !plan.pinned.includes(n.to) && !plan.more.includes(n.to));
+            if (items.length === 0) return null;
+            return (
+              <div key={group.title} className="space-y-1">
+                <p className="px-3 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  {group.title}
+                </p>
+                <div className="space-y-0.5">
+                  {items.map((n) => (
+                    <NavLink key={n.to} n={n} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {plan.more.length > 0 && (
+            <details className="group space-y-1" open={plan.more.some((p) => pathname.startsWith(p))}>
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 [&::-webkit-details-marker]:hidden">
+                المزيد
+                <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-0.5">
+                {plan.more.map((p) => (
+                  <NavLink key={p} n={ITEM[p]} />
+                ))}
+              </div>
+            </details>
+          )}
         </nav>
 
         <button onClick={signOut} className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
@@ -133,7 +211,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur lg:hidden">
-        {NAV.filter((n) => MOBILE.includes(n.to)).map((n) => (
+        {plan.mobile.map((p) => ITEM[p]).map((n) => (
           <Link key={n.to} to={n.to} className="flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground" activeProps={{ className: "text-primary font-medium" }}>
             <n.icon className="size-5" />
             {n.label}
