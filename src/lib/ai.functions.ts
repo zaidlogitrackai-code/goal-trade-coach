@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
+import { buildJourney, journeyForPrompt } from "./journey";
+import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -16,16 +18,33 @@ async function buildContext(sb: Sb) {
     sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
   ]);
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const [notes, session, focusRow, month] = await Promise.all([
+  const dayStart = startOfToday().toISOString();
+  const [notes, session, focusRow, month, todaySessions, todayViolations] = await Promise.all([
     sb.from("knowledge_notes").select("title,category").neq("category", FOCUS_CATEGORY).order("created_at", { ascending: false }).limit(50),
     sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
     sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
-    sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,opened_at,closed_at").gte("opened_at", since),
+    sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at").gte("opened_at", since),
+    sb.from("trading_sessions").select("ended_at").gte("started_at", dayStart).order("started_at", { ascending: false }).limit(1),
+    sb.from("rule_violations").select("id").gte("occurred_at", dayStart),
   ]);
   const focus = parseFocus(focusRow.data?.[0]?.content);
   const cur = s.data?.currency ?? "USD";
+  const monthTrades = month.data ?? [];
+  const status = s.data ? computeStatus(s.data, computeDayMetrics(s.data, monthTrades, todayViolations.data?.length ?? 0)) : "ready";
+  const latest = todaySessions.data?.[0];
+  const journey = buildJourney({
+    focusReady: focus.markets.length > 0 && !!(focus.goal || focus.weakness),
+    strategies: st.data?.length ?? 0,
+    rules: r.data?.length ?? 0,
+    sessionToday: latest ? { active: !latest.ended_at, ended: !!latest.ended_at } : null,
+    tradesToday: monthTrades.filter((x) => x.opened_at >= dayStart).length,
+    blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
+  });
   const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
-  return `ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
+  return `النظام للفوركس فقط: أزواج العملات والذهب XAUUSD والفضة XAGUSD. لا تحلل ولا تسجل ولا تقترح عملات رقمية أو أسهم أو مؤشرات أو نفط؛ إذا طلبها قله بلطف إن النظام فوركس فقط.
+${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
+
+ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
 ${focusForPrompt(focus)}
 أنماط من صفقاته آخر 30 يوم: ${insights.length ? insights.map((i) => i.text).join(" ") : "لا يوجد بعد"}
 
@@ -107,7 +126,7 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - end_session: {"review" (مراجعة الجلسة)}
 - start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
 - mark_notifications_read: {}
-- update_focus: {"markets" (مثل "XAUUSD, NAS100" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
+- update_focus: {"markets" (أزواج فوركس مثل "EURUSD, XAUUSD" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
 ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
 - لما يحكي شيء ثابت عن نفسه (سوقه، أسلوبه، هدفه، نقطة ضعفه، شيء بيتكرر معه)، أضف update_focus بنفس الرد. لا تحفظ مزاج اللحظة أو تفاصيل صفقة وحدة.
 - إذا الملف فاضي أو ناقص (ما في سوق أو هدف أو نقطة ضعف)، اسأله سؤال واحد عنها بآخر ردك.
@@ -241,7 +260,7 @@ export const parseTrade = createServerFn({ method: "POST" })
       ]);
       const imageGuide = data.image ? `
 قراءة الصورة:
-- الرمز من عنوان الشارت أعلى اليسار (مثل XAUUSD أو GOLD أو BTCUSDT) والفريم بجانبه.
+- الرمز من عنوان الشارت أعلى اليسار (مثل EURUSD أو XAUUSD أو GOLD) والفريم بجانبه.
 - أداة Long/Short Position في TradingView (مستطيل أخضر/أزرق فوق مستطيل أحمر أو العكس): الدخول هو الحد الفاصل بين اللونين، الوقف هو طرف المنطقة الحمراء، والهدف هو طرف المنطقة الخضراء. المنطقة الخضراء فوق = long، تحت = short. اقرأ الأسعار من الملصقات أو من محور السعر يمين الشارت.
 - خطوط الأوامر المفتوحة (Entry/SL/TP أو خطوط أفقية بملصقات سعر)، ونوافذ تأكيد الأمر، وسجل الصفقات في المنصات.
 - إذا كانت الصورة شارت بدون صفقة مرسومة أو أرقام مقروءة، لا تخترع: أعد صفقة واحدة بما ظهر فعلاً (الرمز مثلاً) والباقي null، أو trades فارغة إذا لم يظهر شيء.` : "";

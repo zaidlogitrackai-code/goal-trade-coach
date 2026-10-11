@@ -145,7 +145,7 @@ function Strategies() {
             <p className="text-xs text-muted-foreground">التوثيق الدقيق يمنع الدخول العشوائي ويساعد المحلل الذكي في فحص شروطك بدقة.</p>
           </div>
           {field("name", "اسم الاستراتيجية", false, "مثال: اقتناص السيولة في الافتتاح")}
-          {field("markets", "الأسواق والأصول المراقبة", false, "مثال: الذهب، النازداك، اليورو")}
+          {field("markets", "الأسواق والأصول المراقبة", false, "مثال: EURUSD، GBPUSD، الذهب (فوركس فقط)")}
           {field("timeframes", "الفريمات الزمنية", false, "مثال: 1H / 5M")}
           {field("description", "وصف مختصر للمفهوم الفني", false, "الفكرة الأساسية وراء الاستراتيجية")}
           <div className="sm:col-span-2">

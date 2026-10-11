@@ -7,10 +7,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
-import {
-  activeSessionQuery, rulesQuery, settingsQuery, strategiesQuery, tradesQuery, violationsQuery,
-} from "@/lib/queries";
-import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
+import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries";
+import { isBlocked, useJourney } from "@/lib/use-journey";
 import { FOCUS_CATEGORY } from "@/lib/focus";
 import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
 
@@ -63,12 +61,10 @@ const ITEM = Object.fromEntries(NAV.map((n) => [n.to, n])) as Record<NavPath, Na
 
 /** Reorders the menu around what the trader is doing and has set up (see nav-plan.ts). */
 function useNavPlan(): NavPlan {
-  const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
-  const st = useQuery(strategiesQuery);
-  const r = useQuery(rulesQuery);
   const v = useQuery(violationsQuery);
   const a = useQuery(activeSessionQuery);
+  const j = useJourney();
   const notes = useQuery({
     queryKey: ["notes", "count"],
     queryFn: async () => {
@@ -80,21 +76,20 @@ function useNavPlan(): NavPlan {
       return count ?? 0;
     },
   });
-  if (!s.data || !t.data || !st.data || !r.data || !v.data || a.isLoading || notes.data == null) return planNav(null);
+  if (!j || !t.data || !v.data || a.isLoading || notes.data == null) return planNav(null);
 
-  const today = startOfToday().getTime();
   const week = Date.now() - 7 * 86_400_000;
-  const violationsToday = v.data.filter((x) => new Date(x.occurred_at).getTime() >= today).length;
-  const status = computeStatus(s.data, computeDayMetrics(s.data, t.data, violationsToday));
+  const step = (k: string) => j.journey.steps.find((x) => x.key === k)?.done;
   return planNav({
-    strategies: st.data.length,
-    rules: r.data.length,
+    strategies: step("strategy") ? 1 : 0,
+    rules: step("rules") ? 1 : 0,
     trades: t.data.length,
     closed: t.data.filter((x) => x.status === "closed").length,
     notes: notes.data,
     activeSession: !!a.data,
     violationsWeek: v.data.filter((x) => new Date(x.occurred_at).getTime() >= week).length,
-    blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
+    blocked: isBlocked(j.status),
+    nextStep: j.journey.current?.to ?? null,
   });
 }
 

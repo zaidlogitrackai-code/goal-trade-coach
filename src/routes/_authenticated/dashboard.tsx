@@ -14,6 +14,8 @@ import { SessionWidget } from "@/components/dashboard/session-widget";
 import { BehaviorWidget } from "@/components/dashboard/behavior-widget";
 import { ActivityList, type ActivityFeedItem } from "@/components/dashboard/activity-list";
 import { FocusCard } from "@/components/dashboard/focus-card";
+import { JourneySteps } from "@/components/dashboard/journey-steps";
+import { useJourney } from "@/lib/use-journey";
 import { RefreshCw, AlertCircle, PlusCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -52,6 +54,7 @@ function Dashboard() {
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
   const strategies = useQuery(strategiesQuery);
+  const journey = useJourney();
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -195,6 +198,9 @@ function Dashboard() {
           </div>
         }
       />
+
+      {/* 1.1 The client's steps: one clear next action */}
+      {journey && <JourneySteps journey={journey.journey} />}
 
       {/* 2. Main Status Banner (Single Primary Decision & Action) */}
       <StatusBanner

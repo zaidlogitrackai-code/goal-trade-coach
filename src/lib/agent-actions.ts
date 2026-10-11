@@ -7,6 +7,7 @@ import { evaluateTradeGate, type TradeInput } from "@/lib/trade-gate";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
 import { FOCUS_CATEGORY, inMarkets, type FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
+import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
@@ -229,7 +230,12 @@ export function parseAction(a: AgentAction) {
   return r.success ? r.data : null;
 }
 
-const sym = (s?: string | null) => (s ?? "").toUpperCase().replace(/[\s/]/g, "") || "غير محدد";
+const sym = (s?: string | null) =>
+  forexSymbol(s) ?? ((s ?? "").toUpperCase().replace(/[\s/]/g, "") || "غير محدد");
+/** New trades are Forex only; closing or editing an old non-Forex trade still works. */
+const requireForex = (s?: string | null) => {
+  if (s && !isForex(s)) throw new Error(`${FOREX_ONLY_MSG} (${s})`);
+};
 
 type Upd<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Update"];
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -355,6 +361,7 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         const { data } = await supabase.from("strategies").select("id,name");
         strategy_id = data?.find((s) => s.name.trim() === strategy.trim())?.id ?? null;
       }
+      requireForex(t.symbol);
       const closed = status === "closed" || (pnl != null && Number.isFinite(pnl));
       const now = new Date().toISOString();
       let gatedRisk: number | null = null;
@@ -420,6 +427,7 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const id = data?.[0]?.id;
       const now = new Date().toISOString();
       if (!id) {
+        requireForex(c.symbol);
         // No matching open trade: record it directly as a finished trade so it still shows in the log.
         const { error } = await supabase
           .from("trades")
