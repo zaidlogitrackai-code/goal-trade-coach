@@ -16,6 +16,10 @@ const FIELDS = [
   { key: "max_risk_per_trade", label: "أقصى مخاطرة لكل صفقة", hint: "المبلغ الأقصى المعرض للخسارة بصفقة" },
   { key: "max_daily_risk", label: "أقصى مخاطرة يومية", hint: "مجموع المخاطرة لكل صفقات اليوم" },
   { key: "max_consecutive_losses", label: "أقصى خسائر متتالية", hint: "بعدها يتوقف التداول", int: true },
+  { key: "weekly_target", label: "الهدف الأسبوعي", hint: "إذا وصلته يقول لك النظام كفاية هالأسبوع" },
+  { key: "weekly_max_loss", label: "حد الخسارة الأسبوعي", hint: "عنده يوقف التداول لنهاية الأسبوع" },
+  { key: "monthly_target", label: "الهدف الشهري", hint: "ربح الشهر المطلوب" },
+  { key: "monthly_max_loss", label: "حد الخسارة الشهري", hint: "عنده يوقف التداول لنهاية الشهر" },
 ] as const;
 
 type Values = Record<(typeof FIELDS)[number]["key"], string> & { session_start: string; session_end: string; currency: string };

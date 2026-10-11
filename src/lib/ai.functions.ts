@@ -48,23 +48,89 @@ ${data.question ? `سؤال المتداول: ${data.question}` : ""}
     } catch (e) { fail(e); }
   });
 
+const AGENT_SCHEMA = {
+  type: "json_schema", name: "agent", strict: true,
+  schema: {
+    type: "object", additionalProperties: false, required: ["reply", "actions"],
+    properties: {
+      reply: { type: "string" },
+      actions: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false, required: ["type", "summary", "data"],
+          properties: {
+            type: { type: "string", enum: ["update_settings", "add_strategy", "add_rule", "create_trade", "close_trade", "add_note"] },
+            summary: { type: "string" },
+            data: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};
+
+const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتداول الشخصي، وعندك صلاحية تقترح تنفيذ أي شيء في النظام نيابة عنه.
+مهمتك: تحلل صفقاته معه، تفكر معه، تنصحه، تمنعه من الطمع، وتلزمه بالهدف اليومي والأسبوعي والشهري وحدود الخسارة. إذا وصل لهدفه أو حد خسارته قل له يوقف بوضوح.
+إذا ناقصك معلومة (استراتيجيته، حدوده، أهدافه) اسأله سؤال أو سؤالين واضحين.
+عندما يطلب منك أو يذكر شيء يحتاج حفظ، أضف إجراء في actions (لا ينفذ إلا بعد موافقته بزر). data نص JSON بهذه الأشكال:
+- update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name"} (أرسل فقط الحقول المذكورة، أرقام موجبة)
+- add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
+- add_rule: {"title","description"}
+- create_trade: {"symbol" (مثل XAUUSD),"direction":"long"|"short","entry_price","stop_loss","take_profit","position_size","risk_amount","strategy" (اسم استراتيجية موجودة أو null),"emotion","notes"}
+- close_trade: {"symbol","pnl" (سالب للخسارة),"exit_price","notes"}
+- add_note: {"title","content","category"}
+لا تخترع أرقام ما قالها. summary جملة عربية قصيرة تشرح الإجراء. reply ردك بالعربي بصيغة markdown، واذكر فيه أنك جهزت الإجراءات للموافقة. إذا ما فيه شي يُحفظ خل actions فاضية.`;
+
+async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
+  const ctx = await buildContext(sb);
+  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
+  const parsed = JSON.parse(out) as { reply: string; actions: { type: string; summary: string; data: string }[] };
+  return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 20) };
+}
+
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000) }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
-      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.message });
+      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.image ? `${data.message}\n📎 (صورة مرفقة)` : data.message });
       if (e1) throw e1;
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
-      const ctx = await buildContext(sb);
-      const input = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
-      const reply = await callAI(`${BASE_PERSONA}\nأنت هنا "المدرب الذكي": راجع سلوك المتداول، اسأله أسئلة توضيحية عند الحاجة، وساعده يبني ويحسّن قواعده واستراتيجيته بنفسه.\n\n${ctx}`, input);
-      await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply });
+      const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
+      if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image }] });
+      const { reply, actions } = await runAgent(sb, "", input);
+      const { error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
+      if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
       if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
       await sb.from("coach_threads").update(update).eq("id", data.threadId);
       return { reply };
+    } catch (e) { fail(e); }
+  });
+
+export const setupPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ text: z.string().min(1).max(8000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      return await runAgent(context.supabase, `المتداول جديد ويكتب لك وصف كامل لنظامه. حوّل كل ما ذكره إلى إجراءات: update_settings واحد يجمع كل الحدود والأهداف والرصيد والعملة، ثم add_strategy لكل استراتيجية، add_rule لكل قاعدة، وأي صفقات مذكورة. في reply لخّص ما فهمته واسأله عن أهم شيء ناقص (مثل حد الخسارة اليومي) إن لم يذكره.`, [{ role: "user", content: data.text }]);
+    } catch (e) { fail(e); }
+  });
+
+export const morningGreeting = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const sb = context.supabase;
+      const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10); // Riyadh date
+      const { data: existing } = await sb.from("notifications").select("id").eq("kind", "morning").eq("day", day).maybeSingle();
+      if (existing) return { created: false };
+      const ctx = await buildContext(sb);
+      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب رسالة صباحية قصيرة (٤-٦ أسطر) لهادي: صباح الخير، يعطيك العافية، سلام ودّي. ثم ملخص سريع لأمس (إن وجدت صفقات)، تذكير بالهدف اليومي والأسبوعي والشهري وحد الخسارة، ونصيحة واحدة ضد الطمع. اليوم ${day}.` }]);
+      const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "morning", day, title: "صباح الخير يا هادي ☀️", body });
+      if (error && error.code !== "23505") throw error;
+      return { created: true };
     } catch (e) { fail(e); }
   });
 

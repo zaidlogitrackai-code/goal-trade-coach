@@ -15,6 +15,13 @@
       "when": 1791731940280,
       "tag": "0001_phase_two",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791733538253,
+      "tag": "0002_ai_agent_targets_notifications",
+      "breakpoints": true
     }
   ]
 }

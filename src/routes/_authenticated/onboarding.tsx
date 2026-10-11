@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { LimitsForm } from "@/components/limits-form";
 import { Logo } from "@/components/app-shell";
+import { AiSetup } from "@/components/ai-setup";
+import { Button } from "@/components/ui/button";
 import { settingsQuery } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
@@ -17,7 +19,12 @@ function Onboarding() {
       <Logo />
       <h1 className="mt-10 text-3xl font-bold">ابدأ بإعداد نظام التداول الخاص بك</h1>
       <p className="mt-2 text-muted-foreground">هذه الحدود هي اللي يحميك بها النظام كل يوم. تقدر تعدلها لاحقاً من إدارة المخاطر.</p>
-      <div className="mt-8">
+      <div className="mt-8 space-y-3">
+        <AiSetup onFinished={() => navigate({ to: "/dashboard" })} />
+        <Button variant="secondary" className="w-full" onClick={() => navigate({ to: "/dashboard" })}>خلصت، ودّني للرئيسية</Button>
+      </div>
+      <p className="mt-8 text-center text-sm text-muted-foreground">أو عبّيها بنفسك:</p>
+      <div className="mt-4">
         <LimitsForm initial={data ?? null} submitLabel="ابدأ" onDone={() => navigate({ to: "/dashboard" })} />
       </div>
     </div>

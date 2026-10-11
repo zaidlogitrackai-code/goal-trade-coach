@@ -16,6 +16,10 @@ export interface StatusSettings {
   max_consecutive_losses: number;
   trading_paused: boolean;
   cooldown_until?: string | null;
+  weekly_target?: number;
+  weekly_max_loss?: number;
+  monthly_target?: number;
+  monthly_max_loss?: number;
 }
 
 export interface StatusTrade {
@@ -35,12 +39,31 @@ export interface DayMetrics {
   lossRemaining: number | null;
   consecutiveLosses: number;
   violationsToday: number;
+  weekPnl: number;
+  monthPnl: number;
 }
 
 export function startOfToday(now = new Date()): Date {
   const d = new Date(now);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/** Week starts Sunday (Saudi trading week). */
+export function startOfWeek(now = new Date()): Date {
+  const d = startOfToday(now);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+export function startOfMonth(now = new Date()): Date {
+  const d = startOfToday(now);
+  d.setDate(1);
+  return d;
+}
+
+function pnlSince(trades: StatusTrade[], since: number) {
+  return trades.filter((t) => t.status === "closed" && t.closed_at && new Date(t.closed_at).getTime() >= since).reduce((a, t) => a + (t.pnl ?? 0), 0);
 }
 
 /** Losses in a row counting back from the most recently closed trade. */
@@ -78,6 +101,8 @@ export function computeDayMetrics(
     lossRemaining: s.max_daily_loss > 0 ? Math.max(0, s.max_daily_loss + Math.min(0, todayPnl)) : null,
     consecutiveLosses: countConsecutiveLosses(allTrades),
     violationsToday,
+    weekPnl: pnlSince(allTrades, startOfWeek(now).getTime()),
+    monthPnl: pnlSince(allTrades, startOfMonth(now).getTime()),
   };
 }
 
@@ -85,6 +110,10 @@ export function computeStatus(s: StatusSettings, m: DayMetrics, now: Date = new 
   if (s.trading_paused) return "stopped";
   if (s.cooldown_until && new Date(s.cooldown_until).getTime() > now.getTime()) return "stopped";
   if (s.max_daily_loss > 0 && m.todayPnl <= -s.max_daily_loss) return "loss_limit";
+  if ((s.weekly_max_loss ?? 0) > 0 && m.weekPnl <= -s.weekly_max_loss!) return "loss_limit";
+  if ((s.monthly_max_loss ?? 0) > 0 && m.monthPnl <= -s.monthly_max_loss!) return "loss_limit";
+  if ((s.weekly_target ?? 0) > 0 && m.weekPnl >= s.weekly_target!) return "target_hit";
+  if ((s.monthly_target ?? 0) > 0 && m.monthPnl >= s.monthly_target!) return "target_hit";
   if (s.max_daily_profit > 0 && m.todayPnl >= s.max_daily_profit) return "stopped";
   if (s.max_trades_per_day > 0 && m.tradesToday >= s.max_trades_per_day) return "stopped";
   if (s.max_consecutive_losses > 0 && m.consecutiveLosses >= s.max_consecutive_losses) return "stopped";
@@ -104,7 +133,7 @@ export const STATUS_META: Record<TradingStatus, { label: string; hint: string; t
   caution: { label: "حذر", hint: "اقتربت من حدودك. خفف الحجم وتأكد من الإعداد.", tone: "warning" },
   high_risk: { label: "مخاطرة مرتفعة", hint: "مخاطرتك أو خسارتك قريبة من الحد. فكّر بالتوقف.", tone: "destructive" },
   rules_broken: { label: "تجاوز القواعد", hint: "تم تسجيل مخالفة اليوم. راجع قواعدك قبل أي صفقة.", tone: "destructive" },
-  target_hit: { label: "الهدف تحقق", hint: "حققت هدف اليوم. احمِ أرباحك ولا تطمع.", tone: "success" },
-  loss_limit: { label: "تم الوصول إلى حد الخسارة", hint: "توقف اليوم. السوق باقي، ورأس مالك أهم.", tone: "destructive" },
+  target_hit: { label: "الهدف تحقق", hint: "حققت هدفك (اليومي أو الأسبوعي أو الشهري). احمِ أرباحك ولا تطمع.", tone: "success" },
+  loss_limit: { label: "تم الوصول إلى حد الخسارة", hint: "وصلت لحد الخسارة (اليومي أو الأسبوعي أو الشهري). توقف، السوق باقي ورأس مالك أهم.", tone: "destructive" },
   stopped: { label: "التداول متوقف", hint: "وصلت لأحد حدودك اليومية أو أوقفت التداول يدوياً.", tone: "primary" },
 };

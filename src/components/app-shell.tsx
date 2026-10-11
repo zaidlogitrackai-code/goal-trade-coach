@@ -6,6 +6,7 @@ import {
   ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 export const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -63,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-l border-sidebar-border bg-sidebar/90 p-4 lg:flex">
-        <Logo />
+        <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         <nav className="mt-6 flex-1 space-y-0.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAV.map((n) => (
             <Link
@@ -86,7 +87,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
           <Logo />
-          <button onClick={signOut} aria-label="تسجيل الخروج" className="text-muted-foreground"><LogOut className="size-5" /></button>
+          <div className="flex items-center gap-3"><NotificationsBell />
+          <button onClick={signOut} aria-label="تسجيل الخروج" className="text-muted-foreground"><LogOut className="size-5" /></button></div>
         </header>
         <main className="flex-1 px-4 pb-28 pt-6 lg:px-10 lg:pb-10">{children}</main>
       </div>
