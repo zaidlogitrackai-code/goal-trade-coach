@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 
-type Sb = Parameters<Parameters<ReturnType<typeof createServerFn>["handler"]>[0]>[0] extends never ? never : any; // eslint-disable-line
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+type Sb = SupabaseClient<Database>;
 
 async function buildContext(sb: Sb) {
   const [s, t, r, st] = await Promise.all([
@@ -56,7 +58,7 @@ export const coachReply = createServerFn({ method: "POST" })
       if (e1) throw e1;
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const ctx = await buildContext(sb);
-      const input = (hist ?? []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content }));
+      const input = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       const reply = await callAI(`${BASE_PERSONA}\nأنت هنا "المدرب الذكي": راجع سلوك المتداول، اسأله أسئلة توضيحية عند الحاجة، وساعده يبني ويحسّن قواعده واستراتيجيته بنفسه.\n\n${ctx}`, input);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply });
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
