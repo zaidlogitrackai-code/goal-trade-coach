@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/app-shell";
+import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
@@ -101,7 +102,7 @@ function CoachPage() {
               <div className="py-16 text-center text-sm text-muted-foreground">ابدأ بسؤال، مثلاً: "راجع آخر صفقاتي وقل لي وين أغلط" أو "ساعدني أكتب قواعد دخول لاستراتيجيتي".</div>
             )}
             {list.map((m) => (
-              <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.content}</div>
+              <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.role === "assistant" ? <Md>{m.content}</Md> : m.content}</div>
             ))}
             {showPending && <div className="mr-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">{pending}</div>}
             {busy && <div className="ml-auto rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">يكتب…</div>}

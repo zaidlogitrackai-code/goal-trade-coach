@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
+import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,7 +83,7 @@ function ReportsPage() {
           </div>
           <div className="panel p-5">
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">تقرير المدرب الذكي</h2><Button onClick={runAi} disabled={busy}>{busy ? "يكتب التقرير…" : "اكتب لي التقرير"}</Button></div>
-            {ai ? <div className="mt-4 whitespace-pre-wrap text-sm leading-7">{ai}</div> : <p className="mt-3 text-sm text-muted-foreground">يحلل أرقام هذه الفترة ويعطيك نقاط قوة وأخطاء وخطوات عملية.</p>}
+            {ai ? <div className="mt-4"><Md>{ai}</Md></div> : <p className="mt-3 text-sm text-muted-foreground">يحلل أرقام هذه الفترة ويعطيك نقاط قوة وأخطاء وخطوات عملية.</p>}
           </div>
         </>
       )}

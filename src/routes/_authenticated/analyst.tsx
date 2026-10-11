@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState, PageHeader } from "@/components/app-shell";
+import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,7 +84,7 @@ function AnalystPage() {
         </div>
         <div className="panel min-h-48 p-5">
           <h2 className="mb-3 font-semibold">نتيجة التحليل</h2>
-          {result ? <div className="whitespace-pre-wrap text-sm leading-7">{result}</div> : <p className="text-sm text-muted-foreground">{busy ? "يحلل الشارت الآن…" : "النتيجة تظهر هنا بعد التحليل."}</p>}
+          {result ? <Md>{result}</Md> : <p className="text-sm text-muted-foreground">{busy ? "يحلل الشارت الآن…" : "النتيجة تظهر هنا بعد التحليل."}</p>}
         </div>
       </div>
 
@@ -97,7 +98,7 @@ function AnalystPage() {
                 <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); del(a.id); }}>حذف</Button>
               </summary>
               {a.question && <p className="mt-3 text-sm text-muted-foreground">سؤالك: {a.question}</p>}
-              <div className="mt-3 whitespace-pre-wrap text-sm leading-7">{a.result}</div>
+              <div className="mt-3"><Md>{a.result}</Md></div>
             </details>
           ))}
         </div>
