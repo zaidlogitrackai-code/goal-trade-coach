@@ -5,9 +5,12 @@ import { currentUserId } from "@/lib/queries";
 import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import { evaluateTradeGate, type TradeInput } from "@/lib/trade-gate";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
-import { FOCUS_CATEGORY, inMarkets, type FocusPatch } from "@/lib/focus";
+import { inMarkets, type FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
+import type { CapitalMove } from "@/lib/capital";
+import { HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
+import { loadCapital, moveCapital } from "@/lib/capital-store";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
@@ -34,6 +37,7 @@ export const ACTION_TYPES = [
   "start_cooldown",
   "mark_notifications_read",
   "update_focus",
+  "capital_move",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -56,6 +60,7 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   start_cooldown: "بدء فترة تهدئة",
   mark_notifications_read: "تعليم الإشعارات كمقروءة",
   update_focus: "تحديث ملف التركيز",
+  capital_move: "حركة على رأس المال",
 };
 
 /** Always wait for an explicit click, even in auto mode. */
@@ -207,6 +212,11 @@ export const SCHEMAS = {
   end_session: z.object({ review: z.string().max(4000).default("") }),
   start_cooldown: z.object({ minutes: z.coerce.number().int().min(1).max(1440).nullish() }),
   mark_notifications_read: z.object({}).passthrough(),
+  capital_move: z.object({
+    kind: z.enum(["deposit", "withdrawal", "set_balance"]),
+    amount: num.min(0),
+    note: z.string().max(300).nullish(),
+  }),
   update_focus: z.object({
     markets: z.union([z.string().max(200), z.array(z.string().max(30)).max(10)]).nullish(),
     goal: opt,
@@ -257,7 +267,8 @@ async function listNamed(
     if (error) throw new Error(error.message);
     return (data ?? []).map((r) => ({ id: r.id, label: r.title }));
   }
-  const { data, error } = await supabase.from("knowledge_notes").select("id,title").neq("category", FOCUS_CATEGORY);
+  const { data, error } = await supabase.from("knowledge_notes").select("id,title")
+    .not("category", "in", HIDDEN_NOTES);
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({ id: r.id, label: r.title }));
 }
@@ -338,9 +349,13 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
           user_id,
           ...(d as { title: string; category: string }),
           // The focus profile row is written only through update_focus.
-          ...((d as { category?: string }).category === FOCUS_CATEGORY ? { category: "عام" } : {}),
+          ...(isHiddenNote((d as { category?: string }).category) ? { category: "عام" } : {}),
         });
       return check(error);
+    }
+    case "capital_move": {
+      await moveCapital(d as CapitalMove);
+      return;
     }
     case "update_focus": {
       await saveFocus(d as FocusPatch);
@@ -613,6 +628,6 @@ async function gateForAiTrade(input: TradeInput) {
     activeSession: session.data?.[0] ?? null,
     allowedStrategyIds: (strategies.data ?? []).map((x) => x.id),
     openTrades: all.filter((x) => x.status === "open"),
-    currentBalance: settings.data.starting_balance,
+    currentBalance: (await loadCapital()).summary.balance,
   });
 }

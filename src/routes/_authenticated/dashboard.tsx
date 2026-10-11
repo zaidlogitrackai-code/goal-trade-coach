@@ -15,6 +15,7 @@ import { BehaviorWidget } from "@/components/dashboard/behavior-widget";
 import { ActivityList, type ActivityFeedItem } from "@/components/dashboard/activity-list";
 import { FocusCard } from "@/components/dashboard/focus-card";
 import { JourneySteps } from "@/components/dashboard/journey-steps";
+import { CapitalCard } from "@/components/dashboard/capital-card";
 import { useJourney } from "@/lib/use-journey";
 import { RefreshCw, AlertCircle, PlusCircle } from "lucide-react";
 
@@ -213,6 +214,8 @@ function Dashboard() {
 
       {/* 2.1 Focus: what the trader told the coach, next to what their trades show */}
       <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
+
+      <CapitalCard currency={cur} />
 
       {/* 3. Four Core Metric Cards */}
       <CoreMetrics

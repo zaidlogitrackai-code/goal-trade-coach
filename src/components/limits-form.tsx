@@ -10,7 +10,7 @@ import { validateRiskSettings, SUPPORTED_CURRENCIES } from "@/lib/risk-validatio
 import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 const FIELDS = [
-  { key: "starting_balance", label: "الرصيد الابتدائي", hint: "رصيد حسابك الحالي" },
+  { key: "starting_balance", label: "الرصيد الابتدائي", hint: "الرصيد اللي بدأت فيه. الإيداع والسحب وتعديل الرصيد من بطاقة رأس المال بالرئيسية" },
   { key: "daily_target", label: "الهدف اليومي", hint: "الربح الذي يكفيك اليوم" },
   { key: "max_daily_profit", label: "الحد الأعلى للربح", hint: "عند الوصول له يتوقف التداول لحماية الربح" },
   { key: "max_daily_loss", label: "الحد الأقصى للخسارة", hint: "أقصى خسارة مسموحة اليوم" },

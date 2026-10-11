@@ -4,6 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 import { buildJourney, journeyForPrompt } from "./journey";
+import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
+import { HIDDEN_NOTES } from "./hidden-notes";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,14 +21,23 @@ async function buildContext(sb: Sb) {
   ]);
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const dayStart = startOfToday().toISOString();
-  const [notes, session, focusRow, month, todaySessions, todayViolations] = await Promise.all([
-    sb.from("knowledge_notes").select("title,category").neq("category", FOCUS_CATEGORY).order("created_at", { ascending: false }).limit(50),
+  const [notes, session, focusRow, month, todaySessions, todayViolations, capitalRow, closedAll] = await Promise.all([
+    sb.from("knowledge_notes").select("title,category").not("category", "in", HIDDEN_NOTES).order("created_at", { ascending: false }).limit(50),
     sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
     sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
     sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at").gte("opened_at", since),
     sb.from("trading_sessions").select("ended_at").gte("started_at", dayStart).order("started_at", { ascending: false }).limit(1),
     sb.from("rule_violations").select("id").gte("occurred_at", dayStart),
+    sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
+    sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
   ]);
+  const ledger = parseLedger(capitalRow.data?.[0]?.content);
+  const capital = computeCapital({
+    starting: Number(s.data?.starting_balance) || 0,
+    since: s.data?.created_at ?? null,
+    trades: closedAll.data ?? [],
+    entries: ledger.entries,
+  });
   const focus = parseFocus(focusRow.data?.[0]?.content);
   const cur = s.data?.currency ?? "USD";
   const monthTrades = month.data ?? [];
@@ -43,6 +54,8 @@ async function buildContext(sb: Sb) {
   const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
   return `النظام للفوركس فقط: أزواج العملات والذهب XAUUSD والفضة XAGUSD. لا تحلل ولا تسجل ولا تقترح عملات رقمية أو أسهم أو مؤشرات أو نفط؛ إذا طلبها قله بلطف إن النظام فوركس فقط.
 ${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
+
+${capitalForPrompt(capital, ledger.entries, s.data?.currency ?? "USD")}
 
 ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
 ${focusForPrompt(focus)}
@@ -95,7 +108,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -127,6 +140,7 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
 - mark_notifications_read: {}
 - update_focus: {"markets" (أزواج فوركس مثل "EURUSD, XAUUSD" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
+- capital_move: {"kind" ("deposit" إيداع | "withdrawal" سحب | "set_balance" رصيده الحقيقي الآن),"amount","note"} — لما يحكي إنه أودع أو سحب أو إن رصيده صار كذا. أرباح وخسائر الصفقات المغلقة تنحسب على الرصيد تلقائيًا، فلا تسجلها هنا. لتصحيح الرصيد الحالي استخدم set_balance مش starting_balance. بعد سحب كبير اقترح تخفيض حدود المخاطرة لتناسب الرصيد الجديد.
 ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
 - لما يحكي شيء ثابت عن نفسه (سوقه، أسلوبه، هدفه، نقطة ضعفه، شيء بيتكرر معه)، أضف update_focus بنفس الرد. لا تحفظ مزاج اللحظة أو تفاصيل صفقة وحدة.
 - إذا الملف فاضي أو ناقص (ما في سوق أو هدف أو نقطة ضعف)، اسأله سؤال واحد عنها بآخر ردك.

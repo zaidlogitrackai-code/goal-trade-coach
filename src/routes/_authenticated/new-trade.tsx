@@ -17,6 +17,7 @@ import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
 import { evaluateTradeGate } from "@/lib/trade-gate";
 import { inMarkets, splitMarkets } from "@/lib/focus";
 import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
+import { useCapital } from "@/lib/capital-store";
 import { focusQuery } from "@/lib/focus-store";
 import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
@@ -51,6 +52,7 @@ function NewTrade() {
   const v = useQuery(violationsQuery);
   const st = useQuery(strategiesQuery);
   const focus = useQuery(focusQuery);
+  const capital = useCapital();
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -147,7 +149,7 @@ function NewTrade() {
       opened_at: x.opened_at,
       closed_at: x.closed_at,
     })),
-    currentBalance: settings.starting_balance,
+    currentBalance: capital?.summary.balance ?? settings.starting_balance,
   });
 
   const sensitive = !!f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion);

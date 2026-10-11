@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { isBlocked, useJourney } from "@/lib/use-journey";
-import { FOCUS_CATEGORY } from "@/lib/focus";
+import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
 
 export const NAV_GROUPS = [
@@ -71,7 +71,7 @@ function useNavPlan(): NavPlan {
       const { count, error } = await supabase
         .from("knowledge_notes")
         .select("id", { count: "exact", head: true })
-        .neq("category", FOCUS_CATEGORY);
+        .not("category", "in", HIDDEN_NOTES);
       if (error) throw error;
       return count ?? 0;
     },
