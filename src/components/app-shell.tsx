@@ -6,7 +6,6 @@ import {
   ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import logoHadi from "@/assets/logo-hadi.png";
 
 export const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -27,9 +26,28 @@ export const NAV = [
 
 const MOBILE = ["/dashboard", "/new-trade", "/trades", "/risk", "/settings"];
 
-export function Logo() {
+export function LogoMark({ className = "size-8" }: { className?: string }) {
   return (
-    <img src={logoHadi} alt="Hadi Alajmi — Trading OS" className="h-10 w-auto" loading="lazy" width={714} height={552} />
+    <svg viewBox="0 0 48 48" className={className} fill="currentColor" aria-hidden="true">
+      <rect x="9" y="10" width="2.5" height="28" rx="1" opacity=".55" />
+      <rect x="5" y="18" width="10" height="13" rx="2" opacity=".55" />
+      <rect x="22.75" y="5" width="2.5" height="34" rx="1" opacity=".75" />
+      <rect x="19" y="14" width="10" height="17" rx="2" opacity=".75" />
+      <rect x="36.5" y="2" width="2.5" height="38" rx="1" />
+      <rect x="33" y="8" width="10" height="22" rx="2" />
+    </svg>
+  );
+}
+
+export function Logo({ className = "" }: { className?: string }) {
+  return (
+    <div dir="ltr" role="img" aria-label="Hadi Alajmi — Trading OS" className={`inline-flex items-center gap-2.5 text-foreground ${className}`}>
+      <LogoMark className="h-8 w-8 shrink-0" />
+      <span className="flex flex-col leading-none">
+        <span className="text-xl font-bold tracking-[0.28em]">HADI</span>
+        <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.32em] text-muted-foreground">Trading OS</span>
+      </span>
+    </div>
   );
 }
 
