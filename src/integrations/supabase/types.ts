@@ -14,6 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
+      chart_analyses: {
+        Row: {
+          created_at: string
+          id: string
+          question: string | null
+          result: string
+          symbol: string | null
+          timeframe: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question?: string | null
+          result: string
+          symbol?: string | null
+          timeframe?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question?: string | null
+          result?: string
+          symbol?: string | null
+          timeframe?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      coach_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "coach_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_threads: {
+        Row: {
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      knowledge_notes: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       rule_violations: {
         Row: {
           id: string
@@ -199,8 +315,40 @@ export type Database = {
         }
         Relationships: []
       }
+      trading_sessions: {
+        Row: {
+          ended_at: string | null
+          id: string
+          mood: string | null
+          plan: string | null
+          review: string | null
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          ended_at?: string | null
+          id?: string
+          mood?: string | null
+          plan?: string | null
+          review?: string | null
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          ended_at?: string | null
+          id?: string
+          mood?: string | null
+          plan?: string | null
+          review?: string | null
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trading_settings: {
         Row: {
+          cooldown_minutes: number
+          cooldown_until: string | null
           created_at: string
           currency: string
           daily_target: number
@@ -221,6 +369,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cooldown_minutes?: number
+          cooldown_until?: string | null
           created_at?: string
           currency?: string
           daily_target?: number
@@ -241,6 +391,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cooldown_minutes?: number
+          cooldown_until?: string | null
           created_at?: string
           currency?: string
           daily_target?: number
