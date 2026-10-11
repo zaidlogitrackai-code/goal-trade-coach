@@ -12,11 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAnalystRouteImport } from './routes/_authenticated/analyst'
+import { Route as AuthenticatedCoachRouteImport } from './routes/_authenticated/coach'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDisciplineRouteImport } from './routes/_authenticated/discipline'
+import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
 import { Route as AuthenticatedNewTradeRouteImport } from './routes/_authenticated/new-trade'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
+import { Route as AuthenticatedPerformanceRouteImport } from './routes/_authenticated/performance'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedRiskRouteImport } from './routes/_authenticated/risk'
 import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
+import { Route as AuthenticatedSessionRouteImport } from './routes/_authenticated/session'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedStrategiesRouteImport } from './routes/_authenticated/strategies'
 import { Route as AuthenticatedTradesRouteImport } from './routes/_authenticated/trades'
@@ -35,9 +42,29 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAnalystRoute = AuthenticatedAnalystRouteImport.update({
+  id: '/analyst',
+  path: '/analyst',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCoachRoute = AuthenticatedCoachRouteImport.update({
+  id: '/coach',
+  path: '/coach',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDisciplineRoute = AuthenticatedDisciplineRouteImport.update({
+  id: '/discipline',
+  path: '/discipline',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedNewTradeRoute = AuthenticatedNewTradeRouteImport.update({
@@ -50,6 +77,17 @@ const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPerformanceRoute =
+  AuthenticatedPerformanceRouteImport.update({
+    id: '/performance',
+    path: '/performance',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRiskRoute = AuthenticatedRiskRouteImport.update({
   id: '/risk',
   path: '/risk',
@@ -58,6 +96,11 @@ const AuthenticatedRiskRoute = AuthenticatedRiskRouteImport.update({
 const AuthenticatedRulesRoute = AuthenticatedRulesRouteImport.update({
   id: '/rules',
   path: '/rules',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSessionRoute = AuthenticatedSessionRouteImport.update({
+  id: '/session',
+  path: '/session',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -79,11 +122,18 @@ const AuthenticatedTradesRoute = AuthenticatedTradesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analyst': typeof AuthenticatedAnalystRoute
+  '/coach': typeof AuthenticatedCoachRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/discipline': typeof AuthenticatedDisciplineRoute
+  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/new-trade': typeof AuthenticatedNewTradeRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/performance': typeof AuthenticatedPerformanceRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/risk': typeof AuthenticatedRiskRoute
   '/rules': typeof AuthenticatedRulesRoute
+  '/session': typeof AuthenticatedSessionRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/strategies': typeof AuthenticatedStrategiesRoute
   '/trades': typeof AuthenticatedTradesRoute
@@ -91,11 +141,18 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analyst': typeof AuthenticatedAnalystRoute
+  '/coach': typeof AuthenticatedCoachRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/discipline': typeof AuthenticatedDisciplineRoute
+  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/new-trade': typeof AuthenticatedNewTradeRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/performance': typeof AuthenticatedPerformanceRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/risk': typeof AuthenticatedRiskRoute
   '/rules': typeof AuthenticatedRulesRoute
+  '/session': typeof AuthenticatedSessionRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/strategies': typeof AuthenticatedStrategiesRoute
   '/trades': typeof AuthenticatedTradesRoute
@@ -105,11 +162,18 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/analyst': typeof AuthenticatedAnalystRoute
+  '/_authenticated/coach': typeof AuthenticatedCoachRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/discipline': typeof AuthenticatedDisciplineRoute
+  '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/new-trade': typeof AuthenticatedNewTradeRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/performance': typeof AuthenticatedPerformanceRoute
+  '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/risk': typeof AuthenticatedRiskRoute
   '/_authenticated/rules': typeof AuthenticatedRulesRoute
+  '/_authenticated/session': typeof AuthenticatedSessionRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/strategies': typeof AuthenticatedStrategiesRoute
   '/_authenticated/trades': typeof AuthenticatedTradesRoute
@@ -119,11 +183,18 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/analyst'
+    | '/coach'
     | '/dashboard'
+    | '/discipline'
+    | '/knowledge'
     | '/new-trade'
     | '/onboarding'
+    | '/performance'
+    | '/reports'
     | '/risk'
     | '/rules'
+    | '/session'
     | '/settings'
     | '/strategies'
     | '/trades'
@@ -131,11 +202,18 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/analyst'
+    | '/coach'
     | '/dashboard'
+    | '/discipline'
+    | '/knowledge'
     | '/new-trade'
     | '/onboarding'
+    | '/performance'
+    | '/reports'
     | '/risk'
     | '/rules'
+    | '/session'
     | '/settings'
     | '/strategies'
     | '/trades'
@@ -144,11 +222,18 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/analyst'
+    | '/_authenticated/coach'
     | '/_authenticated/dashboard'
+    | '/_authenticated/discipline'
+    | '/_authenticated/knowledge'
     | '/_authenticated/new-trade'
     | '/_authenticated/onboarding'
+    | '/_authenticated/performance'
+    | '/_authenticated/reports'
     | '/_authenticated/risk'
     | '/_authenticated/rules'
+    | '/_authenticated/session'
     | '/_authenticated/settings'
     | '/_authenticated/strategies'
     | '/_authenticated/trades'
@@ -183,11 +268,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/analyst': {
+      id: '/_authenticated/analyst'
+      path: '/analyst'
+      fullPath: '/analyst'
+      preLoaderRoute: typeof AuthenticatedAnalystRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/coach': {
+      id: '/_authenticated/coach'
+      path: '/coach'
+      fullPath: '/coach'
+      preLoaderRoute: typeof AuthenticatedCoachRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/discipline': {
+      id: '/_authenticated/discipline'
+      path: '/discipline'
+      fullPath: '/discipline'
+      preLoaderRoute: typeof AuthenticatedDisciplineRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/knowledge': {
+      id: '/_authenticated/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/new-trade': {
@@ -204,6 +317,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/performance': {
+      id: '/_authenticated/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof AuthenticatedPerformanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/risk': {
       id: '/_authenticated/risk'
       path: '/risk'
@@ -216,6 +343,13 @@ declare module '@tanstack/react-router' {
       path: '/rules'
       fullPath: '/rules'
       preLoaderRoute: typeof AuthenticatedRulesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/session': {
+      id: '/_authenticated/session'
+      path: '/session'
+      fullPath: '/session'
+      preLoaderRoute: typeof AuthenticatedSessionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings': {
@@ -243,22 +377,36 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAnalystRoute: typeof AuthenticatedAnalystRoute
+  AuthenticatedCoachRoute: typeof AuthenticatedCoachRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDisciplineRoute: typeof AuthenticatedDisciplineRoute
+  AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedNewTradeRoute: typeof AuthenticatedNewTradeRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedPerformanceRoute: typeof AuthenticatedPerformanceRoute
+  AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRiskRoute: typeof AuthenticatedRiskRoute
   AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
+  AuthenticatedSessionRoute: typeof AuthenticatedSessionRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStrategiesRoute: typeof AuthenticatedStrategiesRoute
   AuthenticatedTradesRoute: typeof AuthenticatedTradesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAnalystRoute: AuthenticatedAnalystRoute,
+  AuthenticatedCoachRoute: AuthenticatedCoachRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDisciplineRoute: AuthenticatedDisciplineRoute,
+  AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedNewTradeRoute: AuthenticatedNewTradeRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedPerformanceRoute: AuthenticatedPerformanceRoute,
+  AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRiskRoute: AuthenticatedRiskRoute,
   AuthenticatedRulesRoute: AuthenticatedRulesRoute,
+  AuthenticatedSessionRoute: AuthenticatedSessionRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStrategiesRoute: AuthenticatedStrategiesRoute,
   AuthenticatedTradesRoute: AuthenticatedTradesRoute,
