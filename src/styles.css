@@ -54,60 +54,52 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Hadi Alajmi brand: Obsidian, Graphite, Electric Violet, Deep Indigo, Reward Green, White, Cool Gray */
+/* Monochrome system: greyscale surfaces, white primary, semantic status colors only */
 :root {
-  --color-obsidian: #050506;
-  --color-graphite: #171719;
-  --color-electric-violet: #6257FF;
-  --color-deep-indigo: #3025A8;
-  --color-reward-green: #00E85D;
-  --color-white: #F5F5F7;
-  --color-cool-gray: #98989F;
-
-  --background: var(--color-obsidian);
-  --surface: var(--color-graphite);
-  --primary: var(--color-electric-violet);
-  --secondary: var(--color-deep-indigo);
-  --success: var(--color-reward-green);
-  --foreground: var(--color-white);
-  --muted-foreground: var(--color-cool-gray);
-
   --radius: 0.875rem;
-  --card: var(--color-graphite);
-  --card-foreground: var(--color-white);
-  --popover: var(--color-graphite);
-  --popover-foreground: var(--color-white);
-  --primary-foreground: var(--color-white);
-  --indigo: var(--color-deep-indigo);
-  --secondary-foreground: var(--color-white);
-  --muted: var(--color-graphite);
-  --accent: var(--color-deep-indigo);
-  --accent-foreground: var(--color-white);
-  /* Errors / warnings stay inside the palette: White text, Violet / Indigo emphasis */
-  --destructive: var(--color-white);
-  --destructive-foreground: var(--color-white);
-  --success-foreground: var(--color-obsidian);
-  --warning: var(--color-electric-violet);
-  --warning-foreground: var(--color-white);
-  --border: color-mix(in srgb, var(--color-cool-gray) 22%, transparent);
-  --input: color-mix(in srgb, var(--color-cool-gray) 28%, transparent);
-  --ring: var(--color-electric-violet);
-  --chart-1: var(--color-electric-violet);
-  --chart-2: var(--color-reward-green);
-  --chart-3: var(--color-deep-indigo);
-  --chart-4: var(--color-white);
-  --chart-5: var(--color-cool-gray);
-  --sidebar: var(--color-graphite);
-  --sidebar-foreground: var(--color-white);
-  --sidebar-primary: var(--color-electric-violet);
-  --sidebar-primary-foreground: var(--color-white);
-  --sidebar-accent: var(--color-deep-indigo);
-  --sidebar-accent-foreground: var(--color-white);
-  --sidebar-border: color-mix(in srgb, var(--color-cool-gray) 22%, transparent);
-  --sidebar-ring: var(--color-electric-violet);
-  --glow-primary: 0 0 40px -8px color-mix(in srgb, var(--color-electric-violet) 60%, transparent);
-  --glow-success: 0 0 40px -8px color-mix(in srgb, var(--color-reward-green) 50%, transparent);
-  --gradient-brand: linear-gradient(135deg, var(--color-electric-violet), var(--color-deep-indigo));
+  --background: hsl(0 0% 3%);
+  --foreground: hsl(0 0% 96%);
+  --card: hsl(0 0% 6%);
+  --card-foreground: hsl(0 0% 96%);
+  --card-border: hsl(0 0% 9%);
+  --popover: hsl(0 0% 7%);
+  --popover-foreground: hsl(0 0% 96%);
+  --primary: hsl(0 0% 95%);
+  --primary-foreground: hsl(0 0% 5%);
+  --secondary: hsl(0 0% 10%);
+  --secondary-foreground: hsl(0 0% 80%);
+  --muted: hsl(0 0% 9%);
+  --muted-foreground: hsl(0 0% 55%);
+  --accent: hsl(0 0% 10%);
+  --accent-foreground: hsl(0 0% 96%);
+  --indigo: hsl(199 89% 48%);
+  --destructive: hsl(0 72% 51%);
+  --destructive-foreground: hsl(0 0% 96%);
+  --success: hsl(152 76% 60%);
+  --success-foreground: hsl(0 0% 5%);
+  --warning: hsl(240 5% 84%);
+  --warning-foreground: hsl(0 0% 5%);
+  --border: hsl(0 0% 11%);
+  --input: hsl(0 0% 16%);
+  --ring: hsl(0 0% 40%);
+  --chart-1: hsl(0 0% 82%);
+  --chart-2: hsl(142 71% 45%);
+  --chart-3: hsl(199 89% 48%);
+  --chart-4: hsl(280 67% 60%);
+  --chart-5: hsl(0 72% 51%);
+  --sidebar: hsl(0 0% 4%);
+  --sidebar-foreground: #7A7A7A;
+  --sidebar-primary: hsl(0 0% 95%);
+  --sidebar-primary-foreground: hsl(0 0% 5%);
+  --sidebar-accent: hsl(0 0% 10%);
+  --sidebar-accent-foreground: hsl(0 0% 95%);
+  --sidebar-border: hsl(0 0% 9%);
+  --sidebar-ring: hsl(0 0% 40%);
+  --elevate-1: rgba(255,255,255,0.03);
+  --elevate-2: rgba(255,255,255,0.06);
+  --glow-primary: 0 0 0 1px var(--elevate-2);
+  --glow-success: 0 0 0 1px var(--elevate-2);
+  --gradient-brand: linear-gradient(180deg, hsl(0 0% 95%), hsl(0 0% 85%));
 }
 
 @layer base {
@@ -121,11 +113,7 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    background-image:
-      radial-gradient(ellipse 60% 40% at 85% -10%, color-mix(in srgb, var(--color-deep-indigo) 45%, transparent), transparent 70%),
-      linear-gradient(color-mix(in srgb, var(--color-cool-gray) 4%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--color-cool-gray) 4%, transparent) 1px, transparent 1px);
-    background-size: 100% 100%, 48px 48px, 48px 48px;
+    background-image: radial-gradient(ellipse 80% 50% at 50% -10%, hsl(0 0% 9%), transparent 70%);
     background-attachment: fixed;
   }
   h1, h2, h3 {
@@ -139,8 +127,8 @@
 }
 
 @utility panel {
-  background-color: color-mix(in srgb, var(--color-graphite) 85%, transparent);
-  border: 1px solid var(--color-border);
+  background-color: var(--card);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-xl);
   backdrop-filter: blur(12px);
 }
