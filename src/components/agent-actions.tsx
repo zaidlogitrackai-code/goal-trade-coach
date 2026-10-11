@@ -23,8 +23,8 @@ export function AgentActions({ actions, onChange }: { actions: StoredAction[]; o
       try { await runAction(next[i]!); next[i] = { ...next[i]!, status: "done" }; ok++; }
       catch (e) { toast.error(`${next[i]!.summary}: ${e instanceof Error ? e.message : "فشل"}`); }
     }
-    await set(next);
     await qc.invalidateQueries();
+    await set(next);
     if (ok) toast.success(`تم تنفيذ ${ok} إجراء`);
     setBusy(false);
   }
