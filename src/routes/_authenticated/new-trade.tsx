@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, Loading } from "@/components/app-shell";
@@ -14,7 +14,7 @@ import { AiTradeInput } from "@/components/ai-trade-input";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
-import { evaluateTradeGate, type TradeGateResult } from "@/lib/trade-gate";
+import { evaluateTradeGate } from "@/lib/trade-gate";
 import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/new-trade")({
@@ -37,6 +37,10 @@ const CHECKLIST_ITEMS = [
 
 const EMOTIONS = ["هادئ", "واثق", "متوتر", "متحمس", "خائف", "غاضب", "طمع"];
 const SENSITIVE_EMOTIONS = ["طمع", "خائف", "متوتر", "غاضب"];
+/** Minimum answer length for "what is pushing you to enter?" */
+const MOTIVE_MIN = 10;
+/** Minimum length for an override justification. */
+const JUSTIFY_MIN = 15;
 
 function NewTrade() {
   const s = useQuery(settingsQuery);
@@ -80,10 +84,8 @@ function NewTrade() {
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<AiTrade[]>([]);
 
-  const isLoading = s.isLoading || t.isLoading || !s.data;
-  if (isLoading) return <Loading />;
-
   const settings = s.data;
+  if (s.isLoading || t.isLoading || !settings) return <Loading />;
   const start = startOfToday().getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const metrics = computeDayMetrics(settings, t.data ?? [], violationsToday);
@@ -102,34 +104,43 @@ function NewTrade() {
   const allChecked = checks.every(Boolean);
 
   // Evaluate Trade Gate
-  const gateResult: TradeGateResult = useMemo(() => {
-    return evaluateTradeGate({
-      settings,
-      metrics,
-      input: {
-        symbol: f.symbol,
-        direction: f.direction,
-        entry_price: entryNum,
-        stop_loss: slNum,
-        take_profit: tpNum,
-        position_size: sizeNum,
-        risk_amount: riskNum,
-        strategy_id: f.strategy_id || null,
-        emotion: f.emotion || null,
-        checklist_passed: allChecked,
-      },
-      activeSession,
-      allowedStrategyIds,
-      openTrades: (t.data ?? []).filter((x) => x.status === "open").map((x) => ({
-        status: x.status,
-        pnl: x.pnl,
-        risk_amount: x.risk_amount,
-        opened_at: x.opened_at,
-        closed_at: x.closed_at,
-      })),
-      currentBalance: settings.starting_balance,
-    });
-  }, [settings, metrics, f, entryNum, slNum, tpNum, sizeNum, riskNum, allChecked, activeSession, allowedStrategyIds, t.data]);
+  // Plain call, not useMemo: hooks can't run after the loading early-return above.
+  const gateResult = evaluateTradeGate({
+    settings,
+    metrics,
+    input: {
+      symbol: f.symbol,
+      direction: f.direction,
+      entry_price: entryNum,
+      stop_loss: slNum,
+      take_profit: tpNum,
+      position_size: sizeNum,
+      risk_amount: riskNum,
+      strategy_id: f.strategy_id || null,
+      emotion: f.emotion || null,
+      checklist_passed: allChecked,
+    },
+    activeSession,
+    allowedStrategyIds,
+    openTrades: (t.data ?? []).filter((x) => x.status === "open").map((x) => ({
+      status: x.status,
+      pnl: x.pnl,
+      risk_amount: x.risk_amount,
+      opened_at: x.opened_at,
+      closed_at: x.closed_at,
+    })),
+    currentBalance: settings.starting_balance,
+  });
+
+  const sensitive = !!f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion);
+  const emotionCheckDone = !sensitive || (reflectionReason.trim().length >= MOTIVE_MIN && isCompensating !== null);
+  const revenge = sensitive && isCompensating === true;
+  // Everything that makes this trade a documented exception.
+  const overrideReasons = [
+    ...gateResult.reasons,
+    ...(!slNum && !gateResult.reasons.some((r) => r.includes("وقف الخسارة")) ? ["لم يتم تحديد وقف الخسارة قبل الدخول"] : []),
+    ...(revenge ? ["صفقة لتعويض خسارة سابقة (صفقة انتقامية)"] : []),
+  ];
 
   // Calculations for display
   const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
@@ -191,17 +202,14 @@ function NewTrade() {
       if (tradeErr) throw tradeErr;
 
       // 2. If this was an override with rule violations or no stop loss, log a rule_violation record!
-      if (isOverride || gateResult.reasons.length > 0 || !slNum) {
-        const violationReasons = [...gateResult.reasons];
-        if (!slNum && !violationReasons.some((r) => r.includes("وقف الخسارة"))) {
-          violationReasons.push("دخول بدون وقف خسارة");
-        }
-        await supabase.from("rule_violations").insert({
+      if (isOverride || overrideReasons.length > 0) {
+        const { error: vErr } = await supabase.from("rule_violations").insert({
           user_id,
           trade_id: newTrade?.id ?? null,
           occurred_at: nowIso,
-          note: `استثناء مصرح: ${violationReasons.join(" · ")}${overrideReasonText ? ` | المبرر: ${overrideReasonText}` : ""}`,
+          note: `استثناء مصرح: ${overrideReasons.join(" · ")}${overrideReasonText ? ` | المبرر: ${overrideReasonText}` : ""}`,
         });
+        if (vErr) toast.error(`سُجّلت الصفقة لكن تعذر تسجيل المخالفة: ${vErr.message}`);
       }
 
       await qc.invalidateQueries({ queryKey: ["trades"] });
@@ -212,12 +220,16 @@ function NewTrade() {
         setF(toForm(queue[0]!, st.data ?? []));
         setQueue(queue.slice(1));
         setChecks(CHECKLIST_ITEMS.map(() => false));
+        setReflectionReason("");
+        setIsCompensating(null);
+        setOverrideNote("");
         toast.message("هذه الصفقة التالية المستخرجة، راجعها");
       } else {
         navigate({ to: "/trades" });
       }
-    } catch {
-      toast.error("تعذر حفظ الصفقة");
+    } catch (e) {
+      const msg = (e as { message?: string } | null)?.message;
+      toast.error(msg ? `تعذر حفظ الصفقة: ${msg}` : "تعذر حفظ الصفقة");
     } finally {
       setBusy(false);
       setOverrideModalOpen(false);
@@ -237,8 +249,13 @@ function NewTrade() {
       return;
     }
 
-    // If there are gate violations or missing stop loss, require explicit justification modal!
-    if (!gateResult.allowed || slNum == null || slNum === 0) {
+    if (!emotionCheckDone) {
+      toast.error("أجب عن سؤالَي فحص المشاعر قبل التسجيل.");
+      return;
+    }
+
+    // Gate violations, no stop loss, or a revenge trade need a written justification.
+    if (overrideReasons.length > 0) {
       setOverrideModalOpen(true);
       return;
     }
@@ -551,6 +568,9 @@ function NewTrade() {
                   value={reflectionReason}
                   onChange={(e) => setReflectionReason(e.target.value)}
                 />
+                {reflectionReason.trim().length < MOTIVE_MIN && (
+                  <p className="text-muted-foreground">اكتب {MOTIVE_MIN} أحرف على الأقل.</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">هل هذه الصفقة محاولة لتعويض خسارة سابقة؟</Label>
@@ -572,6 +592,11 @@ function NewTrade() {
                     لا، إعداد مستقل
                   </Button>
                 </div>
+                {revenge && (
+                  <p className="text-destructive">
+                    صفقة التعويض أكثر صفقة تكسر الخطة. إذا كملت، بتحتاج تكتب مبرر وبتنسجل كمخالفة.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -595,8 +620,8 @@ function NewTrade() {
           variant={
             !gateResult.allowed
               ? "destructive"
-              : slNum == null || slNum === 0
-              ? "warning"
+              : overrideReasons.length > 0
+              ? "outline"
               : "default"
           }
           className="w-full sm:w-auto text-base"
@@ -605,7 +630,9 @@ function NewTrade() {
             ? "جارٍ الحفظ…"
             : !gateResult.allowed && !gateResult.canOverride
             ? "التداول موقوف اليوم"
-            : !gateResult.allowed || slNum == null
+            : !emotionCheckDone
+            ? "أجب عن فحص المشاعر أولاً"
+            : overrideReasons.length > 0
             ? "تسجيل مع مبرر استثناء"
             : "تسجيل الصفقة بانضباط"}
         </Button>
@@ -628,10 +655,9 @@ function NewTrade() {
             <div className="rounded-lg bg-muted p-3 text-xs space-y-1">
               <span className="font-semibold block">المخالفات المرصودة:</span>
               <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
-                {gateResult.reasons.map((r, i) => (
+                {overrideReasons.map((r, i) => (
                   <li key={i}>{r}</li>
                 ))}
-                {!slNum && <li>لم يتم تحديد وقف الخسارة قبل الدخول</li>}
               </ul>
             </div>
 
@@ -643,6 +669,9 @@ function NewTrade() {
                 value={overrideNote}
                 onChange={(e) => setOverrideNote(e.target.value)}
               />
+              {overrideNote.trim().length < JUSTIFY_MIN && (
+                <p className="text-xs text-muted-foreground">اكتب {JUSTIFY_MIN} حرفًا على الأقل.</p>
+              )}
             </div>
           </div>
 
@@ -652,7 +681,7 @@ function NewTrade() {
             </Button>
             <Button
               variant="destructive"
-              disabled={!overrideNote.trim()}
+              disabled={busy || overrideNote.trim().length < JUSTIFY_MIN}
               onClick={() => executeSave(true, overrideNote.trim())}
             >
               تأكيد الاستثناء والتسجيل
