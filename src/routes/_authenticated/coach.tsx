@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
+import { prepareImage } from "@/lib/image";
 
 export const Route = createFileRoute("/_authenticated/coach")({
   head: () => ({ meta: [{ title: "المدرب الذكي — نظام هادي" }, { name: "description", content: "مدرب شخصي يتكلم معك بالعربي ويعرف صفقاتك وقواعدك." }] }),
@@ -26,11 +27,19 @@ function CoachPage() {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [image, setImage] = useState<string | null>(null);
+  // The assistant message whose actions should auto-run (only the reply we just received).
+  const [freshId, setFreshId] = useState<string | null>(null);
+  const [auto, setAuto] = useState(true);
+  useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
+  function toggleAuto() {
+    const next = !auto;
+    setAuto(next);
+    localStorage.setItem("coach-auto", next ? "on" : "off");
+  }
   const fileRef = useRef<HTMLInputElement>(null);
-  function pick(file?: File) {
+  async function pick(file?: File) {
     if (!file) return;
-    if (file.size > 5_000_000) { toast.error("الصورة أكبر من 5MB"); return; }
-    const r = new FileReader(); r.onload = () => setImage(String(r.result)); r.readAsDataURL(file);
+    try { setImage(await prepareImage(file)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
   }
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +89,8 @@ function CoachPage() {
       if (!id) return;
       const img = image;
       setText(""); setImage(null); setPending(msg);
-      await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
+      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
+      if (res?.messageId) setFreshId(res.messageId);
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
@@ -94,7 +104,7 @@ function CoachPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="المدرب الذكي" subtitle="يحلل معك، ينصحك، ويسجّل وينفّذ عنك بعد موافقتك." action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
+      <PageHeader title="المدرب الذكي" subtitle={auto ? "قل له شو بدك، وهو ينفّذ. الحذف وتخفيف حدود المخاطر بس بيحتاجوا موافقتك." : "يحلل معك، ينصحك، ويجهّز لك الإجراءات لتوافق عليها."} action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="panel max-h-[70vh] space-y-1 overflow-y-auto p-2">
           {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
@@ -113,7 +123,7 @@ function CoachPage() {
             {list.map((m) => (
               <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
-                  <AgentActions actions={m.actions as unknown as StoredAction[]} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
+                  <AgentActions key={m.id} actions={m.actions as unknown as StoredAction[]} {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
                 )}
               </div>
             ))}
@@ -127,10 +137,17 @@ function CoachPage() {
               <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
             </div>
           )}
-          <div className="flex gap-2 border-t border-border p-3">
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          <div className="flex items-center justify-between gap-2 border-t border-border px-3 pt-2 text-xs text-muted-foreground">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input type="checkbox" checked={auto} onChange={toggleAuto} className="accent-primary" />
+              تنفيذ تلقائي
+            </label>
+            <span>{auto ? "بوابة التداول والتهدئة تبقى مفعّلة" : "كل إجراء يحتاج ضغطة موافقة"}</span>
+          </div>
+          <div className="flex gap-2 p-3">
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" variant="secondary" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
-            <Textarea onPaste={(e) => pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
+            <Textarea onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
             <Button onClick={submit} disabled={busy || !text.trim()}>إرسال</Button>
           </div>
         </div>

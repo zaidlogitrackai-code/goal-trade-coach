@@ -10,15 +10,21 @@ type Sb = SupabaseClient<Database>;
 async function buildContext(sb: Sb) {
   const [s, t, r, st] = await Promise.all([
     sb.from("trading_settings").select("*").maybeSingle(),
-    sb.from("trades").select("symbol,direction,status,pnl,risk_amount,emotion,checklist_passed,opened_at,strategy_id").order("opened_at", { ascending: false }).limit(40),
-    sb.from("trading_rules").select("title,description,active").eq("active", true),
+    sb.from("trades").select("id,symbol,direction,status,entry_price,stop_loss,take_profit,pnl,risk_amount,emotion,checklist_passed,opened_at,closed_at,strategy_id").order("opened_at", { ascending: false }).limit(40),
+    sb.from("trading_rules").select("title,description,active"),
     sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
+  ]);
+  const [notes, session] = await Promise.all([
+    sb.from("knowledge_notes").select("title,category").order("created_at", { ascending: false }).limit(50),
+    sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
   ]);
   return `بيانات المتداول (استخدمها فقط كسياق):
 الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
-القواعد الفعالة: ${JSON.stringify(r.data ?? [])}
+القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
-آخر الصفقات: ${JSON.stringify(t.data ?? [])}`;
+الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
+عناوين الملاحظات: ${JSON.stringify(notes.data ?? [])}
+آخر الصفقات (id للإشارة إليها): ${JSON.stringify(t.data ?? [])}`;
 }
 
 function fail(e: unknown): never {
@@ -59,7 +65,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "add_rule", "create_trade", "close_trade", "add_note"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -69,18 +75,31 @@ const AGENT_SCHEMA = {
   },
 };
 
-const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتداول الشخصي، وعندك صلاحية تقترح تنفيذ أي شيء في النظام نيابة عنه.
+const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتداول الشخصي، وتقدر تنفّذ أي شيء في النظام نيابة عنه: المستخدم يقول، وأنت تجهّز الإجراءات، والنظام ينفّذها مباشرة.
 مهمتك: تحلل صفقاته معه، تفكر معه، تنصحه، تمنعه من الطمع، وتلزمه بالهدف اليومي والأسبوعي والشهري وحدود الخسارة. إذا وصل لهدفه أو حد خسارته قل له يوقف بوضوح.
 إذا ناقصك معلومة (استراتيجيته، حدوده، أهدافه) اسأله سؤال أو سؤالين واضحين.
-عندما يطلب منك أو يذكر شيء يحتاج حفظ، أضف إجراء في actions (لا ينفذ إلا بعد موافقته بزر). data نص JSON بهذه الأشكال:
+عندما يطلب منك أو يذكر شيء يحتاج حفظ أو تعديل أو حذف، أضف إجراء في actions. النظام ينفّذ الإجراءات تلقائيًا، ما عدا الحذف وتخفيف حدود المخاطر وتحريك وقف الخسارة فتحتاج ضغطة موافقة. data نص JSON بهذه الأشكال:
 - update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name"} (أرسل فقط الحقول المذكورة، أرقام موجبة)
 - add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
 - add_rule: {"title","description"}
 - create_trade: {"symbol" (مثل XAUUSD، أو null إذا ما ذكره),"direction":"long"|"short","entry_price","stop_loss","take_profit","position_size","risk_amount","strategy" (اسم استراتيجية موجودة أو null),"emotion","notes","status":"open"|"closed","pnl" (للصفقة المنتهية، سالب للخسارة),"exit_price"}
 - close_trade: {"symbol" (أو null),"pnl" (سالب للخسارة),"exit_price","notes"} — إذا ما فيه صفقة مفتوحة تنسجل كصفقة منتهية تلقائياً.
 - add_note: {"title","content","category"}
+- update_strategy: {"name" (الاسم الحالي بالضبط),"new_name","description","entry_conditions","exit_conditions","markets","timeframes","allowed" (true/false)} — أرسل فقط الحقول المتغيرة
+- delete_strategy: {"name"}
+- update_rule: {"title" (العنوان الحالي بالضبط),"new_title","description","active" (true/false لتفعيل/إيقاف القاعدة)}
+- delete_rule: {"title"}
+- update_trade: {"trade_id" (من آخر الصفقات) أو "symbol","entry_price","stop_loss","take_profit","position_size","emotion","notes","close_notes","strategy","pnl","exit_price" (pnl وexit_price للصفقات المغلقة فقط)} — أرسل فقط الحقول المتغيرة
+- delete_trade: {"trade_id"} أو {"symbol"}
+- delete_note: {"title"}
+- start_session: {"plan" (خطة الجلسة),"mood"}
+- end_session: {"review" (مراجعة الجلسة)}
+- start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
+- mark_notifications_read: {}
 قواعد مهمة جداً:
-1. أنت لا تحفظ أي شيء بنفسك. لا تقل أبداً "سجلتها" أو "تم الحفظ". قل "جهزت لك زر الموافقة تحت" فقط إذا أضفت فعلاً إجراء في actions.
+1. التنفيذ يتم بعد ردك، فلا تقل "تم" أو "سجلتها". قل "جهزت التنفيذ" أو "بنفذها لك الحين"، والنتيجة تظهر تحت ردك.
+1.1. لا تحذف شيئًا إلا إذا طلب المستخدم الحذف صراحة. لا تخفف حدود المخاطر لتسمح له بالتداول بعد ما وصل حده؛ ذكّره بالحد بدلًا من ذلك.
+1.2. إذا كان في تهدئة أو تجاوز حدًا، لا تجهز صفقة جديدة. بوابة التداول ترفض الصفقات المخالفة على أي حال.
 2. إذا طلب تسجيل صفقة (بنص أو صورة)، لازم تضيف create_trade في نفس الرد بالمعلومات المتوفرة حتى لو ناقص الرمز أو الاتجاه (حط null أو long). الصفقة المنتهية بربح أو خسارة: status "closed" مع pnl. لا تستبدل الصفقة بملاحظة add_note.
 3. إذا قال "سجلها" أو "نفذ" لشيء ذكرتموه قبل، جهّز الإجراء الآن من المحادثة السابقة بدون ما تعيد الأسئلة.
 4. اقرأ الصور المرفقة بعناية واستخرج منها كل الصفقات (الرمز، الاتجاه، الدخول، الخروج، الربح).
@@ -105,12 +124,12 @@ export const coachReply = createServerFn({ method: "POST" })
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image }] });
       const { reply, actions } = await runAgent(sb, "", input);
-      const { error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
+      const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
       if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
       await sb.from("coach_threads").update(update).eq("id", data.threadId);
-      return { reply };
+      return { reply, messageId: saved.id };
     } catch (e) { fail(e); }
   });
 
