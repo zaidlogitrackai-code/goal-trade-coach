@@ -34,3 +34,13 @@ describe("trading status", () => {
   it("counts streak from latest", () =>
     expect(countConsecutiveLosses([closed(-1, 1), closed(5, 2), closed(-1, 3), closed(-2, 4)])).toBe(2));
 });
+
+import { describe as d2, it as i2, expect as e2 } from "vitest";
+import { computeStatus as cs } from "./trading-status";
+d2("cooldown", () => {
+  const base = { daily_target: 0, max_daily_profit: 0, max_daily_loss: 0, max_trades_per_day: 0, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false };
+  const m = { todayPnl: 0, tradesToday: 0, consecutiveLosses: 0, violationsToday: 0, riskUsed: 0 } as never;
+  const now = new Date("2026-01-01T10:00:00Z");
+  i2("active cooldown stops trading", () => { e2(cs({ ...base, cooldown_until: "2026-01-01T10:30:00Z" }, m, now)).toBe("stopped"); });
+  i2("expired cooldown allows trading", () => { e2(cs({ ...base, cooldown_until: "2026-01-01T09:00:00Z" }, m, now)).toBe("ready"); });
+});
