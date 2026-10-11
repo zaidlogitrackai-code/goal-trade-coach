@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { AiError, BASE_PERSONA, callAI } from "./ai.server";
+import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -14,11 +15,21 @@ async function buildContext(sb: Sb) {
     sb.from("trading_rules").select("title,description,active"),
     sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
   ]);
-  const [notes, session] = await Promise.all([
-    sb.from("knowledge_notes").select("title,category").order("created_at", { ascending: false }).limit(50),
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const [notes, session, focusRow, month] = await Promise.all([
+    sb.from("knowledge_notes").select("title,category").neq("category", FOCUS_CATEGORY).order("created_at", { ascending: false }).limit(50),
     sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
+    sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
+    sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,opened_at,closed_at").gte("opened_at", since),
   ]);
-  return `بيانات المتداول (استخدمها فقط كسياق):
+  const focus = parseFocus(focusRow.data?.[0]?.content);
+  const cur = s.data?.currency ?? "USD";
+  const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
+  return `ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
+${focusForPrompt(focus)}
+أنماط من صفقاته آخر 30 يوم: ${insights.length ? insights.map((i) => i.text).join(" ") : "لا يوجد بعد"}
+
+بيانات المتداول (استخدمها فقط كسياق):
 الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
 القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
@@ -65,7 +76,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -96,6 +107,12 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - end_session: {"review" (مراجعة الجلسة)}
 - start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
 - mark_notifications_read: {}
+- update_focus: {"markets" (مثل "XAUUSD, NAS100" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
+ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
+- لما يحكي شيء ثابت عن نفسه (سوقه، أسلوبه، هدفه، نقطة ضعفه، شيء بيتكرر معه)، أضف update_focus بنفس الرد. لا تحفظ مزاج اللحظة أو تفاصيل صفقة وحدة.
+- إذا الملف فاضي أو ناقص (ما في سوق أو هدف أو نقطة ضعف)، اسأله سؤال واحد عنها بآخر ردك.
+- ارجع لنقطة ضعفه وقاعدته لما يكون الكلام متعلق فيها، ونبهه إذا طلب صفقة برّا أسواقه (صفقة برّا سوقه تحتاج موافقته).
+- إذا الأنماط تكشف ضعف مش مكتوب بالملف (مثل خسارة بعد الخسارة)، قله واقترح تحديث الملف.
 قواعد مهمة جداً:
 1. التنفيذ يتم بعد ردك، فلا تقل "تم" أو "سجلتها". قل "جهزت التنفيذ" أو "بنفذها لك الحين"، والنتيجة تظهر تحت ردك.
 1.1. لا تحذف شيئًا إلا إذا طلب المستخدم الحذف صراحة. لا تخفف حدود المخاطر لتسمح له بالتداول بعد ما وصل حده؛ ذكّره بالحد بدلًا من ذلك.

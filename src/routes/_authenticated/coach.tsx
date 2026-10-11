@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { Crosshair, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/app-shell";
@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
 import { prepareImage } from "@/lib/image";
+import { isFocusEmpty } from "@/lib/focus";
+import { focusQuery } from "@/lib/focus-store";
 
 export const Route = createFileRoute("/_authenticated/coach")({
   head: () => ({ meta: [{ title: "المدرب الذكي — نظام هادي" }, { name: "description", content: "مدرب شخصي يتكلم معك بالعربي ويعرف صفقاتك وقواعدك." }] }),
@@ -43,6 +45,7 @@ function CoachPage() {
   }
   const endRef = useRef<HTMLDivElement>(null);
 
+  const focus = useQuery(focusQuery);
   const threads = useQuery({
     queryKey: ["threads"],
     queryFn: async () => {
@@ -105,6 +108,24 @@ function CoachPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader title="المدرب الذكي" subtitle={auto ? "قل له شو بدك، وهو ينفّذ. الحذف وتخفيف حدود المخاطر بس بيحتاجوا موافقتك." : "يحلل معك، ينصحك، ويجهّز لك الإجراءات لتوافق عليها."} action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
+      {focus.data && (
+        <Link
+          to="/dashboard"
+          className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground hover:border-primary/40"
+        >
+          <Crosshair className="size-3.5 text-primary" aria-hidden="true" />
+          {isFocusEmpty(focus.data) ? (
+            <span>المدرب لسا ما بيعرف سوقك وهدفك ونقطة ضعفك. احكيله عنهم وهو بيحفظهم.</span>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">مركّز معك على:</span>
+              {focus.data.markets.length > 0 && <span dir="ltr" className="font-data">{focus.data.markets.join(" · ")}</span>}
+              {focus.data.weakness && <span>الضعف: {focus.data.weakness}</span>}
+              {focus.data.goal && <span>الهدف: {focus.data.goal}</span>}
+            </>
+          )}
+        </Link>
+      )}
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="panel max-h-[70vh] space-y-1 overflow-y-auto p-2">
           {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
