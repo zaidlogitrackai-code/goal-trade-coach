@@ -60,6 +60,16 @@ export const violationsQuery = queryOptions({
   },
 });
 
+/** The open trading session, if any (ended_at is null). Invalidated with ["sessions"]. */
+export const activeSessionQuery = queryOptions({
+  queryKey: ["sessions", "active"],
+  queryFn: async () => {
+    const { data, error } = await supabase.from("trading_sessions").select("*").is("ended_at", null).order("started_at", { ascending: false }).limit(1);
+    if (error) throw error;
+    return data?.[0] ?? null;
+  },
+});
+
 export { uid as currentUserId };
 
 export function fmtMoney(n: number | null | undefined, currency = "USD") {

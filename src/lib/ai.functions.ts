@@ -167,8 +167,9 @@ export const reportSummary = createServerFn({ method: "POST" })
 const TRADE_SCHEMA = {
   type: "json_schema", name: "trades", strict: true,
   schema: {
-    type: "object", additionalProperties: false, required: ["trades"],
+    type: "object", additionalProperties: false, required: ["message", "trades"],
     properties: {
+      message: { type: "string" },
       trades: {
         type: "array",
         items: {
@@ -202,10 +203,17 @@ export const parseTrade = createServerFn({ method: "POST" })
         context.supabase.from("strategies").select("name"),
         context.supabase.from("trades").select("symbol,direction,entry_price").eq("status", "open"),
       ]);
-      const instructions = `استخرج الصفقات من كلام المتداول أو الصورة (لقطة منصة/شارت). لكل صفقة: action="open" لصفقة جديدة، أو "close" إذا يقول إنه أقفل صفقة. symbol بالإنجليزي بصيغة المنصات (الذهب=XAUUSD، بتكوين=BTCUSD، يورو دولار=EURUSD). direction long للشراء وshort للبيع. risk مبلغ المخاطرة بالعملة. strategy يجب أن يكون أحد هذه الأسماء بالضبط أو null: ${JSON.stringify((st.data ?? []).map((x) => x.name))}. emotion واحد من: هادئ، واثق، متوتر، متحمس، خائف، غاضب، طمع، أو null. الصفقات المفتوحة حالياً: ${JSON.stringify(open.data ?? [])}. لا تخترع أرقام غير مذكورة — استخدم null. notes ملخص قصير بالعربي.`;
+      const imageGuide = data.image ? `
+قراءة الصورة:
+- الرمز من عنوان الشارت أعلى اليسار (مثل XAUUSD أو GOLD أو BTCUSDT) والفريم بجانبه.
+- أداة Long/Short Position في TradingView (مستطيل أخضر/أزرق فوق مستطيل أحمر أو العكس): الدخول هو الحد الفاصل بين اللونين، الوقف هو طرف المنطقة الحمراء، والهدف هو طرف المنطقة الخضراء. المنطقة الخضراء فوق = long، تحت = short. اقرأ الأسعار من الملصقات أو من محور السعر يمين الشارت.
+- خطوط الأوامر المفتوحة (Entry/SL/TP أو خطوط أفقية بملصقات سعر)، ونوافذ تأكيد الأمر، وسجل الصفقات في المنصات.
+- إذا كانت الصورة شارت بدون صفقة مرسومة أو أرقام مقروءة، لا تخترع: أعد صفقة واحدة بما ظهر فعلاً (الرمز مثلاً) والباقي null، أو trades فارغة إذا لم يظهر شيء.` : "";
+      const instructions = `استخرج الصفقات من كلام المتداول أو الصورة (لقطة منصة/شارت). لكل صفقة: action="open" لصفقة جديدة، أو "close" إذا يقول إنه أقفل صفقة. symbol بالإنجليزي بصيغة المنصات (الذهب=XAUUSD، بتكوين=BTCUSD، يورو دولار=EURUSD). direction long للشراء وshort للبيع. risk مبلغ المخاطرة بالعملة. strategy يجب أن يكون أحد هذه الأسماء بالضبط أو null: ${JSON.stringify((st.data ?? []).map((x) => x.name))}. emotion واحد من: هادئ، واثق، متوتر، متحمس، خائف، غاضب، طمع، أو null. الصفقات المفتوحة حالياً: ${JSON.stringify(open.data ?? [])}. لا تخترع أرقام غير مذكورة — استخدم null. notes ملخص قصير بالعربي.${imageGuide}
+message: جملة عربية قصيرة للمتداول: ماذا قرأت، وما الناقص (مثل: "قرأت الرمز XAUUSD، لكن ما فيه دخول أو وقف واضح. ارسم أداة Long Position أو اكتب الأرقام.").`;
       const content: Record<string, unknown>[] = [{ type: "input_text", text: data.text || "استخرج الصفقة من الصورة." }];
-      if (data.image) content.push({ type: "input_image", image_url: data.image });
+      if (data.image) content.push({ type: "input_image", image_url: data.image, detail: "high" });
       const out = await callAI(instructions, [{ role: "user", content }], TRADE_SCHEMA);
-      return JSON.parse(out) as { trades: import("./ai-trade").AiTrade[] };
+      return JSON.parse(out) as { message: string; trades: import("./ai-trade").AiTrade[] };
     } catch (e) { fail(e); }
   });
