@@ -44,3 +44,22 @@ d2("cooldown", () => {
   i2("active cooldown stops trading", () => { e2(cs({ ...base, cooldown_until: "2026-01-01T10:30:00Z" }, m, now)).toBe("stopped"); });
   i2("expired cooldown allows trading", () => { e2(cs({ ...base, cooldown_until: "2026-01-01T09:00:00Z" }, m, now)).toBe("ready"); });
 });
+
+describe("weekly & monthly limits", () => {
+  const now = new Date("2026-10-14T12:00:00"); // Wednesday
+  const base = { daily_target: 0, max_daily_profit: 0, max_daily_loss: 0, max_trades_per_day: 0, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false };
+  const tr = (pnl: number, at: string) => ({ status: "closed", pnl, risk_amount: 0, opened_at: at, closed_at: at });
+  const trades = [tr(-300, "2026-10-12T10:00:00"), tr(-250, "2026-10-13T10:00:00"), tr(400, "2026-10-02T10:00:00")];
+  it("stops at the weekly max loss", () => {
+    const s = { ...base, weekly_max_loss: 500 };
+    expect(computeStatus(s, computeDayMetrics(s, trades, 0, now), now)).toBe("loss_limit");
+  });
+  it("monthly target hit when month PnL reaches it", () => {
+    const s = { ...base, monthly_target: 300 };
+    const t2 = [tr(350, "2026-10-02T10:00:00")];
+    expect(computeStatus(s, computeDayMetrics(s, t2, 0, now), now)).toBe("target_hit");
+  });
+  it("week pnl ignores last week's trades", () => {
+    expect(computeDayMetrics(base, trades, 0, now).weekPnl).toBe(-550);
+  });
+});
