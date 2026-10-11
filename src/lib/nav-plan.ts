@@ -28,6 +28,8 @@ export type NavState = {
   violationsWeek: number;
   /** Trading is blocked today (limit hit, cooldown, paused). */
   blocked: boolean;
+  /** Page of the client's current step (journey.ts); always pinned first. */
+  nextStep?: NavPath | null;
 };
 
 export type NavPlan = { pinned: NavPath[]; more: NavPath[]; mobile: NavPath[] };
@@ -41,6 +43,7 @@ export function planNav(s: NavState | null): NavPlan {
     };
 
   const want: NavPath[] = [];
+  if (s.nextStep && s.nextStep !== "/dashboard") want.push(s.nextStep);
   if (s.blocked) want.push(s.violationsWeek > 0 ? "/discipline" : "/trades", "/coach");
   else if (s.activeSession) want.push("/new-trade", "/session");
   else want.push("/session");

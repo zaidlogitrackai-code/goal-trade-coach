@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { analyzeChart } from "@/lib/ai.functions";
 import { fmtDate } from "@/lib/queries";
 import { prepareImage } from "@/lib/image";
+import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
 
 export const Route = createFileRoute("/_authenticated/analyst")({
   head: () => ({ meta: [{ title: "المحلل الذكي — نظام هادي" }, { name: "description", content: "ارفع صورة الشارت واحصل على تحليل مبني على قواعدك واستراتيجياتك." }] }),
@@ -46,9 +47,10 @@ function AnalystPage() {
 
   async function submit() {
     if (!image) { toast.error("ارفع صورة الشارت أولاً"); return; }
+    if (symbol.trim() && !forexSymbol(symbol)) { toast.error(FOREX_ONLY_MSG); return; }
     setBusy(true); setResult(null);
     try {
-      const row = await run({ data: { image, symbol: symbol.toUpperCase(), timeframe, question } });
+      const row = await run({ data: { image, symbol: forexSymbol(symbol) ?? "", timeframe, question } });
       setResult(row.result);
       qc.invalidateQueries({ queryKey: ["analyses"] });
     } catch (e) {
@@ -72,7 +74,7 @@ function AnalystPage() {
             <input type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="BTCUSD" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
+            <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="EURUSD" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
             <div className="space-y-2"><Label>الفريم</Label><Input dir="ltr" placeholder="H1" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} /></div>
           </div>
           <div className="space-y-2"><Label>سؤالك (اختياري)</Label><Textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="مثلاً: هل الدخول شراء الآن مناسب؟" /></div>

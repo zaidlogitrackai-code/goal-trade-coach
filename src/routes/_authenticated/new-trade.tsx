@@ -16,6 +16,8 @@ import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, v
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
 import { evaluateTradeGate } from "@/lib/trade-gate";
 import { inMarkets, splitMarkets } from "@/lib/focus";
+import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
+import { useCapital } from "@/lib/capital-store";
 import { focusQuery } from "@/lib/focus-store";
 import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
 
@@ -50,6 +52,7 @@ function NewTrade() {
   const v = useQuery(violationsQuery);
   const st = useQuery(strategiesQuery);
   const focus = useQuery(focusQuery);
+  const capital = useCapital();
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -101,7 +104,8 @@ function NewTrade() {
   const focusMarkets = focus.data?.markets ?? [];
   const chosenStrategy = strategies.find((x) => x.id === f.strategy_id);
   const strategyMarkets = splitMarkets(chosenStrategy?.markets);
-  const marketWarnings = [
+  const notForex = f.symbol.trim() !== "" && !forexSymbol(f.symbol);
+  const marketWarnings = notForex ? [] : [
     inMarkets(f.symbol, focusMarkets) === false
       ? `هذا الأصل برّا سوقك (${focusMarkets.join("، ")}). متأكد إنه مش تشتت؟`
       : null,
@@ -145,7 +149,7 @@ function NewTrade() {
       opened_at: x.opened_at,
       closed_at: x.closed_at,
     })),
-    currentBalance: settings.starting_balance,
+    currentBalance: capital?.summary.balance ?? settings.starting_balance,
   });
 
   const sensitive = !!f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion);
@@ -179,6 +183,10 @@ function NewTrade() {
       toast.error("يرجى إدخال رمز الأصل");
       return;
     }
+    if (!forexSymbol(f.symbol)) {
+      toast.error(FOREX_ONLY_MSG);
+      return;
+    }
 
     setBusy(true);
     try {
@@ -199,7 +207,7 @@ function NewTrade() {
         .from("trades")
         .insert({
           user_id,
-          symbol: f.symbol.trim().toUpperCase(),
+          symbol: forexSymbol(f.symbol)!,
           direction: f.direction,
           strategy_id: f.strategy_id || null,
           entry_price: entryNum,
@@ -256,6 +264,10 @@ function NewTrade() {
     e.preventDefault();
     if (!f.symbol.trim()) {
       toast.error("يرجى إدخال الأصل");
+      return;
+    }
+    if (!forexSymbol(f.symbol)) {
+      toast.error(FOREX_ONLY_MSG);
       return;
     }
 
@@ -376,10 +388,11 @@ function NewTrade() {
             <Input
               id="symbol"
               dir="ltr"
-              placeholder="EURUSD أو XAUUSD أو 2222"
+              placeholder="EURUSD أو XAUUSD"
               value={f.symbol}
               onChange={(e) => setF({ ...f, symbol: e.target.value })}
-              aria-describedby={marketWarnings.length ? "symbol-warn" : undefined}
+              aria-invalid={notForex || undefined}
+              aria-describedby={notForex ? "symbol-forex" : marketWarnings.length ? "symbol-warn" : undefined}
             />
             {focusMarkets.length > 0 && (
               <div className="flex flex-wrap gap-1.5" aria-label="أسواقك">
@@ -395,6 +408,12 @@ function NewTrade() {
                   </button>
                 ))}
               </div>
+            )}
+            {notForex && (
+              <p id="symbol-forex" role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                {FOREX_ONLY_MSG} اكتب زوج مثل EURUSD أو XAUUSD.
+              </p>
             )}
             {marketWarnings.length > 0 && (
               <ul id="symbol-warn" className="space-y-1 text-xs text-warning">

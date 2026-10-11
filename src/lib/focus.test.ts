@@ -28,7 +28,7 @@ const money = (n: number) => `${n}$`;
 
 describe("markets", () => {
   it("normalises Arabic names, slashes and separators", () => {
-    expect(splitMarkets("ذهب، EUR/USD و nas100")).toEqual(["XAUUSD", "EURUSD", "NAS100"]);
+    expect(splitMarkets("ذهب، EUR/USD و nas100 بيتكوين")).toEqual(["XAUUSD", "EURUSD"]);
     expect(splitMarkets(["gold", "XAUUSD"])).toEqual(["XAUUSD"]);
   });
   it("judges symbols against specific markets only", () => {
@@ -83,7 +83,7 @@ describe("signals", () => {
       emotion: "متوتر",
     }),
     tr({
-      symbol: "BTCUSD",
+      symbol: "GBPJPY",
       pnl: -80,
       opened_at: "2026-10-05T10:00:00Z",
       closed_at: "2026-10-05T12:00:00Z",
@@ -101,7 +101,7 @@ describe("signals", () => {
   it("finds the revenge window, worst emotion, outside-market and no-stop trades", () => {
     expect(s.afterLoss).toEqual({ count: 2, pnl: -80 });
     expect(s.worstEmotion).toEqual({ emotion: "متوتر", pnl: -80, count: 2 });
-    expect(s.outsideFocus).toEqual({ count: 1, pnl: -80, symbols: ["BTCUSD"] });
+    expect(s.outsideFocus).toEqual({ count: 1, pnl: -80, symbols: ["GBPJPY"] });
     expect(s.noStop).toBe(1);
     expect(s.topSymbols[0]).toEqual({ symbol: "XAUUSD", count: 3 });
   });

@@ -136,7 +136,7 @@ function FocusDialog({ onClose, focus }: { onClose: () => void; focus: FocusProf
     style: focus.style ?? "",
   });
   const fields = [
-    ["markets", "أسواقك", "مثل: ذهب، NAS100"],
+    ["markets", "أزواجك (فوركس فقط)", "مثل: EURUSD، ذهب"],
     ["style", "أسلوبك وجلستك", "مثل: سكالبينغ جلسة نيويورك"],
     ["goal", "هدفك الحالي", "مثل: شهر كامل بدون كسر حد الخسارة"],
     ["weakness", "نقطة ضعفك", "مثل: أكمل تداول بعد ما أوصل الهدف"],

@@ -1,0 +1,99 @@
+import { queryOptions, useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  applyMove,
+  CAPITAL_CATEGORY,
+  CAPITAL_TITLE,
+  computeCapital,
+  parseLedger,
+  removeEntry,
+  type CapitalMove,
+  type CapitalSummary,
+  type Ledger,
+} from "@/lib/capital";
+import { currentUserId, settingsQuery, tradesQuery } from "@/lib/queries";
+
+/** Client-side read/write of the capital ledger (one hidden knowledge_notes row). */
+async function readRow() {
+  const { data, error } = await supabase
+    .from("knowledge_notes")
+    .select("id,content")
+    .eq("category", CAPITAL_CATEGORY)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return data?.[0] ?? null;
+}
+
+export const capitalQuery = queryOptions({
+  queryKey: ["capital"],
+  queryFn: async (): Promise<Ledger> => parseLedger((await readRow())?.content),
+});
+
+async function writeLedger(rowId: string | null, ledger: Ledger) {
+  const content = JSON.stringify(ledger);
+  const { error } = rowId
+    ? await supabase.from("knowledge_notes").update({ content }).eq("id", rowId)
+    : await supabase
+        .from("knowledge_notes")
+        .insert({
+          user_id: await currentUserId(),
+          title: CAPITAL_TITLE,
+          category: CAPITAL_CATEGORY,
+          content,
+        });
+  if (error) throw new Error(error.message);
+}
+
+/** Fresh balance straight from the database (used before every move and by the AI trade gate). */
+export async function loadCapital(): Promise<{
+  rowId: string | null;
+  ledger: Ledger;
+  summary: CapitalSummary;
+}> {
+  const [row, settings, trades] = await Promise.all([
+    readRow(),
+    supabase.from("trading_settings").select("starting_balance,created_at").maybeSingle(),
+    supabase.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
+  ]);
+  if (settings.error) throw new Error(settings.error.message);
+  if (trades.error) throw new Error(trades.error.message);
+  const ledger = parseLedger(row?.content);
+  const summary = computeCapital({
+    starting: Number(settings.data?.starting_balance) || 0,
+    since: settings.data?.created_at ?? null,
+    trades: trades.data ?? [],
+    entries: ledger.entries,
+  });
+  return { rowId: row?.id ?? null, ledger, summary };
+}
+
+export async function moveCapital(move: CapitalMove) {
+  const { rowId, ledger, summary } = await loadCapital();
+  const next = applyMove(ledger, move, summary.balance);
+  await writeLedger(rowId, next.ledger);
+  return next;
+}
+
+export async function deleteCapitalEntry(id: string) {
+  const { rowId, ledger } = await loadCapital();
+  if (!rowId) return;
+  await writeLedger(rowId, removeEntry(ledger, id));
+}
+
+/** Live capital summary from cached queries; null while loading. */
+export function useCapital(): { summary: CapitalSummary; ledger: Ledger } | null {
+  const s = useQuery(settingsQuery);
+  const t = useQuery(tradesQuery);
+  const c = useQuery(capitalQuery);
+  if (!s.data || !t.data || !c.data) return null;
+  return {
+    ledger: c.data,
+    summary: computeCapital({
+      starting: Number(s.data.starting_balance) || 0,
+      since: s.data.created_at,
+      trades: t.data,
+      entries: c.data.entries,
+    }),
+  };
+}

@@ -14,6 +14,9 @@ import { SessionWidget } from "@/components/dashboard/session-widget";
 import { BehaviorWidget } from "@/components/dashboard/behavior-widget";
 import { ActivityList, type ActivityFeedItem } from "@/components/dashboard/activity-list";
 import { FocusCard } from "@/components/dashboard/focus-card";
+import { JourneySteps } from "@/components/dashboard/journey-steps";
+import { CapitalCard } from "@/components/dashboard/capital-card";
+import { useJourney } from "@/lib/use-journey";
 import { RefreshCw, AlertCircle, PlusCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -52,6 +55,7 @@ function Dashboard() {
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
   const strategies = useQuery(strategiesQuery);
+  const journey = useJourney();
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -196,6 +200,9 @@ function Dashboard() {
         }
       />
 
+      {/* 1.1 The client's steps: one clear next action */}
+      {journey && <JourneySteps journey={journey.journey} />}
+
       {/* 2. Main Status Banner (Single Primary Decision & Action) */}
       <StatusBanner
         status={bannerStatus}
@@ -207,6 +214,8 @@ function Dashboard() {
 
       {/* 2.1 Focus: what the trader told the coach, next to what their trades show */}
       <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
+
+      <CapitalCard currency={cur} />
 
       {/* 3. Four Core Metric Cards */}
       <CoreMetrics

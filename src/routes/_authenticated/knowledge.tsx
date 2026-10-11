@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { currentUserId, fmtDate } from "@/lib/queries";
-import { FOCUS_CATEGORY } from "@/lib/focus";
+import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 
 export const Route = createFileRoute("/_authenticated/knowledge")({
   head: () => ({ meta: [{ title: "مركز المعرفة — نظام هادي" }, { name: "description", content: "دروسك وملاحظاتك وأخطاؤك في مكان واحد." }] }),
@@ -27,7 +27,7 @@ function KnowledgePage() {
   const n = useQuery({
     queryKey: ["notes"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("knowledge_notes").select("*").neq("category", FOCUS_CATEGORY).order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("knowledge_notes").select("*").not("category", "in", HIDDEN_NOTES).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },

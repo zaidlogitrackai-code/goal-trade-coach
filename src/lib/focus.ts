@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { forexSymbol } from "./forex";
 
 /**
  * The trader's focus profile: what they told the coach (or typed) about themselves.
@@ -52,67 +53,27 @@ export const isFocusEmpty = (f: FocusProfile) =>
 
 // ---------- markets ----------
 
-const ALIASES: Record<string, string> = {
-  ذهب: "XAUUSD",
-  الذهب: "XAUUSD",
-  GOLD: "XAUUSD",
-  XAU: "XAUUSD",
-  فضة: "XAGUSD",
-  الفضة: "XAGUSD",
-  SILVER: "XAGUSD",
-  XAG: "XAGUSD",
-  نفط: "USOIL",
-  النفط: "USOIL",
-  OIL: "USOIL",
-  WTI: "USOIL",
-  بيتكوين: "BTCUSD",
-  البيتكوين: "BTCUSD",
-  BTC: "BTCUSD",
-  BTCUSDT: "BTCUSD",
-  ناسداك: "NAS100",
-  NASDAQ: "NAS100",
-  NAS: "NAS100",
-  US100: "NAS100",
-  USTEC: "NAS100",
-  داو: "US30",
-  DOW: "US30",
-  DJ30: "US30",
-  يورو: "EURUSD",
-  باوند: "GBPUSD",
-  ين: "USDJPY",
-};
-/** Broad words that describe an asset class; a trade can't be judged against them. */
-const CATEGORIES = new Set([
-  "فوركس",
-  "FOREX",
-  "FX",
-  "كريبتو",
-  "عملات",
-  "CRYPTO",
-  "مؤشرات",
-  "INDICES",
-  "أسهم",
-  "STOCKS",
-  "سلع",
-  "COMMODITIES",
-  "الكل",
-  "ALL",
-]);
+/** Broad words for the whole Forex market; a trade can't be judged against them. */
+const CATEGORIES = new Set(["فوركس", "FOREX", "FX", "عملات", "الكل", "ALL"]);
 
 export function normSymbol(s: string): string {
-  const raw = s.trim();
-  const k = raw.toUpperCase().replace(/[\s/._-]/g, "");
-  return ALIASES[raw] ?? ALIASES[k] ?? k;
+  return (
+    forexSymbol(s) ??
+    s
+      .trim()
+      .toUpperCase()
+      .replace(/[\s/._-]/g, "")
+  );
 }
 
-/** "ذهب، EUR/USD و nas100" -> ["XAUUSD", "EURUSD", "NAS100"] */
+/** "ذهب، EUR/USD و nas100" -> ["XAUUSD", "EURUSD"]: non-Forex markets are dropped. */
 export function splitMarkets(input: string | string[] | null | undefined): string[] {
   const parts = Array.isArray(input) ? input : (input ?? "").split(/[,،;|\n]+|\s+و\s+|\s+/);
   const out: string[] = [];
   for (const p of parts) {
     const t = p.trim();
     if (!t) continue;
-    const n = CATEGORIES.has(t.toUpperCase()) || CATEGORIES.has(t) ? t : normSymbol(t);
+    const n = CATEGORIES.has(t.toUpperCase()) || CATEGORIES.has(t) ? t : forexSymbol(t);
     if (n && !out.includes(n)) out.push(n);
   }
   return out.slice(0, 10);
