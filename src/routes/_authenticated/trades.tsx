@@ -92,15 +92,15 @@ function TradesPage() {
           )}
         </>
       )}
-      <CloseDialog trade={closing} onClose={() => setClosing(null)} />
+      <CloseDialog key={closing?.id ?? "none"} trade={closing} prefill={prefill} onClose={() => { setClosing(null); setPrefill(null); }} />
     </div>
   );
 }
 
-function CloseDialog({ trade, onClose }: { trade: Trade | null; onClose: () => void }) {
+function CloseDialog({ trade, prefill, onClose }: { trade: Trade | null; prefill: { exit: string; pnl: string } | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [pnl, setPnl] = useState("");
-  const [exit, setExit] = useState("");
+  const [pnl, setPnl] = useState(prefill?.pnl ?? "");
+  const [exit, setExit] = useState(prefill?.exit ?? "");
   const [notes, setNotes] = useState("");
   async function save() {
     if (!trade || pnl === "") { toast.error("أدخل النتيجة"); return; }
