@@ -5,7 +5,7 @@ export class AiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
-export async function callAI(instructions: string, input: Record<string, unknown>[]): Promise<string> {
+export async function callAI(instructions: string, input: Record<string, unknown>[], format?: Record<string, unknown>): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new AiError("خدمة الذكاء غير مهيأة.", 401);
   const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
@@ -14,6 +14,7 @@ export async function callAI(instructions: string, input: Record<string, unknown
     body: JSON.stringify({
       model: MODEL, instructions, input, stream: true, store: false,
       reasoning: { effort: "low" },
+      ...(format ? { text: { format } } : {}),
     }),
   });
   if (!res.ok || !res.body) {

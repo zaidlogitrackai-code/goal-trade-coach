@@ -78,3 +78,49 @@ export const reportSummary = createServerFn({ method: "POST" })
       return { text };
     } catch (e) { fail(e); }
   });
+
+const TRADE_SCHEMA = {
+  type: "json_schema", name: "trades", strict: true,
+  schema: {
+    type: "object", additionalProperties: false, required: ["trades"],
+    properties: {
+      trades: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false,
+          required: ["action", "symbol", "direction", "entry", "sl", "tp", "size", "risk", "exit_price", "pnl", "strategy", "emotion", "notes"],
+          properties: {
+            action: { type: "string", enum: ["open", "close"] },
+            symbol: { type: ["string", "null"] },
+            direction: { type: ["string", "null"], enum: ["long", "short", null] },
+            entry: { type: ["number", "null"] }, sl: { type: ["number", "null"] }, tp: { type: ["number", "null"] },
+            size: { type: ["number", "null"] }, risk: { type: ["number", "null"] },
+            exit_price: { type: ["number", "null"] }, pnl: { type: ["number", "null"] },
+            strategy: { type: ["string", "null"] }, emotion: { type: ["string", "null"] }, notes: { type: ["string", "null"] },
+          },
+        },
+      },
+    },
+  },
+};
+
+export const parseTrade = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({
+    text: z.string().max(4000).optional().default(""),
+    image: z.string().startsWith("data:image/").max(8_000_000).optional(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    if (!data.text.trim() && !data.image) throw new Error("اكتب وصف الصفقة أو ارفع صورة.");
+    try {
+      const [st, open] = await Promise.all([
+        context.supabase.from("strategies").select("name"),
+        context.supabase.from("trades").select("symbol,direction,entry_price").eq("status", "open"),
+      ]);
+      const instructions = `استخرج الصفقات من كلام المتداول أو الصورة (لقطة منصة/شارت). لكل صفقة: action="open" لصفقة جديدة، أو "close" إذا يقول إنه أقفل صفقة. symbol بالإنجليزي بصيغة المنصات (الذهب=XAUUSD، بتكوين=BTCUSD، يورو دولار=EURUSD). direction long للشراء وshort للبيع. risk مبلغ المخاطرة بالعملة. strategy يجب أن يكون أحد هذه الأسماء بالضبط أو null: ${JSON.stringify((st.data ?? []).map((x) => x.name))}. emotion واحد من: هادئ، واثق، متوتر، متحمس، خائف، غاضب، طمع، أو null. الصفقات المفتوحة حالياً: ${JSON.stringify(open.data ?? [])}. لا تخترع أرقام غير مذكورة — استخدم null. notes ملخص قصير بالعربي.`;
+      const content: Record<string, unknown>[] = [{ type: "input_text", text: data.text || "استخرج الصفقة من الصورة." }];
+      if (data.image) content.push({ type: "input_image", image_url: data.image });
+      const out = await callAI(instructions, [{ role: "user", content }], TRADE_SCHEMA);
+      return JSON.parse(out) as { trades: unknown[] };
+    } catch (e) { fail(e); }
+  });
