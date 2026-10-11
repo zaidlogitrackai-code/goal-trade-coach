@@ -41,13 +41,13 @@ function SessionPage() {
   async function start() {
     const user_id = await currentUserId();
     const { error } = await supabase.from("trading_sessions").insert({ user_id, plan, mood });
-    if (error) return toast.error("ما قدرت أبدأ الجلسة");
+    if (error) { toast.error("ما قدرت أبدأ الجلسة"); return; }
     setPlan(""); qc.invalidateQueries({ queryKey: ["sessions"] });
   }
   async function end() {
     if (!active) return;
     const { error } = await supabase.from("trading_sessions").update({ ended_at: new Date().toISOString(), review }).eq("id", active.id);
-    if (error) return toast.error("ما قدرت أنهي الجلسة");
+    if (error) { toast.error("ما قدرت أنهي الجلسة"); return; }
     setReview(""); toast.success("انتهت الجلسة"); qc.invalidateQueries({ queryKey: ["sessions"] });
   }
   async function del(id: string) {

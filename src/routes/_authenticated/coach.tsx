@@ -43,13 +43,13 @@ function CoachPage() {
     },
   });
 
-  useEffect(() => { if (!active && threads.data?.length) setActive(threads.data[0].id); }, [threads.data, active]);
+  useEffect(() => { if (!active && threads.data?.length) setActive(threads.data[0]!.id); }, [threads.data, active]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.data, pending]);
 
   async function newThread() {
     const user_id = await currentUserId();
     const { data, error } = await supabase.from("coach_threads").insert({ user_id }).select().single();
-    if (error) return toast.error("ما قدرت أنشئ محادثة");
+    if (error) { toast.error("ما قدرت أنشئ محادثة"); return undefined; }
     await qc.invalidateQueries({ queryKey: ["threads"] });
     setActive(data.id);
     return data.id;
@@ -57,7 +57,7 @@ function CoachPage() {
 
   async function del(id: string) {
     const { error } = await supabase.from("coach_threads").delete().eq("id", id);
-    if (error) return toast.error("ما قدرت أحذف");
+    if (error) { toast.error("ما قدرت أحذف"); return; }
     if (active === id) setActive(null);
     qc.invalidateQueries({ queryKey: ["threads"] });
   }

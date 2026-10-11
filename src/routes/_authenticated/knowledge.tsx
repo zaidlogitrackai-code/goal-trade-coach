@@ -34,17 +34,17 @@ function KnowledgePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!f.title.trim()) return toast.error("اكتب عنوان");
+    if (!f.title.trim()) { toast.error("اكتب عنوان"); return; }
     const user_id = await currentUserId();
     const row = { title: f.title.trim(), category: f.category, content: f.content };
     const { error } = f.id ? await supabase.from("knowledge_notes").update(row).eq("id", f.id) : await supabase.from("knowledge_notes").insert({ ...row, user_id });
-    if (error) return toast.error("ما قدرت أحفظ");
+    if (error) { toast.error("ما قدرت أحفظ"); return; }
     toast.success("تم الحفظ"); setF(empty);
     qc.invalidateQueries({ queryKey: ["notes"] });
   }
   async function del(id: string) {
     const { error } = await supabase.from("knowledge_notes").delete().eq("id", id);
-    if (error) return toast.error("ما قدرت أحذف");
+    if (error) { toast.error("ما قدرت أحذف"); return; }
     qc.invalidateQueries({ queryKey: ["notes"] });
   }
 

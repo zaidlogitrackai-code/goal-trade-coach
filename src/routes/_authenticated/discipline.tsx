@@ -36,7 +36,7 @@ function DisciplinePage() {
   async function save(patch: { cooldown_until?: string | null; cooldown_minutes?: number }) {
     const user_id = await currentUserId();
     const { error } = await supabase.from("trading_settings").update(patch).eq("user_id", user_id);
-    if (error) return toast.error("ما قدرت أحفظ");
+    if (error) { toast.error("ما قدرت أحفظ"); return; }
     qc.invalidateQueries({ queryKey: ["settings"] });
   }
   const m = Number(mins) || 30;

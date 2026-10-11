@@ -39,15 +39,15 @@ function AnalystPage() {
 
   function onFile(f: File | undefined) {
     if (!f) return;
-    if (!f.type.startsWith("image/")) return toast.error("ارفع صورة فقط");
-    if (f.size > 5 * 1024 * 1024) return toast.error("الصورة أكبر من ٥ ميجا");
+    if (!f.type.startsWith("image/")) { toast.error("ارفع صورة فقط"); return; }
+    if (f.size > 5 * 1024 * 1024) { toast.error("الصورة أكبر من ٥ ميجا"); return; }
     const r = new FileReader();
     r.onload = () => setImage(String(r.result));
     r.readAsDataURL(f);
   }
 
   async function submit() {
-    if (!image) return toast.error("ارفع صورة الشارت أولاً");
+    if (!image) { toast.error("ارفع صورة الشارت أولاً"); return; }
     setBusy(true); setResult(null);
     try {
       const row = await run({ data: { image, symbol: symbol.toUpperCase(), timeframe, question } });
@@ -60,7 +60,7 @@ function AnalystPage() {
 
   async function del(id: string) {
     const { error } = await supabase.from("chart_analyses").delete().eq("id", id);
-    if (error) return toast.error("ما قدرت أحذف");
+    if (error) { toast.error("ما قدرت أحذف"); return; }
     qc.invalidateQueries({ queryKey: ["analyses"] });
   }
 

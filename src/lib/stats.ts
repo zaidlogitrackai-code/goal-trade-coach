@@ -52,9 +52,9 @@ export function disciplineReport(trades: Trade[], violations: Violation[], maxRi
   const sorted = [...trades].sort((a, b) => +new Date(a.opened_at) - +new Date(b.opened_at));
   let revenge = 0;
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
+    const prev = sorted[i - 1]!; const cur = sorted[i]!;
     if (prev.status === "closed" && (Number(prev.pnl) || 0) < 0 && prev.closed_at) {
-      const gap = +new Date(sorted[i].opened_at) - +new Date(prev.closed_at);
+      const gap = +new Date(cur.opened_at) - +new Date(prev.closed_at);
       if (gap >= 0 && gap < 15 * 60 * 1000) revenge++;
     }
   }
