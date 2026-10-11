@@ -46,6 +46,7 @@ export type Database = {
       }
       coach_messages: {
         Row: {
+          actions: Json | null
           content: string
           created_at: string
           id: string
@@ -54,6 +55,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          actions?: Json | null
           content: string
           created_at?: string
           id?: string
@@ -62,6 +64,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          actions?: Json | null
           content?: string
           created_at?: string
           id?: string
@@ -125,6 +128,39 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string
+          created_at: string
+          day: string
+          id: string
+          kind: string
+          read: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          day: string
+          id?: string
+          kind?: string
+          read?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          day?: string
+          id?: string
+          kind?: string
+          read?: boolean
           title?: string
           user_id?: string
         }
@@ -359,6 +395,8 @@ export type Database = {
           max_daily_risk: number
           max_risk_per_trade: number
           max_trades_per_day: number
+          monthly_max_loss: number
+          monthly_target: number
           onboarded: boolean
           session_end: string | null
           session_start: string | null
@@ -367,6 +405,8 @@ export type Database = {
           trading_paused: boolean
           updated_at: string
           user_id: string
+          weekly_max_loss: number
+          weekly_target: number
         }
         Insert: {
           cooldown_minutes?: number
@@ -381,6 +421,8 @@ export type Database = {
           max_daily_risk?: number
           max_risk_per_trade?: number
           max_trades_per_day?: number
+          monthly_max_loss?: number
+          monthly_target?: number
           onboarded?: boolean
           session_end?: string | null
           session_start?: string | null
@@ -389,6 +431,8 @@ export type Database = {
           trading_paused?: boolean
           updated_at?: string
           user_id: string
+          weekly_max_loss?: number
+          weekly_target?: number
         }
         Update: {
           cooldown_minutes?: number
@@ -403,6 +447,8 @@ export type Database = {
           max_daily_risk?: number
           max_risk_per_trade?: number
           max_trades_per_day?: number
+          monthly_max_loss?: number
+          monthly_target?: number
           onboarded?: boolean
           session_end?: string | null
           session_start?: string | null
@@ -411,6 +457,8 @@ export type Database = {
           trading_paused?: boolean
           updated_at?: string
           user_id?: string
+          weekly_max_loss?: number
+          weekly_target?: number
         }
         Relationships: []
       }
