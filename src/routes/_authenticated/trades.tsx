@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AiTradeInput } from "@/components/ai-trade-input";
+import { matchOpen, type AiTrade } from "@/lib/ai-trade";
+import { useNavigate } from "@tanstack/react-router";
 import { fmtDate, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, type Trade } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/trades")({
@@ -25,6 +28,16 @@ function TradesPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [closing, setClosing] = useState<Trade | null>(null);
+  const [prefill, setPrefill] = useState<{ exit: string; pnl: string } | null>(null);
+  const navigate = useNavigate();
+  function onAi(list: AiTrade[]) {
+    const c = list.find((x) => x.action === "close");
+    if (!c) { toast.message("هذي صفقة جديدة، بنقلك لصفحة الصفقة الجديدة"); navigate({ to: "/new-trade" }); return; }
+    const m = matchOpen(c, t.data ?? []);
+    if (!m) { toast.error("ما لقيت صفقة مفتوحة مطابقة"); return; }
+    setPrefill({ exit: c.exit_price != null ? String(c.exit_price) : "", pnl: c.pnl != null ? String(c.pnl) : "" });
+    setClosing(m);
+  }
   if (t.isLoading) return <Loading />;
   const cur = s.data?.currency ?? "USD";
   const names = new Map((st.data ?? []).map((x) => [x.id, x.name]));
@@ -44,6 +57,7 @@ function TradesPage() {
         <EmptyState action={<Button asChild><Link to="/new-trade">سجّل أول صفقة</Link></Button>} />
       ) : (
         <>
+          <div className="mb-4"><AiTradeInput onResult={onAi} placeholder="مثال: أقفلت صفقة الذهب على 2375 بربح 120" /></div>
           <div className="mb-4 flex flex-wrap gap-2">
             {([["all", "الكل"], ["open", "مفتوحة"], ["win", "رابحة"], ["loss", "خاسرة"]] as const).map(([k, l]) => (
               <Button key={k} size="sm" variant={filter === k ? "default" : "secondary"} onClick={() => setFilter(k)}>{l}</Button>
@@ -78,15 +92,15 @@ function TradesPage() {
           )}
         </>
       )}
-      <CloseDialog trade={closing} onClose={() => setClosing(null)} />
+      <CloseDialog key={closing?.id ?? "none"} trade={closing} prefill={prefill} onClose={() => { setClosing(null); setPrefill(null); }} />
     </div>
   );
 }
 
-function CloseDialog({ trade, onClose }: { trade: Trade | null; onClose: () => void }) {
+function CloseDialog({ trade, prefill, onClose }: { trade: Trade | null; prefill: { exit: string; pnl: string } | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [pnl, setPnl] = useState("");
-  const [exit, setExit] = useState("");
+  const [pnl, setPnl] = useState(prefill?.pnl ?? "");
+  const [exit, setExit] = useState(prefill?.exit ?? "");
   const [notes, setNotes] = useState("");
   async function save() {
     if (!trade || pnl === "") { toast.error("أدخل النتيجة"); return; }

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AiTradeInput } from "@/components/ai-trade-input";
+import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { computeDayMetrics, computeStatus, startOfToday, STATUS_META } from "@/lib/trading-status";
 
@@ -36,6 +38,7 @@ function NewTrade() {
   const [f, setF] = useState({ symbol: "", direction: "long", strategy_id: "", entry: "", sl: "", tp: "", size: "", risk: "", emotion: "", notes: "" });
   const [checks, setChecks] = useState<boolean[]>(CHECKLIST.map(() => false));
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<AiTrade[]>([]);
 
   if (s.isLoading || t.isLoading || !s.data) return <Loading />;
   const settings = s.data;
@@ -48,6 +51,13 @@ function NewTrade() {
   const overDay = m.riskRemaining != null && risk > m.riskRemaining;
   const allChecked = checks.every(Boolean);
   const strategies = (st.data ?? []).filter((x) => x.allowed);
+  function load(list: AiTrade[]) {
+    const opens = list.filter((x) => x.action === "open");
+    if (opens.length === 0) { toast.message("هذا إغلاق صفقة — سوّه من سجل الصفقات"); return; }
+    setF(toForm(opens[0]!, st.data ?? []));
+    setQueue(opens.slice(1));
+    toast.success("عبّيت البيانات، راجعها وكمّل قائمة التحقق");
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,7 +83,7 @@ function NewTrade() {
       if (error) throw error;
       await qc.invalidateQueries({ queryKey: ["trades"] });
       toast.success("تم تسجيل الصفقة");
-      navigate({ to: "/trades" });
+      if (queue.length > 0) { setF(toForm(queue[0]!, st.data ?? [])); setQueue(queue.slice(1)); setChecks(CHECKLIST.map(() => false)); toast.message("هذي الصفقة التالية، راجعها"); } else navigate({ to: "/trades" });
     } catch {
       toast.error("تعذر حفظ الصفقة");
     } finally {
@@ -89,6 +99,19 @@ function NewTrade() {
           {STATUS_META[status].hint} النظام ينصحك بعدم فتح صفقات جديدة اليوم.
         </div>
       )}
+      <div className="mb-6 space-y-3">
+        <AiTradeInput onResult={load} />
+        {queue.length > 0 && (
+          <div className="panel flex flex-wrap items-center gap-2 p-4 text-sm">
+            <span className="text-muted-foreground">صفقات ثانية فهمتها:</span>
+            {queue.map((q, i) => (
+              <Button key={i} size="sm" variant="secondary" onClick={() => { setF(toForm(q, st.data ?? [])); setQueue(queue.filter((_, j) => j !== i)); }}>
+                <span dir="ltr">{q.symbol ?? "?"}</span> {q.direction === "short" ? "بيع" : "شراء"}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
       <form onSubmit={submit} className="space-y-6">
         <section className="panel p-5">
           <h2 className="mb-4 font-semibold">قائمة التحقق قبل الدخول</h2>
