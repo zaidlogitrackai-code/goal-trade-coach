@@ -181,6 +181,7 @@ export type Database = {
           created_at: string
           day: string
           dedupe_key: string | null
+          dismissed: boolean
           id: string
           kind: string
           read: boolean
@@ -192,6 +193,7 @@ export type Database = {
           created_at?: string
           day: string
           dedupe_key?: string | null
+          dismissed?: boolean
           id?: string
           kind?: string
           read?: boolean
@@ -203,6 +205,7 @@ export type Database = {
           created_at?: string
           day?: string
           dedupe_key?: string | null
+          dismissed?: boolean
           id?: string
           kind?: string
           read?: boolean
