@@ -105,7 +105,7 @@ function Conversations({ activeId, onOpen, onClose }: { activeId: string | undef
         const active = activeId ? t.id === activeId : main;
         return (
           <li key={t.id} className={`group flex items-center gap-1 rounded-xl ${active ? "bg-accent" : "hover:bg-accent/60"}`}>
-            <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-start" onClick={() => { onOpen(main ? undefined : t.id); onClose(); }}>
+            <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-start" onClick={() => { onOpen(t.id); onClose(); }}>
               <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0">
                 <span className="block truncate text-sm">{t.preview || "محادثة جديدة"}</span>
@@ -135,7 +135,8 @@ function AnalystPage() {
   // Reuse the newest chat if it has no user message yet, so visits don't pile up empty chats.
   const booted = useRef(false);
   useEffect(() => {
-    if (c || booted.current) return;
+    if (c) { booted.current = false; return; }
+    if (booted.current) return;
     booted.current = true;
     void (async () => {
       const { data: last } = await supabase.from("coach_threads").select("id").like("title", `${ANALYST_THREAD} · %`).order("created_at", { ascending: false }).limit(1);
@@ -146,7 +147,7 @@ function AnalystPage() {
       }
       await startNew(true);
     })();
-  }, [c]);
+  }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startNew(replace = false) {
     if (creating) return;
