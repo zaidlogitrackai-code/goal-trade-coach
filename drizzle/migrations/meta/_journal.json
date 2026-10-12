@@ -57,6 +57,13 @@
       "when": 1791831549091,
       "tag": "0007_notifications_dismissed",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791833621896,
+      "tag": "0008_strategy_examples",
+      "breakpoints": true
     }
   ]
 }

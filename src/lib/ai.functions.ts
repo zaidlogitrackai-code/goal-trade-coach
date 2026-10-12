@@ -20,11 +20,12 @@ import type { Database } from "@/integrations/supabase/types";
 type Sb = SupabaseClient<Database>;
 
 async function buildContext(sb: Sb) {
-  const [s, t, r, st] = await Promise.all([
+  const [s, t, r, st, ex] = await Promise.all([
     sb.from("trading_settings").select("*").maybeSingle(),
     sb.from("trades").select("id,symbol,direction,status,entry_price,stop_loss,take_profit,pnl,risk_amount,emotion,checklist_passed,opened_at,closed_at,strategy_id").order("opened_at", { ascending: false }).limit(40),
     sb.from("trading_rules").select("title,description,active"),
     sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
+    sb.from("strategy_examples").select("id,verdict,reason,symbol,timeframe,strategy_id").order("created_at", { ascending: false }).limit(40),
   ]);
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const dayStart = startOfToday().toISOString();
@@ -91,6 +92,7 @@ ${focusForPrompt(focus)}
 الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
 القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
+أمثلة تدريب هادي على استراتيجيته (good = دخول صحيح، bad = غلط) — طبّقها دايماً في الحكم على أي صفقة: ${JSON.stringify(ex.data ?? [])}
 أداء كل استراتيجية (من آخر 30 يوم): ${JSON.stringify(strategyStats(month.data ?? [], st.data ?? []))}
 خطة اليوم (اللي قالها هادي الصباح): ${JSON.stringify(todayPlan)}
 فحص الخطة اليوم: ${JSON.stringify(planStatus)}
@@ -140,7 +142,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "set_guard_style", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan", "attach_trade_image", "remove_trade_image", "add_violation", "delete_violation", "delete_daily_plan", "update_session", "delete_session", "rename_thread", "delete_notifications"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "set_guard_style", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan", "attach_trade_image", "remove_trade_image", "add_violation", "delete_violation", "delete_daily_plan", "update_session", "delete_session", "rename_thread", "delete_notifications", "add_strategy_example", "delete_strategy_example"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -232,6 +234,13 @@ const STRATEGY_MODE = `وضعك الحين: أنت "مدرّب الاسترات�
 - التعديل: جهّز update_strategy أو delete_strategy بالحقول المتغيرة فقط.
 - ردود قصيرة بالعامية.`;
 
+const TRAINING_MODE = `وضعك الحين: أنت "مدرّب الذكاء" — هادي يدرّبك على استراتيجيته الخاصة عشان كل الوكلاء يحللون على طريقته بالضبط.
+- التعلّم المنظم: اسأل سؤال واحد كل مرة بالترتيب: الأصول، الفريمات، الأوقات، شروط الدخول بالضبط، مكان الوقف، الأهداف، ومتى ما يدخل أبداً. لما يكتمل جزء جهّز add_strategy أو update_strategy من كلامه هو فقط.
+- الأمثلة: لما يرفع شارت ويقول صح/غلط (أو تسأله أنت)، جهّز add_strategy_example: {"verdict":"good|bad","reason" (ليش بكلامه، مختصر ودقيق: وش الشروط اللي تحققت أو انكسرت),"strategy" (اسم الاستراتيجية لو معروف),"symbol","timeframe","with_image":true}. لو ما قال السبب اسأله قبل الحفظ.
+- اختبرني: لو قال "اختبرني" اعرض موقف من أمثلته أو من استراتيجيته واسأله تدخل ولا لا. ولو رفع شارت وقال "احكم" احكم أنت حسب ما تعلّمت (يطابق/ما يطابق وأي شرط) واطلب يصححك، وإذا صحّحك احفظ مثال جديد.
+- حذف مثال: delete_strategy_example {"id"} من قائمة الأمثلة.
+- قل له بصراحة وش ناقصك تتعلّمه. ردود قصيرة بالعامية.`;
+
 const TRADE_BLOCK_RULE = `
 - بطاقة الصفقة إلزامية: في آخر reply لكل تحليل أو اقتراح صفقة اكتب بلوك بهذا الشكل بالضبط (أرقام من الشارت فقط):
 \`\`\`trade
@@ -257,7 +266,7 @@ const ANALYST_MODE = `وضعك الحين: أنت "المحلل الذكي" له
 - استخدم الخبرات الأربع (trader، SMC، POC Bounce، Volume Analysis) في كل تحليل. لا تعطي دخول إلا إذا توافقت خبرتين على الأقل على نفس المنطقة (مثلاً منطقة بنوك + POC)، واذكر أي خبرات توافقت.
 - كل الأسعار تنقرأ من الشارت المرفوع فقط. لو الأرقام ما تبين اطلب فريم أوضح ولا تخترع. لو ما فيه إعداد واضح قل "لا صفقة الحين، انتظر" وحدد وش تنتظر بسعر.
 - تأكد قبل الرد: وقف الشراء تحت الدخول ووقف البيع فوقه، والأهداف بالاتجاه الصحيح. لو الصفقة صالحة وحدودها تسمح، جهّز create_trade بالدخول والوقف والهدف الأول واللوت (بدون risk_amount إلا لو حسبته صح)، واذكر إن الصفقة تمر على حارس المخاطر.
-- قارن الإعداد باستراتيجياته وقواعده المكتوبة وقل بصراحة يطابق أو لا وأي شرط ناقص. احسب مخاطرة الوقف مقابل حدوده ونبهه لو فيه طمع.
+- قارن الإعداد بأمثلة تدريب هادي (good/bad) وقل يشبه أي مثال، ثم باستراتيجياته وقواعده المكتوبة وقل بصراحة يطابق أو لا وأي شرط ناقص. احسب مخاطرة الوقف مقابل حدوده ونبهه لو فيه طمع.
 - النقاش: جاوب على أسئلته عن نفس الشارت من التحليل السابق في المحادثة. إذا عارضك ناقشه بالمنطق، وما تغيّر رأيك إلا إذا جاب سبب حقيقي، وقل له إذا غيّرته وليش.
 - ما تخترع أسعار ما تبين في الصورة. إذا الصورة ما تكفي اطلب فريم أوضح. أضف save_analysis لأول تحليل لكل شارت جديد. القرار النهائي له.
 ${TRADE_BLOCK_RULE}
@@ -272,7 +281,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), thumb: z.string().startsWith("data:image/").max(MAX_THUMB_CHARS).optional(), retry: z.boolean().optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), thumb: z.string().startsWith("data:image/").max(MAX_THUMB_CHARS).optional(), retry: z.boolean().optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst", "training"]).optional(), brief: z.boolean().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
@@ -302,7 +311,7 @@ export const coachReply = createServerFn({ method: "POST" })
           const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
           if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
         }
-        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
+        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
         const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
         if (e2) throw e2;
         const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };

@@ -38,7 +38,7 @@ export interface AgentChatProps {
   title?: string;
   greeting?: string;
   quick?: string[];
-  mode?: "coach" | "risk" | "strategy" | "discipline" | "analyst";
+  mode?: "coach" | "risk" | "strategy" | "discipline" | "analyst" | "training";
   placeholder?: string;
   onReady?: (threadId: string) => void;
   /** Open this exact conversation instead of looking one up by title. */
