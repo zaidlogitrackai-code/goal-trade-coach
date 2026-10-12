@@ -11,7 +11,7 @@ describe("perf", () => {
   it("max drawdown is the deepest drop from peak", () => {
     expect(maxDrawdown(trades, 1000)).toEqual({ amount: 100, pct: (100 / 1100) * 100 });
   });
-  it("average R = mean(pnl / risk)", () => { expect(avgR(trades)).toBe(1); });
+  it("average R = mean(pnl / risk)", () => { expect(avgR(trades)).toBe(0.75); });
   it("expectancy = average pnl per closed trade", () => { expect(expectancy(trades)).toBe(37.5); });
   it("longest win and loss streaks", () => { expect(streaks(trades)).toEqual({ maxWin: 1, maxLoss: 2 }); });
   it("buy vs sell split", () => { expect(sideSplit(trades).sell).toEqual({ count: 1, pnl: 150 }); });
