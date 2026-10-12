@@ -8,7 +8,7 @@ import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 import { buildJourney, journeyForPrompt } from "./journey";
 import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
-import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, TRAINING_OFF_CATEGORY } from "./hidden-notes";
+import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, KNOWLEDGE_OFF_CATEGORY, TRAINING_OFF_CATEGORY } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
@@ -49,6 +49,8 @@ async function buildContext(sb: Sb) {
   const guardStyle = guardRow?.content?.trim() || "";
   const { data: trainingOffRow } = await sb.from("knowledge_notes").select("id").eq("category", TRAINING_OFF_CATEGORY).limit(1).maybeSingle();
   const trainingOn = !trainingOffRow;
+  const { data: knowledgeOffRow } = await sb.from("knowledge_notes").select("id").eq("category", KNOWLEDGE_OFF_CATEGORY).limit(1).maybeSingle();
+  const knowledgeOn = !knowledgeOffRow;
   const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
   const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
@@ -100,7 +102,7 @@ ${focusForPrompt(focus)}
 فحص الخطة اليوم: ${JSON.stringify(planStatus)}
 آخر 7 خطط: ${JSON.stringify(plans ?? [])}
 الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
-عناوين الملاحظات: ${JSON.stringify(notes.data ?? [])}
+عناوين الملاحظات: ${knowledgeOn ? JSON.stringify(notes.data ?? []) : "هادي أوقف استخدام مركز المعرفة من الإعدادات — لا تعتمد على ملاحظاته"}
 آخر تنبيهات حارس المخاطر (خذها بالاعتبار، وإذا فيها "وقف" لا تشجعه على صفقة جديدة): ${JSON.stringify(alerts ?? [])}
 التذكيرات المفعّلة: ${JSON.stringify(reminders ?? [])}
 آخر الصفقات (id للإشارة إليها): ${JSON.stringify(t.data ?? [])}`;

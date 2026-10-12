@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Download, Trash2, Shield, Bell, GraduationCap } from "lucide-react";
+import { Moon, Sun, Download, Trash2, Shield, Bell, GraduationCap, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loading, PageHeader } from "@/components/app-shell";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { settingsQuery } from "@/lib/queries";
-import { TRAINING_OFF_CATEGORY } from "@/lib/hidden-notes";
+import { TRAINING_OFF_CATEGORY, KNOWLEDGE_OFF_CATEGORY } from "@/lib/hidden-notes";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -61,48 +61,74 @@ function ThemeToggle() {
   );
 }
 
-function TrainingToggle() {
+function AiSwitch({ category, queryKey, icon: Icon, heading, label, hint, onMsg, offMsg }: {
+  category: string; queryKey: string; icon: typeof GraduationCap; heading: string; label: string; hint: string; onMsg: string; offMsg: string;
+}) {
   const qc = useQueryClient();
   const { data: enabled, isLoading } = useQuery({
-    queryKey: ["training-enabled"],
+    queryKey: [queryKey],
     queryFn: async () => {
-      const { data } = await supabase.from("knowledge_notes").select("id").eq("category", TRAINING_OFF_CATEGORY).limit(1);
+      const { data } = await supabase.from("knowledge_notes").select("id").eq("category", category).limit(1);
       return !(data && data.length > 0);
     },
   });
 
   async function change(next: boolean) {
-    qc.setQueryData(["training-enabled"], next);
+    qc.setQueryData([queryKey], next);
     if (next) {
-      const { error } = await supabase.from("knowledge_notes").delete().eq("category", TRAINING_OFF_CATEGORY);
+      const { error } = await supabase.from("knowledge_notes").delete().eq("category", category);
       if (error) toast.error("تعذر التفعيل");
     } else {
       const { data: u } = await supabase.auth.getUser();
       const { error } = await supabase.from("knowledge_notes").insert({
         user_id: u.user!.id,
-        title: "تدريب الذكاء موقوف",
+        title: heading + " موقوف",
         content: "off",
-        category: TRAINING_OFF_CATEGORY,
+        category,
       });
       if (error) toast.error("تعذر الإيقاف");
     }
-    qc.invalidateQueries({ queryKey: ["training-enabled"] });
-    toast.success(next ? "تدريب الذكاء مفعّل" : "تدريب الذكاء موقوف");
+    qc.invalidateQueries({ queryKey: [queryKey] });
+    toast.success(next ? onMsg : offMsg);
   }
 
   return (
-    <div className="panel space-y-4 p-6">
-      <div className="flex items-center gap-2">
-        <GraduationCap className="size-5 text-primary" />
-        <h3 className="font-semibold text-base">تدريب الذكاء الاصطناعي</h3>
+    <label className="flex items-center justify-between gap-4 cursor-pointer text-xs">
+      <div className="min-w-0 space-y-0.5">
+        <span className="font-semibold text-sm text-foreground flex items-center gap-2">
+          <Icon className="size-4 text-primary" /> {label}
+        </span>
+        <span className="text-muted-foreground">{hint}</span>
       </div>
-      <label className="flex items-center justify-between gap-4 cursor-pointer text-xs">
-        <div className="min-w-0 space-y-0.5">
-          <span className="font-semibold text-sm text-foreground block">تفعيل استراتيجية هادي المدرَّبة</span>
-          <span className="text-muted-foreground">لما يكون شغّال، المحلل وسَنَد يحكمون على كل صفقة حسب أمثلتك (صح/غلط) وقواعدك.</span>
-        </div>
-        <Switch checked={enabled ?? true} disabled={isLoading} onCheckedChange={change} />
-      </label>
+      <Switch checked={enabled ?? true} disabled={isLoading} onCheckedChange={change} />
+    </label>
+  );
+}
+
+function AiFeatureToggles() {
+  return (
+    <div className="panel space-y-5 p-6">
+      <h3 className="font-semibold text-base">ما يستخدمه الذكاء الاصطناعي</h3>
+      <AiSwitch
+        category={TRAINING_OFF_CATEGORY}
+        queryKey="training-enabled"
+        icon={GraduationCap}
+        heading="تدريب الذكاء"
+        label="تدريب الذكاء (استراتيجية هادي)"
+        hint="لما يكون شغّال، المحلل وسَنَد يحكمون على كل صفقة حسب أمثلتك (صح/غلط) وقواعدك."
+        onMsg="تدريب الذكاء مفعّل"
+        offMsg="تدريب الذكاء موقوف"
+      />
+      <AiSwitch
+        category={KNOWLEDGE_OFF_CATEGORY}
+        queryKey="knowledge-enabled"
+        icon={BookOpen}
+        heading="مركز المعرفة"
+        label="مركز المعرفة"
+        hint="لما يكون شغّال، الوكلاء يرجعون لملاحظاتك في مركز المعرفة. ملاحظاتك تبقى محفوظة لو أوقفته."
+        onMsg="مركز المعرفة مفعّل"
+        offMsg="مركز المعرفة موقوف"
+      />
     </div>
   );
 }
@@ -232,7 +258,7 @@ function SettingsPage() {
         <Button onClick={save}>حفظ التغييرات</Button>
       </div>
 
-      <TrainingToggle />
+      <AiFeatureToggles />
 
       {/* Privacy & AI Governance (Phase 10) */}
       <div className="panel space-y-5 p-6">
