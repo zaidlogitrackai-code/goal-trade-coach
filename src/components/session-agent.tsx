@@ -82,7 +82,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [msgs.data, pending, busy]);
 
   async function submit(override?: string) {
-    const msg = (override ?? text).trim();
+    const msg = (override ?? text).trim() || (image ? "شوف هذي الصورة" : "");
     if (!msg || busy || !id) return;
     setBusy(true);
     const img = image;
@@ -179,7 +179,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
         />
         {text.trim() || image ? (
-          <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy || !text.trim()}><SendHorizontal className="size-4 rotate-180" /></Button>
+          <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy}><SendHorizontal className="size-4 rotate-180" /></Button>
         ) : (
           <Button size="icon" variant={recording ? "destructive" : "default"} className={`shrink-0 rounded-full ${recording ? "animate-pulse" : ""}`} aria-label={recording ? "إيقاف وإرسال" : "رسالة صوتية"} onClick={toggleRecord} disabled={busy}>
             {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
