@@ -89,6 +89,8 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const msgs = useQuery({
     queryKey: ["messages", id],
     enabled: !!id,
+    // Agent messages written elsewhere (morning note, watcher alerts) appear without a reload.
+    refetchInterval: busy ? false : 5000,
     queryFn: async () => {
       const { data, error } = await supabase.from("coach_messages").select("*").eq("thread_id", id!).order("created_at");
       if (error) throw error;
