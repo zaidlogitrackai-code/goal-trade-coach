@@ -244,7 +244,7 @@ export function Stat({
 }: {
   label: string;
   value: ReactNode;
-  tone?: "success" | "warning" | "destructive";
+  tone?: "success" | "warning" | "destructive" | undefined;
 }) {
   const toneClasses = {
     success: "text-success",
