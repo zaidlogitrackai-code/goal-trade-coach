@@ -11,7 +11,7 @@ import { dayKey } from "@/lib/perf";
 
 export const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--foreground)" } };
 
-export function Kpi({ label, value, sub, delta, tone, spark }: { label: string; value: string; sub?: string; delta?: number | null; tone?: "success" | "destructive"; spark?: number[] }) {
+export function Kpi({ label, value, sub, delta, tone, spark }: { label: string; value: string; sub?: string | undefined; delta?: number | null | undefined; tone?: "success" | "destructive" | undefined; spark?: number[] | undefined }) {
   const c = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-foreground";
   return (
     <div className="panel flex flex-col gap-1 p-4">

@@ -10,17 +10,64 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { currentUserId, strategiesQuery } from "@/lib/queries";
-import { Layers, Sparkles, Plus, AlertOctagon } from "lucide-react";
+import { Layers, Sparkles, Plus, AlertOctagon, GraduationCap } from "lucide-react";
+import { SessionAgent } from "@/components/session-agent";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/_authenticated/strategies")({
   head: () => ({
     meta: [
       { title: "استراتيجياتي — نظام هادي" },
-      { name: "description", content: "استراتيجيات التداول، شروط الدخول والخروج، وحالات منع التداول (No-Trade)." },
+      { name: "description", content: "مدرّب ذكي يتعلّم استراتيجيتك، يحللها معك ويختبرك عليها." },
+      { property: "og:title", content: "مدرّب الاستراتيجية — نظام هادي" },
+      { property: "og:description", content: "مدرّب ذكي يتعلّم استراتيجيتك، يحللها معك ويختبرك عليها." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: Strategies,
+  component: StrategiesPage,
 });
+
+export const STRATEGY_THREAD = "مدرّب الاستراتيجية";
+const GREETING = "هلا هادي، أنا **مدرّب الاستراتيجية**.\n\nاشرح لي استراتيجيتك كأني ما أعرف شي: وش تتداول، على أي فريم، ومتى تدخل بالضبط؟ تقدر تكتب أو تتكلم أو ترفع صورة شارت.";
+const QUICK = ["أشرح لك استراتيجيتي", "حلّل استراتيجياتي", "اختبرني", "عدّل استراتيجية"];
+
+function StrategiesPage() {
+  const qc = useQueryClient();
+  const { data } = useQuery(strategiesQuery);
+  const n = data?.length ?? 0;
+  return (
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <GraduationCap className="size-5 shrink-0" />
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-lg font-semibold lg:text-xl">مدرّب الاستراتيجية</h1>
+            <p className="text-xs text-muted-foreground">{n ? `عندك ${n} استراتيجية` : "ما عندك استراتيجية بعد — اشرح لي وحدة"}</p>
+          </div>
+        </div>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="استراتيجياتي"><Layers className="size-4" /></Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
+            <SheetHeader><SheetTitle>استراتيجياتي</SheetTitle></SheetHeader>
+            <div className="mt-4"><StrategyManager /></div>
+          </SheetContent>
+        </Sheet>
+      </div>
+      <SessionAgent
+        hasActive={false}
+        title={STRATEGY_THREAD}
+        greeting={GREETING}
+        quick={QUICK}
+        mode="strategy"
+        placeholder="اشرح لمدرّب الاستراتيجية…"
+        onChanged={() => qc.invalidateQueries({ queryKey: ["strategies"] })}
+      />
+    </div>
+  );
+}
 
 const EMPTY = {
   name: "",
@@ -40,7 +87,7 @@ const TEMPLATE_STRATEGY = {
   exit_conditions: "الهدف: 1:2 كحد أدنى أو أقرب منطقة سيولة مقابلة.\nالوقف: أسفل قاع إعادة الاختبار بـ 5-10 نقاط.\nحالات منع التداول: قبل الأخبار عالية التأثير بـ 15 دقيقة، أو في الأسواق العرضية الضيقة.",
 };
 
-function Strategies() {
+function StrategyManager() {
   const { data, isLoading } = useQuery(strategiesQuery);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -125,10 +172,10 @@ function Strategies() {
   const list = data ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title="استراتيجياتي"
-        subtitle="الاستراتيجيات المسموحة فقط تظهر كخيارات معتمدة في شاشة الصفقة الجديدة."
+        subtitle="المسموحة فقط تظهر في الصفقة الجديدة."
         action={
           <div className="flex gap-2">
             <Button onClick={() => setOpen(!open)}>
@@ -182,7 +229,7 @@ function Strategies() {
           </div>
         )
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
           {list.map((x) => (
             <div key={x.id} className="panel space-y-4 p-6 border-border/80">
               <div className="flex items-start justify-between gap-3">
@@ -241,4 +288,3 @@ function Strategies() {
   );
 }
 
-export default Strategies;
