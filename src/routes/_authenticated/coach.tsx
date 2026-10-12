@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Crosshair, ImagePlus, Menu, Plus, SendHorizontal, Trash2, X } from "lucide-react";
+import { Camera, Crosshair, ImagePlus, Menu, Plus, SendHorizontal, Trash2, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,6 +41,7 @@ function CoachPage() {
     localStorage.setItem("coach-auto", next ? "on" : "off");
   }
   const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
   async function pick(file?: File) {
     if (!file) return;
     try { setImage(await prepareImage(file)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
@@ -227,7 +228,9 @@ function CoachPage() {
           )}
           <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 pb-1 pt-2 lg:pb-4">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
+            <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
+            <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
             <Textarea
               onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
               rows={1}

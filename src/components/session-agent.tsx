@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ImagePlus, Mic, SendHorizontal, Square, X } from "lucide-react";
+import { Camera, ImagePlus, Mic, SendHorizontal, Square, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { Md } from "@/components/md";
@@ -59,6 +59,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const [auto, setAuto] = useState(true);
   const recRef = useRef<MediaRecorder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const boot = useRef(false);
 
@@ -190,7 +191,9 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
 
       <div className="flex shrink-0 items-end gap-2 px-3 pb-1 pt-2 lg:border-t lg:border-border/40 lg:p-3">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
+        <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
+        <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
         <Textarea
           rows={1}
           value={text}
