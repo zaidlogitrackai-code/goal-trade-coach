@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { History, MessageSquare, ScanSearch, SquarePen, Trash2 } from "lucide-react";
@@ -105,7 +105,7 @@ function Conversations({ activeId, onOpen, onClose }: { activeId: string | undef
         const active = activeId ? t.id === activeId : main;
         return (
           <li key={t.id} className={`group flex items-center gap-1 rounded-xl ${active ? "bg-accent" : "hover:bg-accent/60"}`}>
-            <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-start" onClick={() => { onOpen(main ? undefined : t.id); onClose(); }}>
+            <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-start" onClick={() => { onOpen(t.id); onClose(); }}>
               <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0">
                 <span className="block truncate text-sm">{t.preview || "محادثة جديدة"}</span>
@@ -126,15 +126,30 @@ function AnalystPage() {
   const { c } = Route.useSearch();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [brief, setBrief] = useState(true);
-  useEffect(() => { setBrief(localStorage.getItem("analyst-brief") !== "off"); }, []);
-  function toggleBrief() { setBrief((b) => { localStorage.setItem("analyst-brief", b ? "off" : "on"); return !b; }); }
 
   function openThread(id: string | undefined) {
     void navigate({ to: "/analyst", search: id ? { c: id } : {} });
   }
 
-  async function startNew() {
+  // Opening the analyst (no ?c) always lands on a fresh chat, like ChatGPT.
+  // Reuse the newest chat if it has no user message yet, so visits don't pile up empty chats.
+  const booted = useRef(false);
+  useEffect(() => {
+    if (c) { booted.current = false; return; }
+    if (booted.current) return;
+    booted.current = true;
+    void (async () => {
+      const { data: last } = await supabase.from("coach_threads").select("id").like("title", `${ANALYST_THREAD} · %`).order("created_at", { ascending: false }).limit(1);
+      const lastId = last?.[0]?.id;
+      if (lastId) {
+        const { count } = await supabase.from("coach_messages").select("id", { count: "exact", head: true }).eq("thread_id", lastId).eq("role", "user");
+        if (!count) { void navigate({ to: "/analyst", search: { c: lastId }, replace: true }); return; }
+      }
+      await startNew(true);
+    })();
+  }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function startNew(replace = false) {
     if (creating) return;
     setCreating(true);
     try {
@@ -144,7 +159,7 @@ function AnalystPage() {
       if (error) throw error;
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content: GREETING });
       await qc.invalidateQueries({ queryKey: ["analyst-threads"] });
-      openThread(data.id);
+      void navigate({ to: "/analyst", search: { c: data.id }, replace });
     } catch { toast.error("ما قدرت أبدأ محادثة جديدة"); }
     finally { setCreating(false); }
   }
@@ -160,7 +175,6 @@ function AnalystPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" className="rounded-full" onClick={toggleBrief} aria-label="طريقة الرد">{brief ? "مختصر" : "مفصّل"}</Button>
           <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-4" /></Button>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -176,18 +190,18 @@ function AnalystPage() {
           </Sheet>
         </div>
       </div>
-      <SessionAgent
-        key={c ?? "main"}
+      {c && <SessionAgent
+        key={c}
         {...(c ? { threadId: c } : {})}
         hasActive={false}
         title={ANALYST_THREAD}
         greeting={GREETING}
         quick={QUICK}
         mode="analyst"
-        brief={brief}
+        brief
         placeholder="ارفع الشارت أو اسأل المحلل…"
         onChanged={() => { qc.invalidateQueries({ queryKey: ["analyses"] }); qc.invalidateQueries({ queryKey: ["analyst-threads"] }); }}
-      />
+      />}
     </div>
   );
 }
