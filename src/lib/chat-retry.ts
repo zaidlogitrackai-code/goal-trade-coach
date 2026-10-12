@@ -79,14 +79,3 @@ export async function sendReliably<T>(
   }
   return { kind: "pending" };
 }
-
-/** Send once; on a network drop, wait and resend once as a retry (server skips the duplicate). */
-export async function sendWithRetry<T>(call: (retry: boolean) => Promise<T>, waitMs = 1500): Promise<T> {
-  try {
-    return await call(false);
-  } catch (e) {
-    if (!isNetworkError(e)) throw e;
-    await new Promise((r) => setTimeout(r, waitMs));
-    return call(true);
-  }
-}

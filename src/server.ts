@@ -48,7 +48,8 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const host = (ctx ?? {}) as { waitUntil?: (p: Promise<unknown>) => void };
-    return requestContext.run({ waitUntil: host.waitUntil?.bind(host) }, () => handle(request, env, ctx));
+    const store = host.waitUntil ? { waitUntil: host.waitUntil.bind(host) } : {};
+    return requestContext.run(store, () => handle(request, env, ctx));
   },
 };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retryDecision, sendReliably, type RetryDecision, friendlyError, isNetworkError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
+import { retryDecision, sendReliably, type RetryDecision, friendlyError, isNetworkError, retryText, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
 
 describe("chat retry", () => {
   it("treats 'Failed to fetch' as a network drop", () => {
@@ -36,16 +36,10 @@ describe("chat retry", () => {
     expect(retryText("حلل\n📎 (صورة مرفقة)")).toBe("حلل");
   });
 
-  it("resends exactly once, as a retry, after a network drop", async () => {
-    const calls: boolean[] = [];
-    const out = await sendWithRetry(async (retry) => { calls.push(retry); if (!retry) throw new TypeError("Failed to fetch"); return "ok"; }, 0);
-    expect(out).toBe("ok");
-    expect(calls).toEqual([false, true]);
-  });
 
   it("does not resend on a normal server error", async () => {
     let n = 0;
-    await expect(sendWithRetry(async () => { n++; throw new Error("رصيد"); }, 0)).rejects.toThrow();
+    await expect(sendReliably(async () => { n++; throw new Error("رصيد"); }, async () => "fresh", { pollMs: 0 })).rejects.toThrow();
     expect(n).toBe(1);
   });
 
