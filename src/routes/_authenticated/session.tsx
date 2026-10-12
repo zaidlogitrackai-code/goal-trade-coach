@@ -127,13 +127,13 @@ function SessionPage() {
   );
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col">
-      <div className="hidden lg:block">
+    <div className="agent-page mx-auto w-full max-w-3xl">
+      <div className="hidden shrink-0 lg:block">
         <PageHeader title="جلسة التداول" subtitle="المساعد ينظم جلستك: يسألك عن تارقتك، يبدأ الجلسة، ويسوي المراجعة لما تخلص." />
       </div>
 
       {/* Top bar: title + history */}
-      <div className="flex items-center justify-between gap-2 pb-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 pb-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold lg:hidden">جلسة التداول</p>
           {active ? (

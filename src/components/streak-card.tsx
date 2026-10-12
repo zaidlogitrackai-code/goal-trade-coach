@@ -6,7 +6,7 @@ import { disciplineStreak, type DayState } from "@/lib/streak";
 
 const DOT: Record<DayState, string> = { ok: "bg-success", broken: "bg-destructive", none: "bg-muted", pending: "border border-foreground/40" };
 
-export function StreakCard({ large = false }: { large?: boolean }) {
+export function StreakCard({ large = false, compact = false }: { large?: boolean; compact?: boolean }) {
   const s = useQuery(settingsQuery);
   const v = useQuery(violationsQuery);
   const sess = useQuery({
@@ -19,6 +19,18 @@ export function StreakCard({ large = false }: { large?: boolean }) {
   });
   if (!sess.data || !v.data) return null;
   const r = disciplineStreak(sess.data, v.data, s.data?.timezone || "Asia/Riyadh");
+  if (compact) return (
+    <section className="glass grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-full px-3 py-1.5" aria-label="ستريك الانضباط">
+      <p className="flex min-w-0 items-center gap-1.5 truncate text-xs">
+        <Flame className={`size-3.5 shrink-0 ${r.current > 0 ? "text-warning" : "text-muted-foreground"}`} />
+        <span className="font-data font-semibold tabular-nums">{r.current}</span> {r.current === 1 ? "يوم" : "أيام"} انضباط
+        <span className="text-muted-foreground">· أفضل {r.best}</span>
+      </p>
+      <div className="flex shrink-0 gap-1" dir="ltr">
+        {r.days.map((d) => <span key={d.date} title={d.date} className={`size-1.5 rounded-full ${DOT[d.state]}`} />)}
+      </div>
+    </section>
+  );
   return (
     <section className={`panel grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 ${large ? "p-5 sm:p-6" : "p-4"}`}>
       <div className="flex min-w-0 items-center gap-3">

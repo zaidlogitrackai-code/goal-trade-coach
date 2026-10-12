@@ -165,7 +165,7 @@ function CoachPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[calc(100dvh-4rem)]">
+        <div className="agent-page -mx-4 -mb-2 overflow-hidden lg:panel lg:mx-0 lg:mb-0">
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:px-3 lg:py-2">
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
