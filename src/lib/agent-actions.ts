@@ -1,4 +1,5 @@
 import { nextDaily } from "./risk-watch";
+import { checkLevels, riskUsd } from "./trade-idea";
 import { findDuplicate } from "./trade-dedupe";
 import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
@@ -514,10 +515,19 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         const tt = t as Omit<TradeInput, "symbol" | "risk_amount" | "strategy_id"> & {
           symbol?: string | null;
         };
+        if (tt.entry_price != null && tt.stop_loss != null) {
+          const lv = checkLevels({
+            direction: t.direction as "long" | "short",
+            entry: tt.entry_price,
+            stop: tt.stop_loss,
+            targets: tt.take_profit != null ? [tt.take_profit] : [],
+          });
+          if (!lv.ok) throw new Error(`أرقام الصفقة متناقضة: ${lv.problems.join("، ")}.`);
+        }
         const risk =
           risk_amount ??
           (tt.entry_price != null && tt.stop_loss != null && tt.position_size != null
-            ? Math.abs(tt.entry_price - tt.stop_loss) * tt.position_size
+            ? riskUsd(sym(tt.symbol), tt.entry_price, tt.stop_loss, tt.position_size)
             : null);
         const gate = await gateForAiTrade({
           ...tt,
