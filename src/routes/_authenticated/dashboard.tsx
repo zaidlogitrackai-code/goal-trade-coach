@@ -10,6 +10,7 @@ import { CoreMetrics } from "@/components/dashboard/core-metrics";
 import { DayFlow } from "@/components/dashboard/day-flow";
 import { currentStep } from "@/lib/day-flow";
 import { RefreshCw, AlertCircle } from "lucide-react";
+import { OpenTrades } from "@/components/dashboard/open-trades";
 import { QuickCoach } from "@/components/dashboard/quick-coach";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -101,6 +102,7 @@ function Dashboard() {
         consecutiveLosses={metrics.consecutiveLosses}
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
+      <OpenTrades trades={trades} currency={settings.currency} />
       <QuickCoach />
     </div>
   );

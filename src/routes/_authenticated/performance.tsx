@@ -22,7 +22,7 @@ function PerformancePage() {
   const cur = s.data?.currency ?? "USD";
   const k = tradeStats(trades);
   if (k.closed === 0) return (
-    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState text="أغلق أول صفقة عشان تظهر أرقام أدائك." action={<Button asChild><Link to="/trades">سجل الصفقات</Link></Button>} /></div>
+    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState text={k.open > 0 ? `عندك ${k.open} صفقة مفتوحة. سكّرها عشان تطلع أرقام أداءك.` : "أغلق أول صفقة عشان تظهر أرقام أدائك."} action={<Button asChild><Link to="/trades">سجل الصفقات</Link></Button>} /></div>
   );
   const names = new Map((st.data ?? []).map((x) => [x.id, x.name]));
   const curve = equityCurve(trades, Number(s.data?.starting_balance) || 0);
