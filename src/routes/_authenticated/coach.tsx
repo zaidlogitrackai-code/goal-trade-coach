@@ -179,7 +179,7 @@ function CoachPage() {
                 <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
               </SheetTrigger>
               <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto">
-                <SheetHeader><SheetTitle className="text-right">المحادثات</SheetTitle></SheetHeader>
+                <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
                 {focusBox}
                 {autoToggle}
                 {threadList(() => setSheetOpen(false))}
