@@ -188,12 +188,6 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
         <div ref={endRef} />
       </div>
 
-      {image && (
-        <div className="relative mx-3 mt-2 w-fit">
-          <img src={image} alt="الصورة المرفقة" className="max-h-20 rounded-lg border border-border" />
-          <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
-        </div>
-      )}
       <div className="flex shrink-0 items-end gap-2 px-3 pb-1 pt-2 lg:border-t lg:border-border/40 lg:p-3">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>

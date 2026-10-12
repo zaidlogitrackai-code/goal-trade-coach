@@ -43,6 +43,13 @@
       "when": 1791825046383,
       "tag": "0005_trade_screenshots",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791829189515,
+      "tag": "0006_add_message_image_column",
+      "breakpoints": true
     }
   ]
 }
