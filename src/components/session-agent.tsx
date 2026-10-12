@@ -17,7 +17,7 @@ function todayTitle() {
 }
 
 const GREETING_START =
-  "هلا هادي 👋\n\n**اليوم بتتداول؟** إذا إي، قل لي **كم التارقت عندك اليوم** وأي أسواق بتراقب، وأنا أبدأ لك الجلسة وأنظمها.\n\nرد كتابة، أو ارفع صورة، أو أرسل رسالة صوتية 🎙️";
+  "هلا هادي\n\n**اليوم بتتداول؟** إذا إي، قل لي **كم التارقت عندك اليوم** وأي أسواق بتراقب، وأنا أبدأ لك الجلسة وأنظمها.\n\nرد كتابة، أو ارفع صورة، أو أرسل رسالة صوتية";
 
 function blobToBase64(b: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -63,7 +63,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
       const user_id = await currentUserId();
       const { data, error } = await supabase.from("coach_threads").insert({ user_id, title: todayTitle() }).select("id").single();
       if (error) { toast.error("ما قدرت أجهز محادثة الجلسة"); return; }
-      const content = hasActive ? "هلا هادي 👋 جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START;
+      const content = hasActive ? "هلا هادي جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START;
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content });
       await qc.invalidateQueries({ queryKey: ["session-thread"] });
     })();
@@ -109,11 +109,11 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
         setRecording(false);
         const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
         if (blob.size < 1000) { toast.error("التسجيل قصير جدًا"); return; }
-        setBusy(true); setPending("🎙️ رسالة صوتية…");
+        setBusy(true); setPending("رسالة صوتية…");
         try {
           const { text: heard } = await transcribe({ data: { audio: await blobToBase64(blob), mime: blob.type || "audio/webm" } });
           setBusy(false); setPending(null);
-          await submit(`🎙️ ${heard}`);
+          await submit(heard);
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "ما قدرت أفهم التسجيل");
           setBusy(false); setPending(null);
@@ -130,7 +130,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
   const quick = hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"];
 
   return (
-    <div className="panel flex h-[calc(100dvh-14rem)] min-h-[420px] flex-col overflow-hidden lg:h-[65vh]">
+    <div className="-mx-4 -mb-2 flex h-[calc(100dvh-12.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[65vh]">
       <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
         {list.map((m) => (
           <div key={m.id} className={m.role === "user"
@@ -167,9 +167,9 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
           <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
         </div>
       )}
-      <div className="flex items-end gap-2 border-t border-border/40 p-3">
+      <div className="flex items-end gap-2 px-3 pb-1 pt-2 lg:border-t lg:border-border/40 lg:p-3">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
-        <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
+        <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
         <Textarea
           rows={1}
           value={text}
@@ -179,9 +179,9 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
         />
         {text.trim() || image ? (
-          <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy}><SendHorizontal className="size-4 rotate-180" /></Button>
+          <Button size="icon" className="size-10 shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy}><SendHorizontal className="size-4 rotate-180" /></Button>
         ) : (
-          <Button size="icon" variant={recording ? "destructive" : "default"} className={`shrink-0 rounded-full ${recording ? "animate-pulse" : ""}`} aria-label={recording ? "إيقاف وإرسال" : "رسالة صوتية"} onClick={toggleRecord} disabled={busy}>
+          <Button size="icon" variant={recording ? "destructive" : "default"} className={`size-10 shrink-0 rounded-full ${recording ? "animate-pulse" : ""}`} aria-label={recording ? "إيقاف وإرسال" : "رسالة صوتية"} onClick={toggleRecord} disabled={busy}>
             {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
           </Button>
         )}
