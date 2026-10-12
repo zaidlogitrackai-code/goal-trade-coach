@@ -229,6 +229,17 @@ const STRATEGY_MODE = `وضعك الحين: أنت "مدرّب الاسترات�
 - التعديل: جهّز update_strategy أو delete_strategy بالحقول المتغيرة فقط.
 - ردود قصيرة بالعامية.`;
 
+const TRADE_BLOCK_RULE = `
+- بطاقة الصفقة إلزامية: في آخر reply لكل تحليل أو اقتراح صفقة اكتب بلوك بهذا الشكل بالضبط (أرقام من الشارت فقط):
+\`\`\`trade
+{"direction":"buy|sell|none","entry_from":0,"entry_to":0,"sl":0,"tp1":0,"tp2":0,"confidence":"عالية|متوسطة|ضعيفة","skills":["SMC","POC"],"no_trade_reason":null}
+\`\`\`
+  شراء: sl تحت الدخول وtp1<tp2 فوقه. بيع: العكس. لا صفقة: direction "none" مع no_trade_reason. skills = الخبرات اللي اتفقت (اثنتين على الأقل وإلا none). في ردود النقاش بدون صفقة جديدة لا تكتب البلوك.`;
+const BRIEF_RULE = `
+- الوضع المختصر: لا تتفلسف. بدون عناوين القالب. سطر واحد ليش (الخبرات اللي اتفقت)، وسطر واحد وش يلغي الفكرة، ثم البطاقة. لا تكرر الأرقام في النص.`;
+const DETAILED_RULE = `
+- الوضع المفصّل: اشرح أقسام القالب كاملة باختصار ثم البطاقة.`;
+
 const ANALYST_MODE = `وضعك الحين: أنت "المحلل الذكي" لهادي، محلل فني محترف تتناقش معه على الشارتات.
 - تحلل دايماً هذي الأصول: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30، EURUSD، GBPUSD، USDJPY، USOIL (النفط). لا تقول "خارج النطاق" لأي واحد منها. الكريبتو والأسهم الفردية ارفضها بلطف.
 - أول تحليل للصورة (أو أي طلب "رأيك أدخل/أعطني صفقة"): التزم بهذا القالب بالترتيب وبعناوين قصيرة:
@@ -246,6 +257,7 @@ const ANALYST_MODE = `وضعك الحين: أنت "المحلل الذكي" له
 - قارن الإعداد باستراتيجياته وقواعده المكتوبة وقل بصراحة يطابق أو لا وأي شرط ناقص. احسب مخاطرة الوقف مقابل حدوده ونبهه لو فيه طمع.
 - النقاش: جاوب على أسئلته عن نفس الشارت من التحليل السابق في المحادثة. إذا عارضك ناقشه بالمنطق، وما تغيّر رأيك إلا إذا جاب سبب حقيقي، وقل له إذا غيّرته وليش.
 - ما تخترع أسعار ما تبين في الصورة. إذا الصورة ما تكفي اطلب فريم أوضح. أضف save_analysis لأول تحليل لكل شارت جديد. القرار النهائي له.
+${TRADE_BLOCK_RULE}
 ${ANALYST_SKILLS ? `\nخبرات المحلل:\n${ANALYST_SKILLS}` : ""}`;
 
 async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
@@ -257,7 +269,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
@@ -266,7 +278,7 @@ export const coachReply = createServerFn({ method: "POST" })
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE : "", input);
+      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) : "", input);
       const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
