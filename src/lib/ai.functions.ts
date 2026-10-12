@@ -261,6 +261,17 @@ export const riskAdvice = createServerFn({ method: "POST" })
     } catch (e) { fail(e); }
   });
 
+export const performanceInsight = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ period: z.string().max(40), stats: z.string().max(20000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      const ctx = await buildContext(context.supabase);
+      const text = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `هذه أرقام أدائي الحقيقية لفترة "${data.period}": ${data.stats}\nاكتب ٣ نقاط قصيرة جداً (سطر لكل نقطة) كمحلل أداء خبير: وين أربح، وين أخسر، وشيء واحد أغيّره. استخدم الأرقام فقط ولا تخترع شيء. إذا البيانات قليلة قلها بصراحة.` }]);
+      return { text };
+    } catch (e) { fail(e); }
+  });
+
 export const reportSummary = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ period: z.string().max(40), stats: z.string().max(20000) }).parse(d))
