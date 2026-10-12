@@ -8,6 +8,7 @@ import { nextDaily, riskAlerts, type WatchTrade } from "@/lib/risk-watch";
 import { applyPctLimits } from "@/lib/effective-limits";
 import { loadCapital } from "@/lib/capital-store";
 import { eveningReview } from "@/lib/ai.functions";
+import { effectiveDailyTarget } from "@/lib/daily-plan";
 
 const EVERY_MS = 60_000;
 export const RISK_THREAD = "حارس المخاطر";
@@ -29,13 +30,15 @@ export function RiskWatcher() {
     async function tick() {
       try {
         const user_id = await currentUserId();
-        const [s, t] = await Promise.all([
+        const [s, t, plan] = await Promise.all([
           supabase.from("trading_settings").select("*").maybeSingle(),
           supabase.from("trades").select("id,symbol,stop_loss,status,pnl,risk_amount,opened_at,closed_at").gte("opened_at", new Date(Date.now() - 35 * 86_400_000).toISOString()),
+          supabase.from("daily_plans").select("target").eq("day", new Date().toLocaleDateString("en-CA")).maybeSingle(),
         ]);
         let added = false;
         if (s.data && t.data) {
-          const alerts = riskAlerts(applyPctLimits(s.data, (await loadCapital()).summary.balance), t.data as WatchTrade[]);
+          const lim = applyPctLimits(s.data, (await loadCapital()).summary.balance);
+          const alerts = riskAlerts({ ...lim, daily_target: effectiveDailyTarget(plan.data?.target, lim.daily_target) }, t.data as WatchTrade[]);
           if (alerts.length) {
             const { data: seen } = await supabase.from("notifications").select("dedupe_key").in("dedupe_key", alerts.map((a) => a.key));
             const known = new Set((seen ?? []).map((x) => x.dedupe_key));

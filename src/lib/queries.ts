@@ -91,3 +91,14 @@ export function fmtDate(s: string | null) {
   if (!s) return "—";
   return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "medium", timeStyle: "short" }).format(new Date(s));
 }
+
+export const todayPlanQuery = {
+  queryKey: ["daily_plan", "today"] as const,
+  queryFn: async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data, error } = await supabase.from("daily_plans").select("target").eq("day", new Date().toLocaleDateString("en-CA")).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+  refetchInterval: 60_000,
+};

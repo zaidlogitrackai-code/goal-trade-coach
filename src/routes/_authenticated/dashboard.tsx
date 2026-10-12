@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
+import { settingsQuery, tradesQuery, violationsQuery, todayPlanQuery } from "@/lib/queries";
+import { effectiveDailyTarget } from "@/lib/daily-plan";
 import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
 import { supabase } from "@/integrations/supabase/client";
 import { CoreMetrics } from "@/components/dashboard/core-metrics";
@@ -31,6 +32,7 @@ function Dashboard() {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
+  const plan = useQuery(todayPlanQuery);
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -62,7 +64,7 @@ function Dashboard() {
     );
   }
 
-  const settings = s.data;
+  const settings = { ...s.data, daily_target: effectiveDailyTarget(plan.data?.target, s.data.daily_target) };
   const trades = t.data ?? [];
   const start = startOfToday().getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;

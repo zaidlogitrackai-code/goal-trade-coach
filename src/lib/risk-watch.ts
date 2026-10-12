@@ -35,7 +35,7 @@ export function riskAlerts(s: StatusSettings, trades: WatchTrade[], now = new Da
     }
   }
   if (s.daily_target > 0 && m.todayPnl >= s.daily_target) {
-    out.push({ key: `target_day:${d}`, level: "success", title: "تحقق هدفك اليومي 🎯", body: "أقفل وارتاح، لا تطمع. الربح اللي حققته أهم من ربح زيادة ممكن يضيع." });
+    out.push({ key: `target_day:${d}`, level: "success", title: "وصلت هدفك اليومي 🎯", body: "لا تطمع. اطلع من السوق، سكّر الشارت، وشوف حياتك." });
   }
   if ((s.weekly_target ?? 0) > 0 && m.weekPnl >= s.weekly_target!) {
     out.push({ key: `target_week:${d.slice(0, 7)}:${Math.floor(now.getDate() / 7)}`, level: "success", title: "تحقق هدفك الأسبوعي", body: "خلّص أسبوعك هنا، لا تطمع." });

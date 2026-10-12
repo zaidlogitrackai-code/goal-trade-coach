@@ -21,3 +21,9 @@ export function planCheck(plan: DailyPlan | null, todayTrades: T[], s: S, avgWin
   if (plan.max_loss != null && pnl < -plan.max_loss) { kept = false; flags.push(`تعدّى أقصى خسارة: ${pnl} من -${plan.max_loss}`); }
   return { flags, kept, pnl, count };
 }
+
+/** Today's target: the one Hadi chose in today's plan wins over the settings default. */
+export function effectiveDailyTarget(planTarget: number | null | undefined, settingsTarget: number | null | undefined): number {
+  const p = Number(planTarget);
+  return p > 0 ? p : Number(settingsTarget) || 0;
+}
