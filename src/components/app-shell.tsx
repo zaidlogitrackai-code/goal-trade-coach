@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   LayoutDashboard, Timer, PlusCircle, ListOrdered, ScanSearch, MessagesSquare, Layers,
   ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut, ChevronDown, Menu,
+  Brain,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
