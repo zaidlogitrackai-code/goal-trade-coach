@@ -14,6 +14,7 @@ import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
 import type { CapitalMove } from "@/lib/capital";
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
 import { loadCapital, moveCapital } from "@/lib/capital-store";
+import { makeThumbnail } from "@/lib/image";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
@@ -56,6 +57,8 @@ export const ACTION_TYPES = [
   "update_session",
   "delete_session",
   "rename_thread",
+  "add_strategy_example",
+  "delete_strategy_example",
   "delete_notifications",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -95,6 +98,8 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   update_session: "تعديل جلسة",
   delete_session: "حذف جلسة",
   rename_thread: "تغيير اسم محادثة",
+  add_strategy_example: "حفظ مثال تدريب",
+  delete_strategy_example: "حذف مثال تدريب",
   delete_notifications: "مسح التنبيهات",
 };
 
@@ -118,6 +123,7 @@ export const DESTRUCTIVE: readonly ActionType[] = [
   "delete_daily_plan",
   "delete_session",
   "delete_notifications",
+  "delete_strategy_example",
 ];
 
 /** Thrown in auto mode when an action needs the user's click first. */
@@ -253,6 +259,15 @@ export const SCHEMAS = {
     allowed: z.boolean().nullish(),
   }),
   delete_strategy: z.object({ name: z.string().min(1).max(80) }),
+  add_strategy_example: z.object({
+    verdict: z.enum(["good", "bad"]).catch("good"),
+    reason: z.string().min(1).max(1000),
+    strategy: z.string().max(80).nullish(),
+    symbol: z.string().max(20).nullish(),
+    timeframe: z.string().max(10).nullish(),
+    with_image: z.boolean().nullish(),
+  }),
+  delete_strategy_example: z.object({ id: z.string().uuid() }),
   update_rule: z.object({
     title: z.string().min(1).max(200),
     new_title: z.string().min(1).max(200).nullish(),
@@ -664,6 +679,19 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         .from("strategies")
         .update(patch as Upd<"strategies">)
         .eq("id", id);
+      return check(error);
+    }
+    case "add_strategy_example": {
+      const strategy_id = d["strategy"] ? await findByName("strategies", String(d["strategy"])).catch(() => null) : null;
+      const image = d["with_image"] !== false && lastImage ? await makeThumbnail(lastImage) : null;
+      const { error } = await supabase.from("strategy_examples").insert({
+        user_id, strategy_id, verdict: String(d["verdict"]), reason: String(d["reason"]),
+        symbol: (d["symbol"] as string) ?? null, timeframe: (d["timeframe"] as string) ?? null, image,
+      });
+      return check(error);
+    }
+    case "delete_strategy_example": {
+      const { error } = await supabase.from("strategy_examples").delete().eq("id", String(d["id"]));
       return check(error);
     }
     case "delete_strategy": {
