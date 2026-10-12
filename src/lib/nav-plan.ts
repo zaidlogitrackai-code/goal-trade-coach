@@ -10,6 +10,7 @@ export type NavPath =
   | "/analyst"
   | "/coach"
   | "/strategies"
+  | "/training"
   | "/risk"
   | "/discipline"
   | "/performance"
