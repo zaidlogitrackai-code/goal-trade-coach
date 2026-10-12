@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { CAPITAL_CATEGORY, computeCapital, parseLedger } from "@/lib/capital";
+import { applyPctLimits } from "@/lib/effective-limits";
 import type { Database } from "@/integrations/supabase/types";
 
 export type Settings = Database["public"]["Tables"]["trading_settings"]["Row"];
@@ -20,7 +22,14 @@ export const settingsQuery = queryOptions({
     const id = await uid();
     const { data, error } = await supabase.from("trading_settings").select("*").eq("user_id", id).maybeSingle();
     if (error) throw error;
-    return data;
+    if (!data) return data;
+    // Limits follow the real current balance (deposits, corrections, closed P&L).
+    const [closed, cap] = await Promise.all([
+      supabase.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
+      supabase.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
+    ]);
+    const bal = computeCapital({ starting: Number(data.starting_balance) || 0, since: data.created_at, trades: closed.data ?? [], entries: parseLedger(cap.data?.[0]?.content).entries }).balance;
+    return applyPctLimits(data, bal);
   },
 });
 

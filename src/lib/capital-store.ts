@@ -1,4 +1,5 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
+import { applyPctLimits, pctFromDollars } from "@/lib/effective-limits";
 import { supabase } from "@/integrations/supabase/client";
 import {
   applyMove,
@@ -96,4 +97,13 @@ export function useCapital(): { summary: CapitalSummary; ledger: Ledger } | null
       entries: c.data.entries,
     }),
   };
+}
+
+/** After dollar limits change, remember them as % of the current balance so they scale with it. */
+export async function syncLimitsPct(patch: Record<string, unknown>) {
+  const { summary } = await loadCapital();
+  const { data } = await supabase.from("trading_settings").select("user_id,limits_pct").maybeSingle();
+  if (!data) return;
+  const pct = pctFromDollars(patch, summary.balance, data.limits_pct);
+  if (pct) await supabase.from("trading_settings").update({ limits_pct: pct }).eq("user_id", data.user_id);
 }

@@ -520,6 +520,7 @@ export type Database = {
           currency: string
           daily_target: number
           display_name: string | null
+          limits_pct: Json | null
           max_consecutive_losses: number
           max_daily_loss: number
           max_daily_profit: number
@@ -546,6 +547,7 @@ export type Database = {
           currency?: string
           daily_target?: number
           display_name?: string | null
+          limits_pct?: Json | null
           max_consecutive_losses?: number
           max_daily_loss?: number
           max_daily_profit?: number
@@ -572,6 +574,7 @@ export type Database = {
           currency?: string
           daily_target?: number
           display_name?: string | null
+          limits_pct?: Json | null
           max_consecutive_losses?: number
           max_daily_loss?: number
           max_daily_profit?: number
