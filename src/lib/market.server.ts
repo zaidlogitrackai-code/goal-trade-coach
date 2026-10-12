@@ -24,8 +24,8 @@ async function chart(yahoo: string, interval: string, range: string) {
 export async function quotes() {
   return Promise.all(MARKET_SYMBOLS.map(async (s) => {
     try {
-      const { meta } = await chart(s.yahoo, "1d", "5d");
-      const price = meta.regularMarketPrice, prev = meta.chartPreviousClose ?? meta.previousClose;
+      const { meta } = await chart(s.yahoo, "1d", "1d");
+      const price = meta.regularMarketPrice, prev = meta.previousClose ?? meta.chartPreviousClose;
       return { key: s.key, label: s.label, digits: s.digits, price, changePct: prev ? ((price - prev) / prev) * 100 : null, time: meta.regularMarketTime * 1000 };
     } catch { return { key: s.key, label: s.label, digits: s.digits, price: null, changePct: null, time: null }; }
   }));

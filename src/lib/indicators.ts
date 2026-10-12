@@ -4,14 +4,14 @@ export function ema(values: number[], period: number): number | null {
   if (values.length < period) return null;
   const k = 2 / (period + 1);
   let e = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  for (let i = period; i < values.length; i++) e = values[i] * k + e * (1 - k);
+  for (let i = period; i < values.length; i++) e = values[i]! * k + e * (1 - k);
   return e;
 }
 
 export function atr(c: Candle[], period = 14): number | null {
   if (c.length < period + 1) return null;
   const tr: number[] = [];
-  for (let i = 1; i < c.length; i++) tr.push(Math.max(c[i].h - c[i].l, Math.abs(c[i].h - c[i - 1].c), Math.abs(c[i].l - c[i - 1].c)));
+  for (let i = 1; i < c.length; i++) tr.push(Math.max(c[i]!.h - c[i]!.l, Math.abs(c[i]!.h - c[i - 1]!.c), Math.abs(c[i]!.l - c[i - 1]!.c)));
   const s = tr.slice(-period);
   return s.reduce((a, b) => a + b, 0) / s.length;
 }
@@ -33,7 +33,7 @@ export function summarize(c: Candle[], digits: number) {
   if (!c.length) return null;
   const f = (n: number | null) => (n == null ? "—" : n.toFixed(digits));
   const closes = c.map((x) => x.c);
-  const last = c[c.length - 1];
+  const last = c[c.length - 1]!;
   const recent = c.slice(-20);
   const e20 = ema(closes, 20), e50 = ema(closes, 50);
   const trend = e20 != null && e50 != null ? (e20 > e50 && last.c > e20 ? "صاعد" : e20 < e50 && last.c < e20 ? "هابط" : "متذبذب") : "غير واضح";
