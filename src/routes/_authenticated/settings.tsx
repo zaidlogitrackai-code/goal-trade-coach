@@ -61,8 +61,8 @@ function ThemeToggle() {
   );
 }
 
-function AiSwitch({ category, queryKey, icon: Icon, heading, label, hint, onMsg, offMsg }: {
-  category: string; queryKey: string; icon: typeof GraduationCap; heading: string; label: string; hint: string; onMsg: string; offMsg: string;
+function AiSwitch({ to, category, queryKey, icon: Icon, heading, label, hint, onMsg, offMsg }: {
+  to: "/training" | "/knowledge"; category: string; queryKey: string; icon: typeof GraduationCap; heading: string; label: string; hint: string; onMsg: string; offMsg: string;
 }) {
   const qc = useQueryClient();
   const { data: enabled, isLoading } = useQuery({
@@ -99,6 +99,7 @@ function AiSwitch({ category, queryKey, icon: Icon, heading, label, hint, onMsg,
           <Icon className="size-4 text-primary" /> {label}
         </span>
         <span className="text-muted-foreground">{hint}</span>
+        <Link to={to} className="inline-block pt-1 text-primary underline-offset-4 hover:underline">فتح الصفحة</Link>
       </div>
       <Switch checked={enabled ?? true} disabled={isLoading} onCheckedChange={change} />
     </label>
@@ -110,6 +111,7 @@ function AiFeatureToggles() {
     <div className="panel space-y-5 p-6">
       <h3 className="font-semibold text-base">ما يستخدمه الذكاء الاصطناعي</h3>
       <AiSwitch
+        to="/training"
         category={TRAINING_OFF_CATEGORY}
         queryKey="training-enabled"
         icon={GraduationCap}
@@ -120,6 +122,7 @@ function AiFeatureToggles() {
         offMsg="تدريب الذكاء موقوف"
       />
       <AiSwitch
+        to="/knowledge"
         category={KNOWLEDGE_OFF_CATEGORY}
         queryKey="knowledge-enabled"
         icon={BookOpen}
