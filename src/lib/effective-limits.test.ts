@@ -12,3 +12,9 @@ describe("limits follow balance", () => {
     expect(pctFromDollars({ max_daily_risk: 600 }, 60000, null)).toEqual({ max_daily_risk: 1 });
   });
 });
+
+import { effectiveDailyTarget } from "./daily-plan";
+describe("effectiveDailyTarget", () => {
+  it("uses the plan target Hadi chose today", () => { expect(effectiveDailyTarget(500, 1800)).toBe(500); });
+  it("falls back to settings when no plan target", () => { expect(effectiveDailyTarget(null, 1800)).toBe(1800); });
+});
