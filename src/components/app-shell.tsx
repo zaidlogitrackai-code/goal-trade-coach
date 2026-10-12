@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { RiskWatcher } from "@/components/risk-watcher";
 import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { isBlocked, useJourney } from "@/lib/use-journey";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
@@ -154,6 +155,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
+      <RiskWatcher />
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-l border-sidebar-border bg-sidebar/90 p-4 lg:flex">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
