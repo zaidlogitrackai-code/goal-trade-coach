@@ -89,6 +89,8 @@ function NewTrade() {
   const [checks, setChecks] = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<AiTrade[]>([]);
+  const [aiLoaded, setAiLoaded] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const settings = s.data;
   if (s.isLoading || t.isLoading || !settings) return <Loading />;
@@ -166,16 +168,34 @@ function NewTrade() {
   const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
   const potentialProfit = entryNum && tpNum && sizeNum ? Math.abs(tpNum - entryNum) * sizeNum : null;
 
+  /** Auto-answer what the AI can infer from the extracted trade itself. */
+  function autoChecks(form: typeof f) {
+    const e = num(form.entry), sl = num(form.sl), sz = num(form.size);
+    const risk = num(form.risk) ?? (e && sl && sz ? Math.abs(e - sl) * sz : null);
+    return CHECKLIST_ITEMS.map((it) =>
+      it.id === "strategy" ? !!form.strategy_id
+      : it.id === "sl" ? !!sl
+      : it.id === "risk" ? risk !== null && risk <= Number(settings!.max_risk_per_trade ?? Infinity)
+      : false,
+    );
+  }
+
+  function apply(target: AiTrade) {
+    const form = toForm(target, st.data ?? []);
+    setF(form);
+    setChecks(autoChecks(form));
+    setAiLoaded(true);
+  }
+
   function load(list: AiTrade[]) {
     const opens = list.filter((x) => x.action === "open");
     if (opens.length === 0) {
       toast.message("هذا إغلاق صفقة — سجّله من صفحة سجل الصفقات");
       return;
     }
-    const target = opens[0]!;
-    setF(toForm(target, st.data ?? []));
+    apply(opens[0]!);
     setQueue(opens.slice(1));
-    toast.success("تم استخراج بيانات الصفقة للمراجعة. تأكد منها قبل الحفظ.");
+    toast.success("جهّزت الصفقة. جاوب على السؤالين واضغط سجّل.");
   }
 
   async function executeSave(isOverride = false, overrideReasonText = "") {
@@ -241,9 +261,8 @@ function NewTrade() {
       toast.success("تم تسجيل الصفقة بنجاح");
 
       if (queue.length > 0) {
-        setF(toForm(queue[0]!, st.data ?? []));
+        apply(queue[0]!);
         setQueue(queue.slice(1));
-        setChecks(CHECKLIST_ITEMS.map(() => false));
         setReflectionReason("");
         setIsCompensating(null);
         setOverrideNote("");
@@ -295,7 +314,7 @@ function NewTrade() {
     <div className="mx-auto max-w-4xl space-y-8">
       <PageHeader
         title="الصفقة الجديدة"
-        subtitle="راجع الشروط والمخاطرة قبل الضغط على تنفيذ."
+        subtitle="اكتب الصفقة بكلامك أو ارفع صورة من MT5، والذكاء يعبّي كل شيء."
       />
 
       {/* Gate Alert Banner */}
@@ -338,7 +357,7 @@ function NewTrade() {
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  setF(toForm(q, st.data ?? []));
+                  apply(q);
                   setQueue(queue.filter((_, j) => j !== i));
                 }}
               >
@@ -350,6 +369,53 @@ function NewTrade() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {aiLoaded && (
+          <section className="panel space-y-4 p-5" aria-label="ملخص الصفقة">
+            <div className="flex items-center gap-2 font-semibold">
+              <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+              <span>الصفقة جاهزة</span>
+            </div>
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              {[
+                ["الأصل", f.symbol || "—"],
+                ["الاتجاه", f.direction === "short" ? "بيع" : "شراء"],
+                ["الدخول", f.entry || "—"],
+                ["الوقف", f.sl || "—"],
+                ["الهدف", f.tp || "—"],
+                ["الحجم", f.size || "—"],
+                ["المخاطرة", riskNum !== null ? fmtMoney(riskNum) : "—"],
+                ["الاستراتيجية", chosenStrategy?.name ?? "—"],
+              ].map(([k, val]) => (
+                <div key={k} className="rounded-lg bg-muted/40 p-2.5">
+                  <dt className="text-xs text-muted-foreground">{k}</dt>
+                  <dd className="font-data font-semibold" dir="auto">{val}</dd>
+                </div>
+              ))}
+            </dl>
+            {!slNum && (
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-sl">وين وقف الخسارة؟</Label>
+                <Input id="quick-sl" dir="ltr" inputMode="decimal" value={f.sl}
+                  onChange={(e) => { const nf = { ...f, sl: e.target.value }; setF(nf); setChecks(autoChecks(nf).map((x, i) => x || !!(checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk"))); }} />
+              </div>
+            )}
+            {CHECKLIST_ITEMS.map((item, i) => checks[i] ? null : (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 p-3">
+                <span className="text-sm">{item.label}؟</span>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={() => setChecks(checks.map((x, j) => (j === i ? true : x)))}>نعم</Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => { setManualOpen(true); toast.message("راجع هذا البند قبل الدخول."); }}>لا</Button>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <details open={manualOpen} onToggle={(e) => setManualOpen((e.target as HTMLDetailsElement).open)} className="group">
+          <summary className="cursor-pointer select-none text-sm text-muted-foreground">
+            {aiLoaded ? "تعديل يدوي (اختياري)" : "أو عبّيها يدويًا (اختياري)"}
+          </summary>
+          <div className="mt-4 space-y-6">
         {/* Checklist */}
         <section className="panel p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -673,8 +739,11 @@ function NewTrade() {
           </div>
         </section>
 
+        </div>
+        </details>
+
         {/* Submit Button */}
-        <Button
+        {(aiLoaded || manualOpen) && <Button
           type="submit"
           size="lg"
           disabled={busy || (!gateResult.allowed && !gateResult.canOverride)}
@@ -696,7 +765,7 @@ function NewTrade() {
             : overrideReasons.length > 0
             ? "تسجيل مع مبرر استثناء"
             : "تسجيل الصفقة بانضباط"}
-        </Button>
+        </Button>}
       </form>
 
       {/* Override Reason Modal */}
