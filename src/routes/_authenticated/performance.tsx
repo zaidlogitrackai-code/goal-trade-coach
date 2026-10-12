@@ -1,92 +1,140 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
+import { z } from "zod";
+import { EmptyState, Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { OpenTrades } from "@/components/dashboard/open-trades";
+import { Breakdown, CoachInsight, EquityChart, Goals, Kpi, PnlCalendar } from "@/components/performance/widgets";
 import { fmtMoney, settingsQuery, strategiesQuery, tradesQuery } from "@/lib/queries";
 import { equityCurve, groupPnl, tradeStats } from "@/lib/stats";
+import { avgHold, avgR, dailyPnl, delta, expectancy, hourBucket, inRange, maxDrawdown, periodRange, sideSplit, streaks, weekdayName, type Period } from "@/lib/perf";
+
+const PERIODS: { id: Period; label: string }[] = [
+  { id: "today", label: "اليوم" }, { id: "week", label: "الأسبوع" }, { id: "month", label: "الشهر" }, { id: "all", label: "الكل" },
+];
 
 export const Route = createFileRoute("/_authenticated/performance")({
-  head: () => ({ meta: [{ title: "الأداء — نظام هادي" }, { name: "description", content: "أرقام أدائك الحقيقية من صفقاتك." }] }),
+  validateSearch: z.object({ period: z.enum(["today", "week", "month", "all"]).catch("all") }),
+  head: () => ({ meta: [
+    { title: "الأداء — نظام هادي" },
+    { name: "description", content: "لوحة أداء احترافية من صفقاتك الحقيقية." },
+    { property: "og:title", content: "الأداء — نظام هادي" },
+    { property: "og:description", content: "لوحة أداء احترافية من صفقاتك الحقيقية." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
   component: PerformancePage,
 });
 
-const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--foreground)" } };
-
 function PerformancePage() {
+  const { period } = Route.useSearch();
+  const nav = useNavigate({ from: "/performance" });
   const t = useQuery(tradesQuery);
   const s = useQuery(settingsQuery);
   const st = useQuery(strategiesQuery);
   if (t.isLoading) return <Loading />;
-  const trades = t.data ?? [];
+  const all = t.data ?? [];
   const cur = s.data?.currency ?? "USD";
-  const k = tradeStats(trades);
-  if (trades.length === 0) return (
-    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState text="لا توجد بيانات بعد. سجّل أول صفقة عن طريق المدرب." action={<Button asChild><Link to="/coach">كلّم المدرب</Link></Button>} /></div>
+  const tz = s.data?.timezone ?? "Asia/Riyadh";
+  const startBal = Number(s.data?.starting_balance) || 0;
+
+  if (all.length === 0) return (
+    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState title="لا توجد بيانات بعد" text="سجّل أول صفقة عن طريق المدرب وتبدأ لوحة الأداء تشتغل." action={<Button asChild><Link to="/coach">كلّم المدرب</Link></Button>} /></div>
   );
-  const names = new Map((st.data ?? []).map((x) => [x.id, x.name]));
-  const closedTrades = trades.filter((x) => x.status === "closed");
-  const curve = equityCurve(trades, Number(s.data?.starting_balance) || 0);
-  const bySym = groupPnl(trades, (x) => x.symbol);
-  const byStrat = groupPnl(trades, (x) => (x.strategy_id && names.get(x.strategy_id)) || "بدون استراتيجية");
-  const byEmo = groupPnl(trades, (x) => x.emotion || "غير محدد");
-  const pf = Number.isFinite(k.profitFactor) ? k.profitFactor.toFixed(2) : "∞";
-  const openRisk = trades.filter((x) => x.status === "open").reduce((a, x) => a + (Number(x.risk_amount) || 0), 0);
+
+  const now = new Date();
+  const range = periodRange(period, now, tz);
+  const trades = range ? inRange(all, range.start, range.end) : all;
+  const prev = range ? inRange(all, range.prevStart, range.start) : [];
+  const k = tradeStats(trades), kp = tradeStats(prev);
   const has = k.closed > 0;
   const d = (v: string) => (has ? v : "—");
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title="الأداء" subtitle={`${trades.length} صفقة · ${k.open} مفتوحة · ${k.closed} مغلقة`} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="كل الصفقات" value={String(trades.length)} />
-        <Stat label="مفتوحة" value={String(k.open)} />
-        <Stat label="مغلقة" value={String(k.closed)} />
-        <Stat label="المخاطرة الحالية" value={fmtMoney(openRisk, cur)} tone={openRisk > 0 ? "destructive" : undefined} />
-      </div>
-      <OpenTrades trades={trades} currency={cur} />
-      {!has && <p className="text-sm text-muted-foreground">أرقام النتائج تطلع أول ما تسكّر صفقة.</p>}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="صافي الربح" value={d(fmtMoney(k.netPnl, cur))} tone={has ? (k.netPnl >= 0 ? "success" : "destructive") : undefined} />
-        <Stat label="نسبة الفوز" value={d(`${k.winRate.toFixed(1)}%`)} />
-        <Stat label="معامل الربح" value={d(pf)} />
-        <Stat label="رابحة / خاسرة" value={d(`${k.wins} / ${k.losses}`)} />
-        <Stat label="متوسط الربح" value={d(fmtMoney(k.avgWin, cur))} tone={has ? "success" : undefined} />
-        <Stat label="متوسط الخسارة" value={d(fmtMoney(-k.avgLoss, cur))} tone={has ? "destructive" : undefined} />
-        <Stat label="أفضل صفقة" value={d(fmtMoney(k.best, cur))} />
-        <Stat label="أسوأ صفقة" value={d(fmtMoney(k.worst, cur))} />
-      </div>
-      {has && closedTrades.length > 0 && <>
+  // Balance before the window, so the curve shows real account level.
+  const before = range ? all.filter((x) => x.status === "closed" && +new Date(x.closed_at ?? x.opened_at) < range.start).reduce((a, x) => a + (Number(x.pnl) || 0), 0) : 0;
+  const curve = equityCurve(trades, startBal + before);
+  const dd = maxDrawdown(trades, startBal + before);
+  const r = avgR(trades);
+  const sk = streaks(trades);
+  const hold = avgHold(trades);
+  const side = sideSplit(trades);
+  const names = new Map((st.data ?? []).map((x) => [x.id, x.name]));
+  const pf = Number.isFinite(k.profitFactor) ? k.profitFactor.toFixed(2) : "∞";
+  const checklist = trades.length ? (trades.filter((x) => x.checklist_passed).length / trades.length) * 100 : 0;
+  const openRisk = all.filter((x) => x.status === "open").reduce((a, x) => a + (Number(x.risk_amount) || 0), 0);
+  const spark = curve.map((p) => p.balance);
+  const days = dailyPnl(all, tz);
 
-      <div className="panel p-5">
-        <h2 className="mb-4 font-semibold">منحنى الرصيد</h2>
-        <div className="h-64" dir="ltr">
-          <ResponsiveContainer><AreaChart data={curve}><CartesianGrid stroke="var(--border)" /><XAxis dataKey="n" stroke="var(--muted-foreground)" /><YAxis stroke="var(--muted-foreground)" /><Tooltip {...tip} /><Area dataKey="balance" name="الرصيد" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.12} /></AreaChart></ResponsiveContainer>
-        </div>
+  const win = (p: Period) => { const rr = periodRange(p, now, tz)!; return inRange(all, rr.start, rr.end).filter((x) => x.status === "closed").reduce((a, x) => a + (Number(x.pnl) || 0), 0); };
+  const S = s.data;
+  const goals = [
+    { label: "اليوم", pnl: win("today"), target: Number(S?.daily_target) || 0, loss: Number(S?.max_daily_loss) || 0 },
+    { label: "الأسبوع", pnl: win("week"), target: Number(S?.weekly_target) || 0, loss: Number(S?.weekly_max_loss) || 0 },
+    { label: "الشهر", pnl: win("month"), target: Number(S?.monthly_target) || 0, loss: Number(S?.monthly_max_loss) || 0 },
+  ];
+
+  const bySym = groupPnl(trades, (x) => x.symbol);
+  const byStrat = groupPnl(trades, (x) => (x.strategy_id && names.get(x.strategy_id)) || "بدون استراتيجية");
+  const byEmo = groupPnl(trades, (x) => x.emotion || "غير محدد");
+  const byDay = groupPnl(trades, (x) => weekdayName(x, tz));
+  const byHour = groupPnl(trades, (x) => hourBucket(x, tz));
+  const pLabel = PERIODS.find((p) => p.id === period)!.label;
+  const statsText = JSON.stringify({ ...k, profitFactor: pf, avgR: r, maxDrawdownPct: dd.pct, expectancy: expectancy(trades), streaks: sk, side, bySym, byStrat, byEmo, byDay, byHour, checklist });
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader title="الأداء" subtitle={`${trades.length} صفقة · ${k.open} مفتوحة · ${k.closed} مغلقة`} />
+
+      <div className="glass inline-flex rounded-full p-1" role="tablist">
+        {PERIODS.map((p) => (
+          <button key={p.id} role="tab" aria-selected={period === p.id} onClick={() => nav({ search: { period: p.id } })}
+            className={`rounded-full px-4 py-1.5 text-sm transition ${period === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>{p.label}</button>
+        ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Group title="حسب الأصل" data={bySym} cur={cur} />
-        <Group title="حسب الاستراتيجية" data={byStrat} cur={cur} />
-        <Group title="حسب الحالة النفسية" data={byEmo} cur={cur} />
+
+      {openRisk > 0 && <p className="text-sm">المخاطرة الحالية في صفقاتك المفتوحة: <span className="font-data text-destructive" dir="ltr">{fmtMoney(openRisk, cur)}</span></p>}
+      <OpenTrades trades={all} currency={cur} />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi label="صافي الربح" value={d(fmtMoney(k.netPnl, cur))} sub={has && startBal > 0 ? `${((k.netPnl / startBal) * 100).toFixed(1)}% من الرصيد` : undefined} delta={has && range ? delta(k.netPnl, kp.netPnl) : null} tone={has ? (k.netPnl >= 0 ? "success" : "destructive") : undefined} spark={spark} />
+        <Kpi label="نسبة الفوز" value={d(`${k.winRate.toFixed(0)}%`)} sub={has ? `${k.wins} ربح / ${k.losses} خسارة` : undefined} delta={has && range && kp.closed ? k.winRate - kp.winRate : null} />
+        <Kpi label="معامل الربح" value={d(pf)} sub={has ? (k.profitFactor >= 1.5 ? "ممتاز" : k.profitFactor >= 1 ? "مقبول" : "تحت الصفر") : undefined} />
+        <Kpi label="متوسط R" value={r == null ? "—" : `${r >= 0 ? "+" : ""}${r.toFixed(2)}R`} sub="ربحك مقابل مخاطرتك" tone={r == null ? undefined : r >= 0 ? "success" : "destructive"} />
       </div>
-      </>}
+      {!has && <p className="text-sm text-muted-foreground">أرقام النتائج تطلع أول ما تسكّر صفقة في فترة "{pLabel}".</p>}
+
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2"><EquityChart curve={curve} dd={dd} cur={cur} /></div>
+        <Goals rows={goals} cur={cur} />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2"><PnlCalendar days={days} trades={all} tz={tz} cur={cur} /></div>
+        <CoachInsight period={pLabel} stats={statsText} disabled={!has} />
+      </div>
+
+      <div className="panel grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-3 sm:p-5 lg:grid-cols-4">
+        <Pro label="المتوقع لكل صفقة" v={d(fmtMoney(expectancy(trades), cur))} />
+        <Pro label="أطول سلسلة ربح" v={d(String(sk.maxWin))} />
+        <Pro label="أطول سلسلة خسارة" v={d(String(sk.maxLoss))} />
+        <Pro label="متوسط مدة الصفقة" v={hold == null ? "—" : hold < 60 ? `${Math.round(hold)} د` : `${(hold / 60).toFixed(1)} س`} />
+        <Pro label="متوسط الربح / الخسارة" v={d(`${fmtMoney(k.avgWin, cur)} / ${fmtMoney(-k.avgLoss, cur)}`)} />
+        <Pro label="أفضل / أسوأ صفقة" v={d(`${fmtMoney(k.best, cur)} / ${fmtMoney(k.worst, cur)}`)} />
+        <Pro label="شراء / بيع" v={d(`${side.buy.count} (${fmtMoney(side.buy.pnl, cur)}) / ${side.sell.count} (${fmtMoney(side.sell.pnl, cur)})`)} />
+        <Pro label="التزام قائمة الفحص" v={trades.length ? `${checklist.toFixed(0)}%` : "—"} />
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <Breakdown title="حسب الأصل" data={bySym} cur={cur} />
+        <Breakdown title="حسب الاستراتيجية" data={byStrat} cur={cur} />
+        <Breakdown title="حسب حالتك النفسية" data={byEmo} cur={cur} />
+        <Breakdown title="حسب يوم الأسبوع" data={byDay} cur={cur} />
+        <Breakdown title="حسب ساعة الدخول" data={byHour} cur={cur} />
+      </div>
     </div>
   );
 }
 
-function Group({ title, data, cur }: { title: string; data: { name: string; pnl: number; count: number; wins: number }[]; cur: string }) {
-  return (
-    <div className="panel p-5">
-      <h2 className="mb-4 font-semibold">{title}</h2>
-      <div className="h-48" dir="ltr">
-        <ResponsiveContainer><BarChart data={data}><XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={11} /><YAxis stroke="var(--muted-foreground)" fontSize={11} /><Tooltip {...tip} /><Bar dataKey="pnl" name="الربح" fill="var(--chart-2)" radius={4} /></BarChart></ResponsiveContainer>
-      </div>
-      <div className="mt-3 space-y-1 text-sm">
-        {data.map((g) => (
-          <div key={g.name} className="flex justify-between"><span>{g.name} <span className="text-xs text-muted-foreground">({g.count} · فوز {Math.round((g.wins / g.count) * 100)}%)</span></span><span className={`font-data ${g.pnl >= 0 ? "text-success" : "text-destructive"}`} dir="ltr">{fmtMoney(g.pnl, cur)}</span></div>
-        ))}
-      </div>
-    </div>
-  );
+function Pro({ label, v }: { label: string; v: string }) {
+  return <div className="space-y-0.5"><div className="text-xs text-muted-foreground">{label}</div><div className="font-data tabular-nums" dir="ltr">{v}</div></div>;
 }

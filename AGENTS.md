@@ -20,3 +20,4 @@
 - Risk alerts come only from pure `src/lib/risk-watch.ts`, run client-side every minute by `RiskWatcher` and de-duplicated via `notifications.dedupe_key` — in-app only (user chose no push), so alerts never repeat.
 - Risk management page is a chat with the risk guardian (shared SessionAgent with title/mode props, thread "حارس المخاطر"; coachReply mode=risk adds RISK_MODE); daily morning note via riskMorning deduped by notifications.dedupe_key; RiskWatcher also posts alerts into that thread — one agent chat per area keeps everything conversational.
 - Discipline streak is computed only in pure src/lib/streak.ts (market days Mon–Fri, tz-aware) and shared by StreakCard and the AI context.
+- Performance dashboard metrics (period windows, drawdown, R, streaks, calendar) come only from pure `src/lib/perf.ts` (tested) — keeps the numbers tz-correct and consistent.
