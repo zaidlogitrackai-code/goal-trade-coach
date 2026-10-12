@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, TrendingUp, Shield, Activity, Flame } from "lucide-react";
-import { fmtMoney } from "@/lib/queries";
+import { TrendingUp, Shield, Activity, Flame, type LucideIcon } from "lucide-react";
 
 interface CoreMetricsProps {
   todayPnl: number;
@@ -17,144 +16,57 @@ interface CoreMetricsProps {
   maxConsecutiveLosses: number;
 }
 
-export function CoreMetrics({
-  todayPnl,
-  dailyTarget,
-  maxDailyProfit,
-  maxDailyLoss,
-  currency,
-  riskRemaining,
-  maxDailyRisk,
-  tradesRemaining,
-  maxTradesPerDay,
-  tradesToday,
-  consecutiveLosses,
-  maxConsecutiveLosses,
-}: CoreMetricsProps) {
+/** Whole numbers without ".00" — cleaner cards. */
+export function money(n: number | null | undefined, currency = "USD") {
+  if (n == null || Number.isNaN(n)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+  }).format(n);
+}
+
+function Card({ to, label, Icon, value, tone, sub }: {
+  to: string; label: string; Icon: LucideIcon; value: string; tone?: string; sub: string;
+}) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      {/* 1. Today PnL */}
-      <Link
-        to="/performance"
-        className="panel group relative min-w-0 p-3.5 transition-colors hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-5"
-      >
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-medium">ربح / خسارة اليوم</span>
-          <TrendingUp className="size-4 group-hover:text-primary" />
-        </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span
-            dir="ltr"
-            className={`font-data break-words text-xl font-bold sm:text-3xl ${
-              todayPnl > 0 ? "text-success" : todayPnl < 0 ? "text-destructive" : "text-foreground"
-            }`}
-          >
-            {fmtMoney(todayPnl, currency)}
-          </span>
-        </div>
-        <p className="mt-2 hidden text-xs text-muted-foreground sm:block">
-          {dailyTarget > 0 ? `الهدف: ${fmtMoney(dailyTarget, currency)}` : "لا يوجد هدف محدد"}
-          {maxDailyLoss > 0 ? ` · أقصى خسارة: ${fmtMoney(maxDailyLoss, currency)}` : ""}
-        </p>
-        <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-          <span>شاهد الأداء التفصيلي</span>
-          <ArrowUpRight className="size-3" />
-        </div>
-      </Link>
+    <Link
+      to={to}
+      className="panel group flex min-w-0 flex-col justify-between gap-3 p-4 transition-colors hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:min-h-[8.5rem] lg:p-5"
+    >
+      <div className="flex items-center justify-between gap-2 text-muted-foreground">
+        <span className="truncate text-xs font-medium lg:text-[13px]">{label}</span>
+        <Icon className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+      </div>
+      <span dir="ltr" className={`font-data text-right text-2xl font-semibold tabular-nums tracking-tight lg:text-[2rem] ${tone ?? "text-foreground"}`}>
+        {value}
+      </span>
+      <p className="truncate text-xs text-muted-foreground">{sub}</p>
+    </Link>
+  );
+}
 
-      {/* 2. Remaining Risk */}
-      <Link
-        to="/risk"
-        className="panel group relative min-w-0 p-3.5 transition-colors hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-5"
-      >
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-medium">المخاطرة المتبقية</span>
-          <Shield className="size-4 group-hover:text-primary" />
-        </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span
-            dir="ltr"
-            className={`font-data break-words text-xl font-bold sm:text-3xl ${
-              riskRemaining === 0 ? "text-destructive" : "text-foreground"
-            }`}
-          >
-            {riskRemaining != null ? fmtMoney(riskRemaining, currency) : "غير محدد"}
-          </span>
-        </div>
-        <p className="mt-2 hidden text-xs text-muted-foreground sm:block">
-          {maxDailyRisk > 0 ? `من إجمالي ${fmtMoney(maxDailyRisk, currency)} اليوم` : "لم يتم تفعيل حد أقصى للمخاطرة"}
-        </p>
-        <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-          <span>تعديل حدود المخاطر</span>
-          <ArrowUpRight className="size-3" />
-        </div>
-      </Link>
-
-      {/* 3. Remaining Trades */}
-      <Link
-        to="/trades"
-        className="panel group relative min-w-0 p-3.5 transition-colors hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-5"
-      >
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-medium">الصفقات المتبقية</span>
-          <Activity className="size-4 group-hover:text-primary" />
-        </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span
-            dir="ltr"
-            className={`font-data text-xl font-bold sm:text-3xl ${
-              tradesRemaining === 0 ? "text-warning" : "text-foreground"
-            }`}
-          >
-            {tradesRemaining != null ? tradesRemaining : "مفتوح"}
-          </span>
-          {tradesRemaining != null && <span className="text-xs text-muted-foreground">صفقة</span>}
-        </div>
-        <p className="mt-2 hidden text-xs text-muted-foreground sm:block">
-          {maxTradesPerDay > 0
-            ? `نفذت ${tradesToday} من أصل ${maxTradesPerDay} صفقات مسموحة`
-            : `نفذت ${tradesToday} صفقة اليوم`}
-        </p>
-        <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-          <span>عرض سجل الصفقات</span>
-          <ArrowUpRight className="size-3" />
-        </div>
-      </Link>
-
-      {/* 4. Consecutive Losses */}
-      <Link
-        to="/discipline"
-        className="panel group relative min-w-0 p-3.5 transition-colors hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-5"
-      >
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-medium">الخسائر المتتالية</span>
-          <Flame className="size-4 group-hover:text-primary" />
-        </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span
-            dir="ltr"
-            className={`font-data text-xl font-bold sm:text-3xl ${
-              consecutiveLosses >= maxConsecutiveLosses && maxConsecutiveLosses > 0
-                ? "text-destructive"
-                : consecutiveLosses > 0
-                ? "text-warning"
-                : "text-success"
-            }`}
-          >
-            {consecutiveLosses}
-          </span>
-          <span className="text-xs text-muted-foreground">متتالية</span>
-        </div>
-        <p className="mt-2 hidden text-xs text-muted-foreground sm:block">
-          {maxConsecutiveLosses > 0
-            ? `الحد الأقصى للتوقف: ${maxConsecutiveLosses} خسائر`
-            : "لم يُحدد حد للخسائر المتتالية"}
-        </p>
-        <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-          <span>فحص مؤشرات الانضباط</span>
-          <ArrowUpRight className="size-3" />
-        </div>
-      </Link>
+export function CoreMetrics(p: CoreMetricsProps) {
+  const c = p.currency;
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <Card to="/performance" label="ربح / خسارة اليوم" Icon={TrendingUp}
+        value={money(p.todayPnl, c)}
+        tone={p.todayPnl > 0 ? "text-success" : p.todayPnl < 0 ? "text-destructive" : undefined}
+        sub={p.dailyTarget > 0 ? `الهدف ${money(p.dailyTarget, c)}` : "بدون هدف"} />
+      <Card to="/risk" label="المخاطرة المتبقية" Icon={Shield}
+        value={p.riskRemaining != null ? money(p.riskRemaining, c) : "—"}
+        tone={p.riskRemaining === 0 ? "text-destructive" : undefined}
+        sub={p.maxDailyRisk > 0 ? `من ${money(p.maxDailyRisk, c)}` : "بدون حد"} />
+      <Card to="/trades" label="الصفقات المتبقية" Icon={Activity}
+        value={p.tradesRemaining != null ? String(p.tradesRemaining) : "—"}
+        tone={p.tradesRemaining === 0 ? "text-destructive" : undefined}
+        sub={p.maxTradesPerDay > 0 ? `${p.tradesToday} من ${p.maxTradesPerDay} اليوم` : "بدون حد"} />
+      <Card to="/discipline" label="الخسائر المتتالية" Icon={Flame}
+        value={String(p.consecutiveLosses)}
+        tone={p.maxConsecutiveLosses > 0 && p.consecutiveLosses >= p.maxConsecutiveLosses ? "text-destructive" : p.consecutiveLosses === 0 ? "text-success" : "text-warning"}
+        sub={p.maxConsecutiveLosses > 0 ? `الحد ${p.maxConsecutiveLosses}` : "بدون حد"} />
     </div>
   );
 }

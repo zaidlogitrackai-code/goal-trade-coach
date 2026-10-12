@@ -34,12 +34,14 @@ export function QuickCoach({ needsGoals = false }: { needsGoals?: boolean }) {
 
   return (
     <section className="panel space-y-3 p-4 sm:p-5">
-      <div className="flex items-center gap-2 text-sm font-semibold"><Bot className="size-4" /> قل للمدرب وهو ينفّذ</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold"><Bot className="size-4 shrink-0" /> قل للمدرب وهو ينفّذ</div>
+        {needsGoals && (
+          <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={interview}>خلّ المدرب يسألني</Button>
+        )}
+      </div>
       {needsGoals && (
-        <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
-          <p>قبل ما تتداول، المدرب يبي يعرف تارقتك وحد خسارتك عشان يوقفك قبل ما تطمع.</p>
-          <Button type="button" className="w-full" onClick={interview}>خلّ المدرب يسألني</Button>
-        </div>
+        <p className="text-xs leading-5 text-muted-foreground">المدرب يحتاج تارقتك وحد خسارتك عشان يوقفك قبل ما تطمع.</p>
       )}
       <Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
