@@ -88,7 +88,7 @@ function DisciplineStats() {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const i = setInterval(() => setNow(Date.now()), 1000);
+    const i = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1000);
     return () => clearInterval(i);
   }, []);
 
