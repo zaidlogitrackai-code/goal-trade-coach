@@ -96,3 +96,9 @@ export async function chartImages(s: MarketSymbol): Promise<{ images: string[]; 
     return { images, legend: lines.join("\n"), thumb: chartSvg(sets[1]![1], `${s.key} 1H`, s.digits) };
   } catch { return null; }
 }
+
+/** Live price only (TradingView, Yahoo fallback). */
+export async function livePrice(s: MarketSymbol): Promise<number | null> {
+  try { const p = (await tvSnapshot([s.tv])).get(s.tv)?.[0]; if (p != null) return p; } catch { /* fallback */ }
+  try { return (await chart(s.yahoo, "1m", "1d")).meta.regularMarketPrice ?? null; } catch { return null; }
+}
