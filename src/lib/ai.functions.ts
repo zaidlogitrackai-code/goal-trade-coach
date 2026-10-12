@@ -290,22 +290,29 @@ export const coachReply = createServerFn({ method: "POST" })
         const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: stored, image: data.thumb ?? null });
         if (e1) throw e1;
       }
-      const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
-      const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
-      if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      let live = "";
-      if (data.mode === "analyst") {
-        const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
-        const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
-        if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
-      }
-      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
-      const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
-      if (e2) throw e2;
-      const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
-      if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
-      await sb.from("coach_threads").update(update).eq("id", data.threadId);
-      return { reply, messageId: saved.id };
+      // The reply is produced in a task that outlives the request: if the phone drops
+      // the connection, it still gets saved and the chat picks it up.
+      const work = (async () => {
+        const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
+        const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
+        if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
+        let live = "";
+        if (data.mode === "analyst") {
+          const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
+          const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
+          if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
+        }
+        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
+        const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
+        if (e2) throw e2;
+        const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
+        if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
+        await sb.from("coach_threads").update(update).eq("id", data.threadId);
+        return { reply, messageId: saved.id };
+      })();
+      const { keepAlive } = await import("./request-context.server");
+      keepAlive(work);
+      return await work;
     } catch (e) { fail(e); }
   });
 
