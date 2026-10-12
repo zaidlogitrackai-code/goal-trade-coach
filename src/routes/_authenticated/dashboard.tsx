@@ -226,7 +226,7 @@ function Dashboard() {
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
 
-      <QuickCoach />
+      <QuickCoach needsGoals={[settings.daily_target, settings.weekly_target, settings.monthly_target, settings.max_daily_loss, settings.max_risk_per_trade].some((x) => !Number(x))} />
 
       <details className="group panel p-4 sm:p-5">
         <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium">
