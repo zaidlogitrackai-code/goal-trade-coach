@@ -36,7 +36,7 @@ export interface AgentChatProps {
   title?: string;
   greeting?: string;
   quick?: string[];
-  mode?: "coach" | "risk" | "strategy" | "discipline";
+  mode?: "coach" | "risk" | "strategy" | "discipline" | "analyst";
   placeholder?: string;
   onReady?: (threadId: string) => void;
 }
