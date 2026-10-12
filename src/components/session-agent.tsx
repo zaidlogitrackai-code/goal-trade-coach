@@ -216,7 +216,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
             <button onClick={() => submit(retryText(stuck.content), true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
           </div>
         )}
-        {!busy && list.length > 0 && (quickProp ? true : list.length < 4) && (
+        {!busy && list.length > 0 && quick.length > 0 && (quickProp ? true : list.length < 4) && (
           <div className="flex flex-wrap gap-2">
             {quick.map((q) => (
               <button key={q} onClick={() => submit(q)} className="rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-accent">{q}</button>
