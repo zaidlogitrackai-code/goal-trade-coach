@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { LimitsForm } from "@/components/limits-form";
+import { RiskGauges } from "@/components/risk-gauges";
 import { RiskGuardian } from "@/components/risk-guardian";
 import { Loading } from "@/components/app-shell";
 import { SessionAgent } from "@/components/session-agent";
@@ -54,10 +55,12 @@ function RiskPage() {
   const data = s.data ?? null;
 
   let tone = "bg-success", label = "سليمة";
+  let metrics: ReturnType<typeof computeDayMetrics> | null = null;
   if (data) {
     const start = startOfToday().getTime();
     const vt = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
-    const st = computeStatus(data, computeDayMetrics(data, t.data ?? [], vt));
+    metrics = computeDayMetrics(data, t.data ?? [], vt);
+    const st = computeStatus(data, metrics);
     if (["loss_limit", "stopped", "high_risk", "rules_broken"].includes(st)) { tone = "bg-destructive"; label = "وقف"; }
     else if (st === "caution") { tone = "bg-warning"; label = "انتبه"; }
     else if (st === "target_hit") { tone = "bg-success"; label = "حققت هدفك"; }
@@ -104,6 +107,7 @@ function RiskPage() {
           </Sheet>
         </div>
       </div>
+      {data && metrics && <RiskGauges s={data} m={metrics} />}
       <SessionAgent
         hasActive={false}
         title={RISK_THREAD}
