@@ -108,7 +108,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -125,7 +125,10 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name"} (أرسل فقط الحقول المذكورة، أرقام موجبة)
 - add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
 - add_rule: {"title","description"}
-- create_trade: {"symbol" (مثل XAUUSD، أو null إذا ما ذكره),"direction":"long"|"short","entry_price","stop_loss","take_profit","position_size","risk_amount","strategy" (اسم استراتيجية موجودة أو null),"emotion","notes","status":"open"|"closed","pnl" (للصفقة المنتهية، سالب للخسارة),"exit_price"}
+- create_trade: {"symbol" (مثل XAUUSD، أو null إذا ما ذكره),"direction":"long"|"short","entry_price","stop_loss","take_profit","position_size","risk_amount","strategy" (اسم استراتيجية موجودة أو null),"emotion","notes","status":"open"|"closed","pnl" (للصفقة المنتهية، سالب للخسارة),"exit_price","opened_at" (وقت الفتح ISO إذا ظهر بالصورة)} — نفس الصفقة لو انرفعت مرتين النظام ما يكررها، ولو صارت مقفولة يقفلها.
+- save_analysis: {"symbol","timeframe","question","result" (تحليلك للشارت markdown)} — احفظ أي تحليل شارت تسويه
+- delete_analysis: {"id"} أو {"symbol"} (آخر تحليل)
+- delete_thread: {"title"} (عنوان المحادثة بالضبط)
 - close_trade: {"symbol" (أو null),"pnl" (سالب للخسارة),"exit_price","notes"} — إذا ما فيه صفقة مفتوحة تنسجل كصفقة منتهية تلقائياً.
 - add_note: {"title","content","category"}
 - update_strategy: {"name" (الاسم الحالي بالضبط),"new_name","description","entry_conditions","exit_conditions","markets","timeframes","allowed" (true/false)} — أرسل فقط الحقول المتغيرة
@@ -152,7 +155,9 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 1.2. إذا كان في تهدئة أو تجاوز حدًا، لا تجهز صفقة جديدة. بوابة التداول ترفض الصفقات المخالفة على أي حال.
 2. إذا طلب تسجيل صفقة (بنص أو صورة)، لازم تضيف create_trade في نفس الرد بالمعلومات المتوفرة حتى لو ناقص الرمز أو الاتجاه (حط null أو long). الصفقة المنتهية بربح أو خسارة: status "closed" مع pnl. لا تستبدل الصفقة بملاحظة add_note.
 3. إذا قال "سجلها" أو "نفذ" لشيء ذكرتموه قبل، جهّز الإجراء الآن من المحادثة السابقة بدون ما تعيد الأسئلة.
-4. اقرأ الصور المرفقة بعناية واستخرج منها كل الصفقات (الرمز، الاتجاه، الدخول، الخروج، الربح).
+4. لقطة MetaTrader 5 (تبويب التداول Trade أو السجل History، جوال أو كمبيوتر): كل سطر صفقة = create_trade منفصل. buy=long، sell=short. الحجم lots في position_size، سعر الفتح entry_price، S/L وT/P، السعر الحالي/الإغلاق exit_price، الربح Profit في pnl. تبويب Trade = صفقات مفتوحة (status open، بدون pnl)؛ History = منتهية (status closed مع pnl). لا تسأل "تبيني أسجلها؟" — سجلها مباشرة، ونبهه إذا تجاوزت حدوده أو هدفه (لا تطمع).
+4.1. صورة شارت بدون صفقات: حلله (الاتجاه، الدعوم والمقاومات، سيناريو دخول ووقف وهدف) وأضف save_analysis.
+4.2. اقرأ الصور المرفقة بعناية واستخرج منها كل الصفقات (الرمز، الاتجاه، الدخول، الخروج، الربح).
 لا تخترع أرقام ما قالها ولا ظهرت بالصورة. summary جملة عربية قصيرة تشرح الإجراء. reply ردك بالعربي بصيغة markdown مختصر. إذا ما فيه شي يُحفظ خل actions فاضية.`;
 
 async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
@@ -172,7 +177,7 @@ export const coachReply = createServerFn({ method: "POST" })
       if (e1) throw e1;
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
-      if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image }] });
+      if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
       const { reply, actions } = await runAgent(sb, "", input);
       const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
