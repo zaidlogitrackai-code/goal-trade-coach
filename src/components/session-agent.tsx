@@ -39,9 +39,11 @@ export interface AgentChatProps {
   mode?: "coach" | "risk" | "strategy" | "discipline" | "analyst";
   placeholder?: string;
   onReady?: (threadId: string) => void;
+  /** Open this exact conversation instead of looking one up by title. */
+  threadId?: string;
 }
 
-export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady }: AgentChatProps) {
+export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId }: AgentChatProps) {
   const threadTitle = title ?? todayTitle();
   const qc = useQueryClient();
   const send = useServerFn(coachReply);
@@ -63,6 +65,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   // Find (or create once) today's session thread, opened by the agent's question.
   const thread = useQuery({
     queryKey: ["session-thread", threadTitle],
+    enabled: !threadId,
     queryFn: async () => {
       const { data, error } = await supabase.from("coach_threads").select("id").eq("title", threadTitle).order("created_at").limit(1);
       if (error) throw error;
@@ -71,7 +74,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   });
 
   useEffect(() => {
-    if (thread.isLoading || thread.data || boot.current) return;
+    if (threadId || thread.isLoading || thread.data || boot.current) return;
     boot.current = true;
     (async () => {
       const user_id = await currentUserId();
@@ -81,11 +84,11 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content });
       await qc.invalidateQueries({ queryKey: ["session-thread"] });
     })();
-  }, [thread.isLoading, thread.data, hasActive, qc, threadTitle, greeting]);
+  }, [threadId, thread.isLoading, thread.data, hasActive, qc, threadTitle, greeting]);
 
-  useEffect(() => { if (thread.data) onReady?.(thread.data); }, [thread.data, onReady]);
 
-  const id = thread.data ?? null;
+  const id = threadId ?? thread.data ?? null;
+  useEffect(() => { if (id) onReady?.(id); }, [id, onReady]);
   const msgs = useQuery({
     queryKey: ["messages", id],
     enabled: !!id,
