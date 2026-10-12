@@ -51,6 +51,35 @@ export function retryText(content: string): string {
   return content.endsWith(IMAGE_NOTE) ? content.slice(0, -IMAGE_NOTE.length) : content;
 }
 
+export type Delivery<T> = { kind: "reply"; value: T } | { kind: "answered" } | { kind: "pending" };
+
+/**
+ * Send once. On a network drop the server keeps working, so first watch the thread:
+ * - the reply shows up → "answered" (no second AI call);
+ * - the message never arrived → resend once as a retry;
+ * - still unanswered after `maxWaitMs` → "pending" (the chat shows a retry button).
+ */
+export async function sendReliably<T>(
+  call: (retry: boolean) => Promise<T>,
+  check: () => Promise<RetryDecision>,
+  { pollMs = 2500, maxWaitMs = 45_000 }: { pollMs?: number; maxWaitMs?: number } = {},
+): Promise<Delivery<T>> {
+  try {
+    return { kind: "reply", value: await call(false) };
+  } catch (e) {
+    if (!isNetworkError(e)) throw e;
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  for (let waited = 0; waited <= maxWaitMs; waited += pollMs) {
+    let state: RetryDecision;
+    try { state = await check(); } catch { await sleep(pollMs); continue; }
+    if (state === "already-answered") return { kind: "answered" };
+    if (state === "fresh") return { kind: "reply", value: await call(true) };
+    await sleep(pollMs);
+  }
+  return { kind: "pending" };
+}
+
 /** Send once; on a network drop, wait and resend once as a retry (server skips the duplicate). */
 export async function sendWithRetry<T>(call: (retry: boolean) => Promise<T>, waitMs = 1500): Promise<T> {
   try {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retryDecision, friendlyError, isNetworkError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
+import { retryDecision, sendReliably, type RetryDecision, friendlyError, isNetworkError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
 
 describe("chat retry", () => {
   it("treats 'Failed to fetch' as a network drop", () => {
@@ -47,5 +47,25 @@ describe("chat retry", () => {
     let n = 0;
     await expect(sendWithRetry(async () => { n++; throw new Error("رصيد"); }, 0)).rejects.toThrow();
     expect(n).toBe(1);
+  });
+
+  it("after a drop, picks up the reply the server saved instead of asking again", async () => {
+    let calls = 0;
+    const states: RetryDecision[] = ["skip-insert", "already-answered"];
+    const out = await sendReliably(async () => { calls++; throw new TypeError("Failed to fetch"); }, async () => states.shift()!, { pollMs: 0 });
+    expect(out.kind).toBe("answered");
+    expect(calls).toBe(1);
+  });
+
+  it("after a drop, resends once when the message never reached the server", async () => {
+    const flags: boolean[] = [];
+    const out = await sendReliably(async (retry) => { flags.push(retry); if (!retry) throw new TypeError("Failed to fetch"); return "ok"; }, async () => "fresh", { pollMs: 0 });
+    expect(out).toEqual({ kind: "reply", value: "ok" });
+    expect(flags).toEqual([false, true]);
+  });
+
+  it("gives up waiting and shows the retry button when no reply comes", async () => {
+    const out = await sendReliably(async () => { throw new TypeError("Failed to fetch"); }, async () => "skip-insert", { pollMs: 1, maxWaitMs: 5 });
+    expect(out.kind).toBe("pending");
   });
 });
