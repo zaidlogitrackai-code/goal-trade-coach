@@ -83,14 +83,14 @@ function CoachPage() {
     qc.invalidateQueries({ queryKey: ["threads"] });
   }
 
-  async function submit() {
-    const msg = text.trim();
+  async function submit(draft?: { text: string; image: string | null }) {
+    const msg = (draft?.text ?? text).trim();
     if (!msg || busy) return;
     setBusy(true);
     try {
-      const id = active ?? (await newThread());
+      const id = draft ? await newThread() : active ?? (await newThread());
       if (!id) return;
-      const img = image;
+      const img = draft ? draft.image : image;
       setText(""); setImage(null); setPending(msg);
       const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
       if (res?.messageId) setFreshId(res.messageId);
@@ -101,6 +101,18 @@ function CoachPage() {
       if (active) qc.invalidateQueries({ queryKey: ["messages", active] });
     } finally { setBusy(false); setPending(null); }
   }
+
+  // A message sent from the home page box: open a fresh chat and send it once.
+  const draftDone = useRef(false);
+  useEffect(() => {
+    if (draftDone.current || threads.isLoading) return;
+    draftDone.current = true;
+    const raw = sessionStorage.getItem("coach-draft");
+    if (!raw) return;
+    sessionStorage.removeItem("coach-draft");
+    try { void submit(JSON.parse(raw) as { text: string; image: string | null }); } catch { /* ignore bad draft */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads.isLoading]);
 
   const list = msgs.data ?? [];
   const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending && list[list.length - 1]?.role === "assistant");
@@ -168,8 +180,8 @@ function CoachPage() {
           <div className="flex gap-2 p-3">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" variant="secondary" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
-            <Textarea onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
-            <Button onClick={submit} disabled={busy || !text.trim()}>إرسال</Button>
+            <Textarea onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
+            <Button onClick={() => submit()} disabled={busy || !text.trim()}>إرسال</Button>
           </div>
         </div>
       </div>
