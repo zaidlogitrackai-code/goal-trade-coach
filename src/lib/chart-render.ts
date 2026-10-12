@@ -53,7 +53,7 @@ function chunk(type: string, data: Uint8Array) {
   return out;
 }
 async function deflate(b: Uint8Array) {
-  const s = new Blob([b]).stream().pipeThrough(new CompressionStream("deflate"));
+  const s = new Blob([b as BlobPart]).stream().pipeThrough(new CompressionStream("deflate"));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
 
