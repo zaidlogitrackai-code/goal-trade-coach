@@ -171,9 +171,9 @@ function CoachPage() {
       </div>
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="panel hidden max-h-[70vh] overflow-y-auto p-2 lg:block">{threadList()}</div>
-        <div className="panel flex h-[calc(100dvh-12.5rem)] flex-col overflow-hidden lg:h-[70vh]">
+        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[70vh]">
           {/* Mobile chat header */}
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-2 py-2 lg:hidden">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:hidden">
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
                 <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
@@ -192,7 +192,7 @@ function CoachPage() {
             <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 lg:space-y-4 lg:p-4">
+          <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-3 lg:space-y-4 lg:p-4">
             {list.length === 0 && !pending && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-muted-foreground">شو بدك نشتغل عليه اليوم؟</p>
@@ -205,8 +205,8 @@ function CoachPage() {
             )}
             {list.map((m) => (
               <div key={m.id} className={m.role === "user"
-                ? "mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm leading-6 text-primary-foreground"
-                : "ml-auto w-full max-w-[95%] break-words rounded-2xl rounded-tl-md bg-muted px-3.5 py-3 text-sm leading-7 lg:max-w-[85%]"}>
+                ? "mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
+                : "w-full break-words px-0.5 text-sm leading-6 lg:ml-auto lg:max-w-[85%] lg:rounded-2xl lg:rounded-tl-md lg:bg-muted lg:px-3.5 lg:py-3 lg:leading-7"}>
                 {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
                   <div className="mt-3 border-t border-border pt-3">
@@ -227,7 +227,7 @@ function CoachPage() {
             </div>
           )}
           <div className="hidden border-t border-border px-3 pt-2 lg:block">{autoToggle}</div>
-          <div className="flex items-end gap-2 border-t border-border p-2 lg:border-t-0 lg:p-3">
+          <div className="flex items-end gap-2 px-3 pb-1 pt-2 lg:p-3">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
             <Textarea
