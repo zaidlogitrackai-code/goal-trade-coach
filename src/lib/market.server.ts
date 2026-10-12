@@ -3,7 +3,8 @@ import { summarize } from "./indicators";
 import type { MarketSymbol } from "./market-symbols";
 
 const cache = new Map<string, { at: number; v: unknown }>();
-const TTL = 20_000;
+const TTL_PRICE = 3_000; // الأسعار: طلب حي كل مرة (الرد يتأخر ~250ms فقط)
+const TTL_CANDLES = 30_000;
 
 const TFS = ["15", "60", "240"] as const;
 const COLS = ["close", "change", "high", "low", ...TFS.flatMap((t) => [`EMA20|${t}`, `EMA50|${t}`, `ATR|${t}`, `RSI|${t}`]), "Pivot.M.Classic.S2|240", "Pivot.M.Classic.S1|240", "Pivot.M.Classic.Middle|240", "Pivot.M.Classic.R1|240", "Pivot.M.Classic.R2|240"];
@@ -12,7 +13,7 @@ const COLS = ["close", "change", "high", "low", ...TFS.flatMap((t) => [`EMA20|${
 async function tvSnapshot(tickers: string[]) {
   const key = tickers.join(",");
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL) return hit.v as Map<string, (number | null)[]>;
+  if (hit && Date.now() - hit.at < TTL_PRICE) return hit.v as Map<string, (number | null)[]>;
   const res = await fetch("https://scanner.tradingview.com/global/scan", { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" }, body: JSON.stringify({ symbols: { tickers }, columns: COLS }) });
   if (!res.ok) throw new Error(`tradingview ${res.status}`);
   const j = (await res.json()) as { data?: { s: string; d: (number | null)[] }[] };
@@ -24,7 +25,7 @@ async function tvSnapshot(tickers: string[]) {
 async function chart(yahoo: string, interval: string, range: string) {
   const key = `${yahoo}|${interval}|${range}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL) return hit.v as { meta: Record<string, number>; candles: Candle[] };
+  if (hit && Date.now() - hit.at < TTL_CANDLES) return hit.v as { meta: Record<string, number>; candles: Candle[] };
   const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahoo)}?interval=${interval}&range=${range}`, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) throw new Error(`price source ${res.status}`);
   const j = (await res.json()) as any;
