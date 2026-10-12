@@ -1,3 +1,4 @@
+import { findDuplicate } from "./trade-dedupe";
 import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +39,9 @@ export const ACTION_TYPES = [
   "mark_notifications_read",
   "update_focus",
   "capital_move",
+  "save_analysis",
+  "delete_analysis",
+  "delete_thread",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -61,6 +65,9 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   mark_notifications_read: "تعليم الإشعارات كمقروءة",
   update_focus: "تحديث ملف التركيز",
   capital_move: "حركة على رأس المال",
+  save_analysis: "حفظ تحليل شارت",
+  delete_analysis: "حذف تحليل",
+  delete_thread: "حذف محادثة",
 };
 
 /** Always wait for an explicit click, even in auto mode. */
@@ -69,10 +76,14 @@ export const DESTRUCTIVE: readonly ActionType[] = [
   "delete_strategy",
   "delete_rule",
   "delete_note",
+  "delete_analysis",
+  "delete_thread",
 ];
 
 /** Thrown in auto mode when an action needs the user's click first. */
 export class NeedsConfirmation extends Error {}
+/** The action had nothing to do because the data is already saved. */
+export class AlreadySaved extends Error {}
 
 /** Limits where a bigger number (or 0 = disabled) means less protection. */
 const LIMIT_KEYS = [
@@ -155,7 +166,16 @@ export const SCHEMAS = {
     status: z.enum(["open", "closed"]).catch("open").optional(),
     pnl: num.nullish(),
     exit_price: num.nullish(),
+    opened_at: z.string().max(40).nullish(),
   }),
+  save_analysis: z.object({
+    symbol: z.string().max(20).nullish(),
+    timeframe: z.string().max(20).nullish(),
+    question: opt,
+    result: z.string().min(1).max(8000),
+  }),
+  delete_analysis: z.object({ id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }),
+  delete_thread: z.object({ title: z.string().min(1).max(200) }),
   close_trade: z.object({
     symbol: z.string().max(20).nullish(),
     pnl: num,
@@ -362,7 +382,8 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       return;
     }
     case "create_trade": {
-      const { strategy, status, pnl, exit_price, risk_amount, ...t } = d as {
+      const { strategy, status, pnl, exit_price, risk_amount, opened_at, ...t } = d as {
+        opened_at?: string | null;
         strategy?: string | null;
         status?: string;
         pnl?: number | null;
@@ -379,6 +400,32 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       requireForex(t.symbol);
       const closed = status === "closed" || (pnl != null && Number.isFinite(pnl));
       const now = new Date().toISOString();
+      const openedAt = opened_at && Number.isFinite(new Date(opened_at).getTime()) ? new Date(opened_at).toISOString() : null;
+      // Same trade uploaded again (e.g. a second MT5 screenshot): update instead of duplicating.
+      {
+        const { data: rows } = await supabase
+          .from("trades")
+          .select("id,symbol,direction,entry_price,status,opened_at")
+          .eq("symbol", sym(t.symbol))
+          .order("opened_at", { ascending: false })
+          .limit(50);
+        const dup = findDuplicate(rows ?? [], {
+          symbol: sym(t.symbol),
+          direction: t.direction,
+          entry_price: (t as { entry_price?: number | null }).entry_price ?? null,
+          opened_at: openedAt,
+        });
+        if (dup) {
+          if (closed && dup.status === "open") {
+            const { error } = await supabase
+              .from("trades")
+              .update({ status: "closed", pnl: pnl ?? 0, exit_price: exit_price ?? null, closed_at: now })
+              .eq("id", dup.id);
+            return check(error);
+          }
+          throw new AlreadySaved("الصفقة مسجّلة من قبل، ما كررتها");
+        }
+      }
       let gatedRisk: number | null = null;
       if (!closed && opts.auto) {
         // Staying on the trader's own markets is the point of the focus profile.
@@ -418,6 +465,7 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         risk_amount: gatedRisk ?? risk_amount ?? 0,
         strategy_id,
         checklist_passed: false,
+        ...(openedAt ? { opened_at: openedAt } : {}),
         ...(closed
           ? {
               status: "closed" as const,
@@ -590,6 +638,29 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         .from("trading_settings")
         .update({ cooldown_until: new Date(Math.max(until, existing)).toISOString() })
         .eq("user_id", user_id);
+      return check(error);
+    }
+    case "save_analysis": {
+      const a2 = d as { symbol?: string | null; timeframe?: string | null; question?: string | null; result: string };
+      const { error } = await supabase.from("chart_analyses").insert({ user_id, ...a2 });
+      return check(error);
+    }
+    case "delete_analysis": {
+      let q = supabase.from("chart_analyses").select("id").order("created_at", { ascending: false }).limit(1);
+      if (d["id"]) q = q.eq("id", String(d["id"]));
+      else if (d["symbol"]) q = q.ilike("symbol", String(d["symbol"]));
+      const { data: rows } = await q;
+      const id = rows?.[0]?.id;
+      if (!id) throw new Error("ما لقيت التحليل");
+      const { error } = await supabase.from("chart_analyses").delete().eq("id", id);
+      return check(error);
+    }
+    case "delete_thread": {
+      const { data: rows } = await supabase.from("coach_threads").select("id,title");
+      const id = rows?.find((r) => r.title.trim() === String(d["title"]).trim())?.id;
+      if (!id) throw new Error("ما لقيت المحادثة");
+      await supabase.from("coach_messages").delete().eq("thread_id", id);
+      const { error } = await supabase.from("coach_threads").delete().eq("id", id);
       return check(error);
     }
     case "mark_notifications_read": {
