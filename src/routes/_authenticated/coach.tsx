@@ -171,7 +171,7 @@ function CoachPage() {
       </div>
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="panel hidden max-h-[70vh] overflow-y-auto p-2 lg:block">{threadList()}</div>
-        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[70vh]">
+        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[70vh]">
           {/* Mobile chat header */}
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:hidden">
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -205,7 +205,7 @@ function CoachPage() {
             )}
             {list.map((m) => (
               <div key={m.id} className={m.role === "user"
-                ? "mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
+                ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
                 : "w-full break-words px-0.5 text-sm leading-6 lg:ml-auto lg:max-w-[85%] lg:rounded-2xl lg:rounded-tl-md lg:bg-muted lg:px-3.5 lg:py-3 lg:leading-7"}>
                 {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
@@ -215,7 +215,7 @@ function CoachPage() {
                 )}
               </div>
             ))}
-            {showPending && <div className="mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
+            {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
             {busy && <div className="ml-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
             <div ref={endRef} />
           </div>
