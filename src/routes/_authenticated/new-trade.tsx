@@ -325,7 +325,7 @@ function NewTrade() {
       />
 
       {/* Gate Alert Banner */}
-      {!gateResult.allowed && (
+      {!gateResult.allowed && (!gateResult.canOverride || entryNum != null) && (
         <div
           className={`panel p-5 border-2 space-y-2 ${
             gateResult.canOverride
