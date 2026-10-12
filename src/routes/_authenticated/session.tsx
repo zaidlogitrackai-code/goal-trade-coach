@@ -287,7 +287,7 @@ function SessionPage() {
         </div>
       </div>
 
-      {c && <SessionAgent key={c} threadId={c} hasActive={!!active} greeting={active ? ACTIVE_GREETING : GREETING_START} onChanged={() => { qc.invalidateQueries({ queryKey: ["session-chats"] }); qc.invalidateQueries({ queryKey: ["sessions"] }); qc.invalidateQueries({ queryKey: ["settings"] }); qc.invalidateQueries({ queryKey: ["trades"] }); }} />}
+      {c && <SessionAgent key={c} threadId={c} quick={[]} hasActive={!!active} greeting={active ? ACTIVE_GREETING : GREETING_START} onChanged={() => { qc.invalidateQueries({ queryKey: ["session-chats"] }); qc.invalidateQueries({ queryKey: ["sessions"] }); qc.invalidateQueries({ queryKey: ["settings"] }); qc.invalidateQueries({ queryKey: ["trades"] }); }} />}
     </div>
   );
 }
