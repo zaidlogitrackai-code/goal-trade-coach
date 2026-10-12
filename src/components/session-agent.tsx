@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { coachReply, transcribeAudio } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
 import { makeThumbnail, prepareImage } from "@/lib/image";
-import { friendlyError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "@/lib/chat-retry";
+import { friendlyError, retryText, sendWithRetry, retryDecision, unansweredMessage } from "@/lib/chat-retry";
 
 function todayTitle() {
   return `جلسة ${new Date().toLocaleDateString("en-CA")}`;
@@ -125,8 +125,8 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
       toast.error(friendlyError(e));
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       // If the message never reached the server, give it back so nothing typed is lost.
-      const rows = qc.getQueryData<{ role: string; content: string }[]>(["messages", id]) ?? [];
-      if (!again && !shouldSkipUserInsert(rows[rows.length - 1], msg)) { setText(msg); if (img) setImage(img); }
+      const rows = [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", id]) ?? [])].reverse();
+      if (!again && retryDecision(rows, msg) === "fresh") { setText(msg); if (img) setImage(img); }
     } finally { setBusy(false); setPending(null); }
   }
 

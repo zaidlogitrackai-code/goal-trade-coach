@@ -25,6 +25,21 @@ export function shouldSkipUserInsert(last: ChatRow | null | undefined, storedCon
   return !!last && last.role === "user" && retryText(last.content) === retryText(storedContent);
 }
 
+export type RetryDecision = "fresh" | "skip-insert" | "already-answered";
+
+/**
+ * What a resend should do, given the newest rows of the thread (newest first):
+ * - "already-answered": the message and its reply are both saved (only the response was lost) → return that reply.
+ * - "skip-insert": the message is saved but unanswered → answer it without saving it twice.
+ * - "fresh": the message never arrived → save and answer it normally.
+ */
+export function retryDecision(newestFirst: ChatRow[], storedContent: string): RetryDecision {
+  const [a, b] = newestFirst;
+  if (shouldSkipUserInsert(a, storedContent)) return "skip-insert";
+  if (a?.role === "assistant" && shouldSkipUserInsert(b, storedContent)) return "already-answered";
+  return "fresh";
+}
+
 /** The last user message that never got an answer (shown with a retry button). */
 export function unansweredMessage<T extends ChatRow>(list: T[]): T | null {
   const last = list[list.length - 1];

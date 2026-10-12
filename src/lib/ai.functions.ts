@@ -12,7 +12,7 @@ import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
-import { IMAGE_NOTE, shouldSkipUserInsert } from "./chat-retry";
+import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { MAX_THUMB_CHARS } from "./image";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -279,8 +279,11 @@ export const coachReply = createServerFn({ method: "POST" })
       const stored = data.image ? `${data.message}${IMAGE_NOTE}` : data.message;
       let skip = false;
       if (data.retry) {
-        const { data: last } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-        skip = shouldSkipUserInsert(last, stored);
+        const { data: newest } = await sb.from("coach_messages").select("id,role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(2);
+        const decision = retryDecision(newest ?? [], stored);
+        // Only the response was lost on the way back: hand back the saved reply, don't ask again.
+        if (decision === "already-answered" && newest?.[0]) return { reply: newest[0].content, messageId: newest[0].id };
+        skip = decision === "skip-insert";
       }
       if (!skip) {
         // Only a small preview is stored; the full image goes to the AI below.

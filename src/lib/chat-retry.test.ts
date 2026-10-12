@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { friendlyError, isNetworkError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
+import { retryDecision, friendlyError, isNetworkError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
 
 describe("chat retry", () => {
   it("treats 'Failed to fetch' as a network drop", () => {
@@ -18,6 +18,13 @@ describe("chat retry", () => {
     expect(shouldSkipUserInsert({ role: "user", content: "هلا" }, "مرحبا")).toBe(false);
     // Retried after a reload (image no longer in memory): still the same message.
     expect(shouldSkipUserInsert({ role: "user", content: "حلل\n📎 (صورة مرفقة)" }, "حلل")).toBe(true);
+  });
+
+  it("returns the saved reply instead of asking the AI twice when only the response was lost", () => {
+    expect(retryDecision([{ role: "assistant", content: "حاضر" }, { role: "user", content: "مرحبا" }], "مرحبا")).toBe("already-answered");
+    expect(retryDecision([{ role: "user", content: "مرحبا" }], "مرحبا")).toBe("skip-insert");
+    expect(retryDecision([{ role: "assistant", content: "حاضر" }, { role: "user", content: "هلا" }], "مرحبا")).toBe("fresh");
+    expect(retryDecision([], "مرحبا")).toBe("fresh");
   });
 
   it("finds the last unanswered user message", () => {

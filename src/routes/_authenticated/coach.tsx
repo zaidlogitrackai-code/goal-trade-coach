@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
 import { makeThumbnail, prepareImage } from "@/lib/image";
-import { friendlyError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "@/lib/chat-retry";
+import { friendlyError, retryText, sendWithRetry, retryDecision, unansweredMessage } from "@/lib/chat-retry";
 import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
 
@@ -115,8 +115,8 @@ function CoachPage() {
       await qc.invalidateQueries({ queryKey: ["messages"] });
       // If the message never reached the server, give it back so nothing typed is lost.
       if (!again && sentId) {
-        const rows = qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [];
-        if (!shouldSkipUserInsert(rows[rows.length - 1], msg)) { setText(msg); if (sentImg) setImage(sentImg); }
+        const rows = [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [])].reverse();
+        if (retryDecision(rows, msg) === "fresh") { setText(msg); if (sentImg) setImage(sentImg); }
       }
     } finally { setBusy(false); setPending(null); }
   }
