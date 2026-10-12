@@ -3,7 +3,8 @@ import { summarize } from "./indicators";
 import type { MarketSymbol } from "./market-symbols";
 
 const cache = new Map<string, { at: number; v: unknown }>();
-const TTL = 20_000;
+const TTL_PRICE = 3_000; // الأسعار: طلب حي كل مرة (الرد يتأخر ~250ms فقط)
+const TTL_CANDLES = 30_000;
 
 const TFS = ["15", "60", "240"] as const;
 const COLS = ["close", "change", "high", "low", ...TFS.flatMap((t) => [`EMA20|${t}`, `EMA50|${t}`, `ATR|${t}`, `RSI|${t}`]), "Pivot.M.Classic.S2|240", "Pivot.M.Classic.S1|240", "Pivot.M.Classic.Middle|240", "Pivot.M.Classic.R1|240", "Pivot.M.Classic.R2|240"];
