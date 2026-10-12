@@ -8,7 +8,7 @@ import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 import { buildJourney, journeyForPrompt } from "./journey";
 import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
-import { HIDDEN_NOTES } from "./hidden-notes";
+import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
 
@@ -41,6 +41,8 @@ async function buildContext(sb: Sb) {
     sb.from("trading_sessions").select("started_at,ended_at,review").gte("started_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
     sb.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
   ]);
+  const { data: guardRow } = await sb.from("knowledge_notes").select("content").eq("category", GUARD_STYLE_CATEGORY).limit(1).maybeSingle();
+  const guardStyle = guardRow?.content?.trim() || "";
   const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
   const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
@@ -75,6 +77,8 @@ async function buildContext(sb: Sb) {
 ${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
 
 ${capitalForPrompt(capital, ledger.entries, s.data?.currency ?? "USD")}
+
+طريقة حارس الانضباط اللي طلبها هادي: ${guardStyle || "لم يحددها بعد"}
 
 ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
 ${focusForPrompt(focus)}
@@ -133,7 +137,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan", "attach_trade_image", "remove_trade_image", "add_violation", "delete_violation", "delete_daily_plan", "update_session", "delete_session", "rename_thread", "delete_notifications"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "set_guard_style", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan", "attach_trade_image", "remove_trade_image", "add_violation", "delete_violation", "delete_daily_plan", "update_session", "delete_session", "rename_thread", "delete_notifications"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -180,6 +184,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 تقدر ترسل عدة إجراءات برد واحد. إذا طلب شي يكسر حدوده (هدف فوق 3% من رصيده أو مخاطرة فوق حده) نفّذه بس حذّره بصراحة إنه طمع.
 - add_reminder: {"title","body","repeat":"once"|"daily","at" (HH:MM بتوقيته للتذكير اليومي أو لوقت اليوم),"in_minutes" (بديل لـ at للتذكير بعد مدة)} — لما يقول "ذكّرني" أو "نبهني كل يوم". أنت وحارس المخاطر ترسلون له تنبيهات داخل الموقع.
 - delete_reminder: {"title"}
+- set_guard_style: {"style"} — كيف يبي هادي حارس الانضباط يكون (الأسلوب، الصرامة، متى يسأله، التنبيهات). يستبدل القديم، فاكتب الطريقة كاملة بنقاط.
 - update_focus: {"markets" (أصول مثل "EURUSD, XAUUSD, US100, USOIL" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
 - capital_move: {"kind" ("deposit" إيداع | "withdrawal" سحب | "set_balance" رصيده الحقيقي الآن),"amount","note"} — لما يحكي إنه أودع أو سحب أو إن رصيده صار كذا. أرباح وخسائر الصفقات المغلقة تنحسب على الرصيد تلقائيًا، فلا تسجلها هنا. لتصحيح الرصيد الحالي استخدم set_balance مش starting_balance. بعد سحب كبير اقترح تخفيض حدود المخاطرة لتناسب الرصيد الجديد.
 ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
@@ -210,6 +215,10 @@ const DISCIPLINE_MODE = `وضعك الحين: أنت "حارس الانضباط"
 - استخدم "فحص الخطة اليوم": أي flag فيه "طمع" قله بصراحة "هذا طمع" واقترح رقم أقل (≤3% من الرصيد). لو الستوب أكبر من الحد نبهه.
 - لو طلب يرفع الهدف بعد ربح أو يزيد الصفقات بعد خسارة: قل "هذا طمع" أو "هذا انتقام" وما تغيّر الخطة إلا لو أصر، وسجّل التغيير بـ set_daily_plan.
 - مراجعة اليوم: قارن الهدف بالربح الفعلي وعدد الصفقات بالخطة وقل التزم أو لا، واربطها بالستريك.
+- شخصيتك يحددها هادي: إذا "طريقة حارس الانضباط" = "لم يحددها بعد"، أول شي اسأله بسؤال واحد قصير مع خيارات: "كيف تبيني أكون؟ صارم وما أجامل، ولا هادي وأنصح بلطف؟ وتبيني أذكرك متى (قبل الجلسة، بعد كل صفقة، آخر اليوم)؟". لما يجاوب جهّز set_guard_style بنقاط واضحة من كلامه، ومعها add_reminder يومي للأوقات اللي اختارها (repeat "daily" و at بتوقيته).
+- إذا الطريقة محددة: التزم فيها حرفياً في نبرتك وطول ردك وأسئلتك. لو قال "غيّر أسلوبك" أو اشتكى من نبرتك، عدّلها بـ set_guard_style. الطمع والانتقام تقولهم دايماً، الصرامة بس تتغير بالنبرة.
+- كن ديناميكي: كل رد اربطه بالحين (كم صفقة أخذ من خطته، كم باقي له للهدف أو حد الخسارة، آخر صفقة ربح أو خسارة). اختم بسؤال واحد قصير يمشّيه للخطوة الجاية (مثلاً بعد خسارة: "كيف نفسيتك؟ تبي تهدئة 30 دقيقة؟"، بعد الهدف: "وصلت هدفك، بتسكّر الحين؟").
+- التنبيهات: لو طلب تنبيه أو تذكير جهّز add_reminder. لو لاحظت طمع (رفع هدف، صفقات زيادة) اقترح تهدئة start_cooldown.
 - تقدر تبدأ تهدئة start_cooldown لو طلب. ردود قصيرة بالعامية، ما تخترع أرقام.`;
 
 const STRATEGY_MODE = `وضعك الحين: أنت "مدرّب الاستراتيجية" لهادي. هدفك تتعلّم استراتيجياته منه وتحللها وتختبره عليها.
