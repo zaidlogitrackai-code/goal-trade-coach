@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { SessionAgent } from "@/components/session-agent";
 import { fmtDate, fmtMoney, settingsQuery, tradesQuery } from "@/lib/queries";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
-import { PauseCircle } from "lucide-react";
+import { Activity, History, PauseCircle, Trash2 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/_authenticated/session")({
   head: () => ({
@@ -91,154 +92,103 @@ function SessionPage() {
     return `${hrs}س ${mins % 60}د`;
   };
 
+  const past = (ss.data ?? []).filter((x) => x.ended_at);
+  const historyList = past.length === 0 ? (
+    <EmptyState text="جلساتك السابقة ومراجعاتها تظهر هنا." />
+  ) : (
+    <div className="space-y-3">
+      {past.map((sess) => {
+        const tr = (t.data ?? []).filter((x) => x.status === "closed" && x.closed_at && x.closed_at >= sess.started_at && x.closed_at <= sess.ended_at!);
+        const pnl = tr.reduce((acc, y) => acc + (Number(y.pnl) || 0), 0);
+        const durationMs = +new Date(sess.ended_at!) - +new Date(sess.started_at);
+        return (
+          <div key={sess.id} className="rounded-2xl border border-border/60 bg-muted/20 p-3.5 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold">{fmtDate(sess.started_at)}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{durationStr(durationMs)} · {sess.mood} · {tr.length} صفقات</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <span dir="ltr" className={`font-data font-bold ${pnl > 0 ? "text-success" : pnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(pnl, cur)}</span>
+                <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" aria-label="حذف الجلسة" onClick={() => deleteSession(sess.id)}><Trash2 className="size-4" /></Button>
+              </div>
+            </div>
+            {(sess.plan || sess.review) && (
+              <details className="mt-2 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none text-foreground/80">الخطة والمراجعة</summary>
+                {sess.plan && <p className="mt-2 whitespace-pre-wrap leading-relaxed">{sess.plan}</p>}
+                {sess.review && <p className="mt-2 whitespace-pre-wrap border-t border-border/40 pt-2 leading-relaxed text-foreground/90">{sess.review}</p>}
+              </details>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <PageHeader
-        title="جلسة التداول"
-        subtitle="المساعد ينظم جلستك: يسألك عن تارقتك، يبدأ الجلسة، ويسوي المراجعة لما تخلص."
-      />
+    <div className="mx-auto flex max-w-3xl flex-col">
+      <div className="hidden lg:block">
+        <PageHeader title="جلسة التداول" subtitle="المساعد ينظم جلستك: يسألك عن تارقتك، يبدأ الجلسة، ويسوي المراجعة لما تخلص." />
+      </div>
 
-      {active ? (
-        /* DURING SESSION */
-        <div className="panel space-y-6 p-6 border-2 border-primary/40 bg-muted/10">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="size-2.5 rounded-full bg-primary animate-pulse" />
-                <p className="text-xs font-semibold uppercase tracking-wider text-primary">جلسة تداول نشطة</p>
-              </div>
-              <p className="font-data mt-1 text-3xl font-bold tracking-tight" dir="ltr">
-                {new Date(now - +new Date(active.started_at)).toISOString().slice(11, 19)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                بدأت في {fmtDate(active.started_at)} · المزاج: {active.mood}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="text-left font-data">
-                <p className="text-xs text-muted-foreground">ربح / خسارة الجلسة</p>
-                <p
-                  dir="ltr"
-                  className={`text-2xl font-bold ${
-                    sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : "text-foreground"
-                  }`}
-                >
-                  {fmtMoney(sessionPnl, cur)}
-                </p>
-              </div>
-
-              <Button
-                variant={settings.trading_paused ? "default" : "destructive"}
-                size="sm"
-                onClick={togglePause}
-                className="gap-1.5"
-              >
-                <PauseCircle className="size-4" />
-                {settings.trading_paused ? "استئناف" : "إيقاف التداول"}
-              </Button>
-            </div>
-          </div>
-
-          {/* Real-time Session Metrics */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="صفقات الجلسة" value={sessionTrades.length} />
-            <Stat label="مخاطرة الجلسة" value={fmtMoney(sessionRiskUsed, cur)} />
-            <Stat
-              label="المخاطرة المتبقية اليوم"
-              value={dayMetrics.riskRemaining != null ? fmtMoney(dayMetrics.riskRemaining, cur) : "غير محدد"}
-            />
-            <Stat
-              label="الخسائر المتتالية"
-              value={dayMetrics.consecutiveLosses}
-              tone={dayMetrics.consecutiveLosses > 0 ? "warning" : undefined}
-            />
-          </div>
-
-          {/* Written Plan */}
-          {active.plan && (
-            <div className="rounded-lg bg-card border border-border p-4 space-y-1 text-xs">
-              <span className="font-semibold text-primary block">خطة الجلسة وشروطك المقررة:</span>
-              <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">{active.plan}</p>
-            </div>
+      {/* Top bar: title + history */}
+      <div className="flex items-center justify-between gap-2 pb-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold lg:hidden">جلسة التداول</p>
+          {active ? (
+            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="size-1.5 rounded-full bg-success animate-pulse" />
+              <span>شغالة</span>
+              <span dir="ltr" className="font-data">{new Date(now - +new Date(active.started_at)).toISOString().slice(11, 19)}</span>
+              <span>·</span>
+              <span dir="ltr" className={`font-data ${sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(sessionPnl, cur)}</span>
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">ما في جلسة مفتوحة</p>
           )}
-
         </div>
-      ) : null}
+        <div className="flex items-center gap-1">
+          {active && (
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label="تفاصيل الجلسة"><Activity className="size-5" /></Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl">
+                <SheetHeader><SheetTitle className="text-right">الجلسة الحالية</SheetTitle></SheetHeader>
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Stat label="صفقات الجلسة" value={sessionTrades.length} />
+                    <Stat label="مخاطرة الجلسة" value={fmtMoney(sessionRiskUsed, cur)} />
+                    <Stat label="المتبقي من المخاطرة" value={dayMetrics.riskRemaining != null ? fmtMoney(dayMetrics.riskRemaining, cur) : "غير محدد"} />
+                    <Stat label="خسائر متتالية" value={dayMetrics.consecutiveLosses} tone={dayMetrics.consecutiveLosses > 0 ? "warning" : undefined} />
+                  </div>
+                  {active.plan && (
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 text-xs">
+                      <p className="mb-1 font-semibold">خطة الجلسة</p>
+                      <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">{active.plan}</p>
+                    </div>
+                  )}
+                  <Button variant={settings.trading_paused ? "default" : "destructive"} className="w-full gap-1.5" onClick={togglePause}>
+                    <PauseCircle className="size-4" />{settings.trading_paused ? "استئناف التداول" : "إيقاف التداول"}
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+          )}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="ghost" aria-label="سجل الجلسات"><History className="size-5" /></Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="flex w-[88%] flex-col gap-4 overflow-y-auto sm:max-w-md">
+              <SheetHeader><SheetTitle className="pr-8 text-right">سجل الجلسات</SheetTitle></SheetHeader>
+              {historyList}
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
 
       <SessionAgent hasActive={!!active} onChanged={() => { qc.invalidateQueries({ queryKey: ["sessions"] }); qc.invalidateQueries({ queryKey: ["settings"] }); qc.invalidateQueries({ queryKey: ["trades"] }); }} />
-
-      {/* PREVIOUS SESSIONS LIST */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold">سجل الجلسات السابقة</h2>
-        {(ss.data ?? []).filter((x) => x.ended_at).length === 0 ? (
-          <EmptyState text="جلساتك السابقة ومراجعاتها السلوكية تظهر هنا." />
-        ) : (
-          <div className="space-y-3">
-            {ss.data!
-              .filter((x) => x.ended_at)
-              .map((sess) => {
-                const tr = (t.data ?? []).filter(
-                  (x) =>
-                    x.status === "closed" &&
-                    x.closed_at &&
-                    x.closed_at >= sess.started_at &&
-                    x.closed_at <= sess.ended_at!
-                );
-                const pnl = tr.reduce((acc, y) => acc + (Number(y.pnl) || 0), 0);
-                const durationMs = +new Date(sess.ended_at!) - +new Date(sess.started_at);
-
-                return (
-                  <div key={sess.id} className="panel p-5 space-y-3 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
-                      <div className="space-y-0.5">
-                        <span className="font-semibold text-foreground">
-                          {fmtDate(sess.started_at)}
-                        </span>
-                        <span className="text-xs text-muted-foreground block">
-                          المدة: {durationStr(durationMs)} · المزاج: {sess.mood} · صفقات: {tr.length}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span
-                          dir="ltr"
-                          className={`font-data text-base font-bold ${
-                            pnl >= 0 ? "text-success" : "text-destructive"
-                          }`}
-                        >
-                          {fmtMoney(pnl, cur)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => deleteSession(sess.id)}
-                          className="text-xs text-destructive hover:bg-destructive/10"
-                        >
-                          حذف
-                        </Button>
-                      </div>
-                    </div>
-
-                    {sess.plan && (
-                      <div className="text-xs text-muted-foreground bg-muted/20 p-2.5 rounded-lg space-y-0.5">
-                        <span className="font-semibold text-primary block">الخطة المكتوبة:</span>
-                        <p className="whitespace-pre-wrap">{sess.plan}</p>
-                      </div>
-                    )}
-
-                    {sess.review && (
-                      <div className="text-xs bg-muted/40 p-2.5 rounded-lg space-y-0.5">
-                        <span className="font-semibold text-foreground block">المراجعة والتقييم:</span>
-                        <p className="whitespace-pre-wrap">{sess.review}</p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
