@@ -8,7 +8,7 @@ import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 import { buildJourney, journeyForPrompt } from "./journey";
 import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
-import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES } from "./hidden-notes";
+import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, TRAINING_OFF_CATEGORY } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
@@ -47,6 +47,8 @@ async function buildContext(sb: Sb) {
   ]);
   const { data: guardRow } = await sb.from("knowledge_notes").select("content").eq("category", GUARD_STYLE_CATEGORY).limit(1).maybeSingle();
   const guardStyle = guardRow?.content?.trim() || "";
+  const { data: trainingOffRow } = await sb.from("knowledge_notes").select("id").eq("category", TRAINING_OFF_CATEGORY).limit(1).maybeSingle();
+  const trainingOn = !trainingOffRow;
   const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
   const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
@@ -92,7 +94,7 @@ ${focusForPrompt(focus)}
 الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
 القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
-أمثلة تدريب هادي على استراتيجيته (good = دخول صحيح، bad = غلط) — طبّقها دايماً في الحكم على أي صفقة: ${JSON.stringify(ex.data ?? [])}
+أمثلة تدريب هادي على استراتيجيته (good = دخول صحيح، bad = غلط) — طبّقها دايماً في الحكم على أي صفقة: ${trainingOn ? JSON.stringify(ex.data ?? []) : "هادي أوقف استخدام التدريب من الإعدادات — لا تعتمد على أمثلته ولا تذكرها حتى يفعّلها"}
 أداء كل استراتيجية (من آخر 30 يوم): ${JSON.stringify(strategyStats(month.data ?? [], st.data ?? []))}
 خطة اليوم (اللي قالها هادي الصباح): ${JSON.stringify(todayPlan)}
 فحص الخطة اليوم: ${JSON.stringify(planStatus)}
