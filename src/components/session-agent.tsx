@@ -122,11 +122,13 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
       if (res?.messageId) setFreshId(res.messageId);
       await qc.invalidateQueries({ queryKey: ["messages", id] });
     } catch (e) {
-      toast.error(friendlyError(e));
       await qc.invalidateQueries({ queryKey: ["messages", id] });
-      // If the message never reached the server, give it back so nothing typed is lost.
       const rows = [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", id]) ?? [])].reverse();
-      if (!again && retryDecision(rows, msg) === "fresh") { setText(msg); if (img) setImage(img); }
+      const state = retryDecision(rows, msg);
+      // The reply did arrive (only the response was lost): nothing to complain about.
+      if (state !== "already-answered") toast.error(friendlyError(e));
+      // If the message never reached the server, give it back so nothing typed is lost.
+      if (!again && state === "fresh") { setText(msg); if (img) setImage(img); }
     } finally { setBusy(false); setPending(null); }
   }
 

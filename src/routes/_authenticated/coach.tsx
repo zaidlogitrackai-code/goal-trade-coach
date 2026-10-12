@@ -111,13 +111,14 @@ function CoachPage() {
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
-      toast.error(friendlyError(e));
       await qc.invalidateQueries({ queryKey: ["messages"] });
+      qc.invalidateQueries({ queryKey: ["threads"] });
+      const rows = sentId ? [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [])].reverse() : [];
+      const state = retryDecision(rows, msg);
+      // The reply did arrive (only the response was lost): nothing to complain about.
+      if (state !== "already-answered") toast.error(friendlyError(e));
       // If the message never reached the server, give it back so nothing typed is lost.
-      if (!again && sentId) {
-        const rows = [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [])].reverse();
-        if (retryDecision(rows, msg) === "fresh") { setText(msg); if (sentImg) setImage(sentImg); }
-      }
+      if (!again && state === "fresh") { setText(msg); if (sentImg) setImage(sentImg); }
     } finally { setBusy(false); setPending(null); }
   }
 
