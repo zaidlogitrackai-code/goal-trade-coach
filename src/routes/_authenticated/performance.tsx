@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import { OpenTrades } from "@/components/dashboard/open-trades";
 import { fmtMoney, settingsQuery, strategiesQuery, tradesQuery } from "@/lib/queries";
 import { equityCurve, groupPnl, tradeStats } from "@/lib/stats";
 
@@ -21,29 +22,43 @@ function PerformancePage() {
   const trades = t.data ?? [];
   const cur = s.data?.currency ?? "USD";
   const k = tradeStats(trades);
-  if (k.closed === 0) return (
-    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState text={k.open > 0 ? `عندك ${k.open} صفقة مفتوحة. سكّرها عشان تطلع أرقام أداءك.` : "أغلق أول صفقة عشان تظهر أرقام أدائك."} action={<Button asChild><Link to="/trades">سجل الصفقات</Link></Button>} /></div>
+  if (trades.length === 0) return (
+    <div className="mx-auto max-w-5xl"><PageHeader title="الأداء" /><EmptyState text="لا توجد بيانات بعد. سجّل أول صفقة عن طريق المدرب." action={<Button asChild><Link to="/coach">كلّم المدرب</Link></Button>} /></div>
   );
   const names = new Map((st.data ?? []).map((x) => [x.id, x.name]));
+  const closedTrades = trades.filter((x) => x.status === "closed");
   const curve = equityCurve(trades, Number(s.data?.starting_balance) || 0);
   const bySym = groupPnl(trades, (x) => x.symbol);
   const byStrat = groupPnl(trades, (x) => (x.strategy_id && names.get(x.strategy_id)) || "بدون استراتيجية");
   const byEmo = groupPnl(trades, (x) => x.emotion || "غير محدد");
   const pf = Number.isFinite(k.profitFactor) ? k.profitFactor.toFixed(2) : "∞";
+  const openRisk = trades.filter((x) => x.status === "open").reduce((a, x) => a + (Number(x.risk_amount) || 0), 0);
+  const has = k.closed > 0;
+  const d = (v: string) => (has ? v : "—");
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title="الأداء" subtitle={`${k.closed} صفقة مغلقة`} />
+      <PageHeader title="الأداء" subtitle={`${trades.length} صفقة · ${k.open} مفتوحة · ${k.closed} مغلقة`} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="صافي الربح" value={fmtMoney(k.netPnl, cur)} tone={k.netPnl >= 0 ? "success" : "destructive"} />
-        <Stat label="نسبة الفوز" value={`${k.winRate.toFixed(1)}%`} />
-        <Stat label="معامل الربح" value={pf} />
-        <Stat label="رابحة / خاسرة" value={`${k.wins} / ${k.losses}`} />
-        <Stat label="متوسط الربح" value={fmtMoney(k.avgWin, cur)} tone="success" />
-        <Stat label="متوسط الخسارة" value={fmtMoney(-k.avgLoss, cur)} tone="destructive" />
-        <Stat label="أفضل صفقة" value={fmtMoney(k.best, cur)} />
-        <Stat label="أسوأ صفقة" value={fmtMoney(k.worst, cur)} />
+        <Stat label="كل الصفقات" value={String(trades.length)} />
+        <Stat label="مفتوحة" value={String(k.open)} />
+        <Stat label="مغلقة" value={String(k.closed)} />
+        <Stat label="المخاطرة الحالية" value={fmtMoney(openRisk, cur)} tone={openRisk > 0 ? "destructive" : undefined} />
       </div>
+      <OpenTrades trades={trades} currency={cur} />
+      {!has && <p className="text-sm text-muted-foreground">أرقام النتائج تطلع أول ما تسكّر صفقة.</p>}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="صافي الربح" value={d(fmtMoney(k.netPnl, cur))} tone={has ? (k.netPnl >= 0 ? "success" : "destructive") : undefined} />
+        <Stat label="نسبة الفوز" value={d(`${k.winRate.toFixed(1)}%`)} />
+        <Stat label="معامل الربح" value={d(pf)} />
+        <Stat label="رابحة / خاسرة" value={d(`${k.wins} / ${k.losses}`)} />
+        <Stat label="متوسط الربح" value={d(fmtMoney(k.avgWin, cur))} tone={has ? "success" : undefined} />
+        <Stat label="متوسط الخسارة" value={d(fmtMoney(-k.avgLoss, cur))} tone={has ? "destructive" : undefined} />
+        <Stat label="أفضل صفقة" value={d(fmtMoney(k.best, cur))} />
+        <Stat label="أسوأ صفقة" value={d(fmtMoney(k.worst, cur))} />
+      </div>
+      {has && closedTrades.length > 0 && <>
+
       <div className="panel p-5">
         <h2 className="mb-4 font-semibold">منحنى الرصيد</h2>
         <div className="h-64" dir="ltr">
@@ -55,6 +70,7 @@ function PerformancePage() {
         <Group title="حسب الاستراتيجية" data={byStrat} cur={cur} />
         <Group title="حسب الحالة النفسية" data={byEmo} cur={cur} />
       </div>
+      </>}
     </div>
   );
 }
