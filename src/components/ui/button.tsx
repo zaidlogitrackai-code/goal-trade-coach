@@ -12,8 +12,8 @@ const buttonVariants = cva(
         default: "glass-btn text-foreground font-semibold",
         destructive: "glass-btn glass-btn-danger text-foreground",
         outline:
-          "border border-[var(--glass-border)] bg-transparent text-foreground backdrop-blur-md hover:bg-accent",
-        secondary: "border border-[var(--glass-border)] bg-secondary text-foreground backdrop-blur-md hover:bg-accent",
+          "border border-[var(--glass-border)] bg-transparent text-foreground hover:bg-accent",
+        secondary: "border border-[var(--glass-border)] bg-secondary text-foreground hover:bg-accent",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },

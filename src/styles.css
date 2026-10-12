@@ -100,13 +100,13 @@
   --glow-primary: 0 0 0 1px var(--elevate-2);
   --glow-success: 0 0 0 1px var(--elevate-2);
   --gradient-brand: linear-gradient(180deg, hsl(0 0% 95%), hsl(0 0% 85%));
-  --glass-bg: rgba(255,255,255,0.08);
-  --glass-strong-bg: rgba(58,56,54,0.58);
-  --glass-border: rgba(255,255,255,0.2);
-  --glass-sheen: rgba(255,255,255,0.14);
-  --glass-highlight: rgba(255,255,255,0.38);
+  --glass-bg: rgba(255,255,255,0.075);
+  --glass-strong-bg: rgba(48,46,44,0.86);
+  --glass-border: rgba(255,255,255,0.14);
+  --glass-sheen: rgba(255,255,255,0.08);
+  --glass-highlight: rgba(255,255,255,0.18);
   --glass-lowlight: rgba(0,0,0,0.14);
-  --glass-shadow: 0 12px 32px -14px rgba(0,0,0,0.55);
+  --glass-shadow: 0 6px 16px -10px rgba(0,0,0,0.5);
   --glass-blur: 18px;
   --btn-bg: rgba(255,255,255,0.18);
   --btn-bg-hover: rgba(255,255,255,0.28);
@@ -114,7 +114,6 @@
   --body-bg:
     radial-gradient(ellipse 90% 55% at 15% 0%, hsl(30 9% 34%), transparent 70%),
     radial-gradient(ellipse 80% 55% at 100% 65%, hsl(24 10% 27%), transparent 70%),
-    url("/glass-curves-dark.svg") center / cover no-repeat,
     linear-gradient(165deg, hsl(30 7% 19%), hsl(30 6% 10%));
 }
 
@@ -161,8 +160,8 @@
   --elevate-1: rgba(0,0,0,0.03);
   --elevate-2: rgba(0,0,0,0.07);
   --gradient-brand: linear-gradient(180deg, hsl(0 0% 12%), hsl(0 0% 22%));
-  --glass-bg: rgba(255,255,255,0.42);
-  --glass-strong-bg: rgba(255,255,255,0.62);
+  --glass-bg: rgba(255,255,255,0.55);
+  --glass-strong-bg: rgba(255,255,255,0.82);
   --glass-border: rgba(255,255,255,0.8);
   --glass-sheen: rgba(255,255,255,0.7);
   --glass-highlight: rgba(255,255,255,0.95);
@@ -174,7 +173,6 @@
   --body-bg:
     radial-gradient(ellipse 90% 55% at 15% 0%, hsl(30 20% 96%), transparent 70%),
     radial-gradient(ellipse 80% 55% at 100% 65%, hsl(24 18% 74%), transparent 70%),
-    url("/glass-curves-light.svg") center / cover no-repeat,
     linear-gradient(165deg, hsl(30 14% 88%), hsl(28 10% 70%));
 }
 
@@ -195,16 +193,16 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     background: var(--body-bg);
-    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-color: var(--background);
     min-height: 100vh;
   }
   h1, h2, h3 {
     font-family: var(--font-display);
     font-weight: 600;
   }
-  /* Glass for any element that uses a translucent surface token */
-  :where([class*="bg-card"], [class*="bg-popover"]) {
-    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 }
 
@@ -217,21 +215,19 @@
   background: linear-gradient(160deg, var(--glass-sheen), transparent 42%), var(--glass-bg);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
 }
 
 @utility glass-strong {
   background: linear-gradient(160deg, var(--glass-sheen), transparent 40%), var(--glass-strong-bg);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), var(--glass-shadow);
-  backdrop-filter: blur(calc(var(--glass-blur) + 8px)) saturate(180%);
+  backdrop-filter: blur(14px);
 }
 
 @utility glass-btn {
   background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), 0 6px 16px -8px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), 0 3px 8px -5px rgba(0, 0, 0, 0.4);
   &:hover {
     background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg-hover);
   }
@@ -249,7 +245,6 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
 }
 
 @utility glow-primary {
