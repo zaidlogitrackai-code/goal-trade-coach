@@ -11,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AiTradeInput } from "@/components/ai-trade-input";
+import { useServerFn } from "@tanstack/react-start";
+import { riskAdvice } from "@/lib/ai.functions";
+import { Md } from "@/components/md";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
@@ -91,6 +94,8 @@ function NewTrade() {
   const [queue, setQueue] = useState<AiTrade[]>([]);
   const [aiLoaded, setAiLoaded] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [advice, setAdvice] = useState<string | null>(null);
+  const askRisk = useServerFn(riskAdvice);
 
   const settings = s.data;
   if (s.isLoading || t.isLoading || !settings) return <Loading />;
@@ -185,6 +190,8 @@ function NewTrade() {
     setF(form);
     setChecks(autoChecks(form));
     setAiLoaded(true);
+    setAdvice("…");
+    askRisk({ data: { trade: JSON.stringify(form) } }).then((r) => setAdvice(r?.text ?? null)).catch(() => setAdvice(null));
   }
 
   function load(list: AiTrade[]) {
@@ -392,6 +399,12 @@ function NewTrade() {
                 </div>
               ))}
             </dl>
+            {advice && (
+              <div className="rounded-lg border border-border p-3 text-sm leading-7">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">رأي حارس المخاطر</p>
+                {advice === "…" ? <p className="text-muted-foreground">يحسب المخاطرة…</p> : <Md>{advice}</Md>}
+              </div>
+            )}
             {!slNum && (
               <div className="space-y-1.5">
                 <Label htmlFor="quick-sl">وين وقف الخسارة؟</Label>
