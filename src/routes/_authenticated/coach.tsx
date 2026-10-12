@@ -7,7 +7,6 @@ import { Crosshair, ImagePlus, Menu, Plus, SendHorizontal, Trash2, X } from "luc
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
-import { PageHeader } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,7 +52,8 @@ function CoachPage() {
     queryFn: async () => {
       const { data, error } = await supabase.from("coach_threads").select("*").order("updated_at", { ascending: false });
       if (error) throw error;
-      return data;
+      // Session and risk-guardian chats live on their own pages.
+      return data.filter((t) => t.title !== "حارس المخاطر" && !/^جلسة \d{4}-\d{2}-\d{2}$/.test(t.title));
     },
   });
   const msgs = useQuery({
@@ -164,35 +164,29 @@ function CoachPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="hidden lg:block">
-        <PageHeader title="المدرب الذكي" subtitle={auto ? "قل له شو بدك، وهو ينفّذ. الحذف وتخفيف حدود المخاطر بس بيحتاجوا موافقتك." : "يحلل معك، ينصحك، ويجهّز لك الإجراءات لتوافق عليها."} action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
-        {focusBox && <div className="mb-4">{focusBox}</div>}
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <div className="panel hidden max-h-[70vh] overflow-y-auto p-2 lg:block">{threadList()}</div>
-        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[70vh]">
-          {/* Mobile chat header */}
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:hidden">
+    <div className="mx-auto max-w-5xl">
+        <div className="-mx-4 -mb-2 flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[calc(100dvh-4rem)]">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:px-3 lg:py-2">
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
                 <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
               </SheetTrigger>
-              <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto">
+              <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto sm:max-w-sm">
                 <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
+                <Button onClick={() => { void newThread(); setSheetOpen(false); }} className="w-full"><Plus className="size-4" /> محادثة جديدة</Button>
                 {focusBox}
                 {autoToggle}
                 {threadList(() => setSheetOpen(false))}
               </SheetContent>
             </Sheet>
             <div className="min-w-0 text-center">
-              <p className="truncate text-sm font-semibold">{activeTitle}</p>
+              <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
               <p className="text-[11px] text-muted-foreground">{busy ? "يكتب…" : "المدرب الذكي"}</p>
             </div>
             <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-3 lg:space-y-4 lg:p-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 lg:px-6 lg:py-5"><div className="mx-auto max-w-3xl space-y-4 lg:space-y-5">
             {list.length === 0 && !pending && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-muted-foreground">شو بدك نشتغل عليه اليوم؟</p>
@@ -206,7 +200,7 @@ function CoachPage() {
             {list.map((m) => (
               <div key={m.id} className={m.role === "user"
                 ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
-                : "w-full break-words px-0.5 text-sm leading-6 lg:ml-auto lg:max-w-[85%] lg:rounded-2xl lg:rounded-tl-md lg:bg-muted lg:px-3.5 lg:py-3 lg:leading-7"}>
+                : "w-full break-words px-0.5 text-sm leading-6 lg:leading-7"}>
                 {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
                   <div className="mt-3 border-t border-border pt-3">
@@ -218,7 +212,7 @@ function CoachPage() {
             {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
             {busy && <div className="mr-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
             <div ref={endRef} />
-          </div>
+          </div></div>
 
           {image && (
             <div className="relative mx-3 mt-2 w-fit">
@@ -226,8 +220,7 @@ function CoachPage() {
               <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
             </div>
           )}
-          <div className="hidden border-t border-border px-3 pt-2 lg:block">{autoToggle}</div>
-          <div className="flex items-end gap-2 px-3 pb-1 pt-2 lg:p-3">
+          <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 pb-1 pt-2 lg:pb-4">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
             <Textarea
@@ -242,7 +235,6 @@ function CoachPage() {
             <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy || !text.trim()}><SendHorizontal className="size-4 rotate-180" /></Button>
           </div>
         </div>
-      </div>
     </div>
   );
 }

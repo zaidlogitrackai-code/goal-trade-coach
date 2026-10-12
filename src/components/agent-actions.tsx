@@ -101,7 +101,7 @@ export function AgentActions({
               >
                 {ACTION_LABEL[a.type] ?? a.type}
               </span>
-              <span className="flex-1">{a.summary}</span>
+              <span className="min-w-[10rem] flex-1">{a.summary}</span>
               {a.status === "done" ? (
                 <span className="flex items-center gap-1 text-xs text-success">
                   <Check className="size-3" /> تم
@@ -111,7 +111,7 @@ export function AgentActions({
               ) : !valid ? (
                 <span className="text-xs text-destructive">بيانات ناقصة</span>
               ) : (
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   <Button
                     size="sm"
                     variant={danger ? "destructive" : "default"}

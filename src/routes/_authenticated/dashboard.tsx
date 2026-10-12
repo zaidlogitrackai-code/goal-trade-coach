@@ -11,6 +11,7 @@ import { DayFlow } from "@/components/dashboard/day-flow";
 import { currentStep } from "@/lib/day-flow";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { OpenTrades } from "@/components/dashboard/open-trades";
+import { StreakCard } from "@/components/streak-card";
 import { QuickCoach } from "@/components/dashboard/quick-coach";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -88,6 +89,7 @@ function Dashboard() {
         subtitle={new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "full", timeZone: settings.timezone || undefined }).format(new Date())}
       />
       <DayFlow flow={flow} />
+      <StreakCard />
       <CoreMetrics
         todayPnl={metrics.todayPnl}
         dailyTarget={settings.daily_target}
