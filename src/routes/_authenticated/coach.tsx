@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Camera, Crosshair, ImagePlus, Menu, Plus, SendHorizontal, Trash2, X } from "lucide-react";
+import { Camera, Crosshair, ImagePlus, Menu, Plus, RotateCw, SendHorizontal, Trash2, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
-import { prepareImage } from "@/lib/image";
+import { makeThumbnail, prepareImage } from "@/lib/image";
+import { friendlyError, retryText, sendWithRetry, shouldSkipUserInsert, unansweredMessage } from "@/lib/chat-retry";
 import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
 
@@ -47,6 +48,8 @@ function CoachPage() {
     try { setImage(await prepareImage(file)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
   }
   const endRef = useRef<HTMLDivElement>(null);
+  // Full image of the last send, kept so "retry" can resend it.
+  const lastImage = useRef<string | null>(null);
 
   const focus = useQuery(focusQuery);
   const threads = useQuery({
@@ -62,7 +65,7 @@ function CoachPage() {
     queryKey: ["messages", active],
     enabled: !!active,
     queryFn: async () => {
-      const { data, error } = await supabase.from("coach_messages").select("*").eq("thread_id", active!).order("created_at");
+      const { data, error } = await supabase.from("coach_messages").select("id,role,content,actions,image,created_at").eq("thread_id", active!).order("created_at");
       if (error) throw error;
       return data;
     },
@@ -87,23 +90,34 @@ function CoachPage() {
     qc.invalidateQueries({ queryKey: ["threads"] });
   }
 
-  async function submit(draft?: { text: string; image: string | null }) {
+  async function submit(draft?: { text: string; image: string | null }, again = false) {
     const msg = (draft?.text ?? text).trim();
     if (!msg || busy) return;
     setBusy(true);
+    let sentId: string | null | undefined = null;
+    let sentImg: string | null = null;
     try {
-      const id = draft ? await newThread() : active ?? (await newThread());
+      const id = again ? active : draft ? await newThread() : active ?? (await newThread());
       if (!id) return;
-      const img = draft ? draft.image : image;
-    rememberChatImage(img);
-      setText(""); setImage(null); setPending(msg);
-      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
+      sentId = id;
+      const img = again ? lastImage.current : draft ? draft.image : image;
+      sentImg = img;
+      lastImage.current = img;
+      rememberChatImage(img);
+      if (!again) { setText(""); setImage(null); setPending(msg); }
+      const thumb = img ? await makeThumbnail(img) : null;
+      const res = await sendWithRetry((retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}) } }));
       if (res?.messageId) setFreshId(res.messageId);
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "تعذّر الرد");
-      if (active) qc.invalidateQueries({ queryKey: ["messages", active] });
+      toast.error(friendlyError(e));
+      await qc.invalidateQueries({ queryKey: ["messages"] });
+      // If the message never reached the server, give it back so nothing typed is lost.
+      if (!again && sentId) {
+        const rows = qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [];
+        if (!shouldSkipUserInsert(rows[rows.length - 1], msg)) { setText(msg); if (sentImg) setImage(sentImg); }
+      }
     } finally { setBusy(false); setPending(null); }
   }
 
@@ -121,6 +135,7 @@ function CoachPage() {
 
   const list = msgs.data ?? [];
   const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending && list[list.length - 1]?.role === "assistant");
+  const stuck = !busy ? unansweredMessage(list) : null;
 
   const activeTitle = threads.data?.find((t) => t.id === active)?.title ?? "محادثة جديدة";
   const suggestions = ["راجع آخر صفقاتي وقل لي وين أغلط", "اسألني عن أهدافي وحدودي", "ساعدني أكتب قواعد استراتيجيتي"];
@@ -217,6 +232,12 @@ function CoachPage() {
             ))}
             {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
             {busy && <div className="mr-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
+            {stuck && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>ما وصل الرد على رسالتك.</span>
+                <button onClick={() => submit({ text: retryText(stuck.content), image: null }, true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
+              </div>
+            )}
             <div ref={endRef} />
           </div></div>
 

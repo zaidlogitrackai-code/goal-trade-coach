@@ -1,5 +1,7 @@
 // Server-only: Lovable AI Gateway (Responses API, streamed and consumed to final text).
 const MODEL = "openai/gpt-6-astra";
+/** Longest we wait for one AI reply before telling the user to retry. */
+const TIMEOUT_MS = 90_000;
 
 export class AiError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -8,15 +10,25 @@ export class AiError extends Error {
 export async function callAI(instructions: string, input: Record<string, unknown>[], format?: Record<string, unknown>): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new AiError("خدمة الذكاء غير مهيأة.", 401);
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "fetch" },
-    body: JSON.stringify({
-      model: MODEL, instructions, input, stream: true, store: false,
-      reasoning: { effort: "low" },
-      ...(format ? { text: { format } } : {}),
-    }),
-  });
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  const timedOut = () => new AiError("الرد تأخر كثير، اضغط «أعد المحاولة».", 504);
+  let res: Response;
+  try {
+    res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "fetch" },
+      body: JSON.stringify({
+        model: MODEL, instructions, input, stream: true, store: false,
+        reasoning: { effort: "low" },
+        ...(format ? { text: { format } } : {}),
+      }),
+    });
+  } catch (e) {
+    if (signal.aborted) throw timedOut();
+    console.error("AI gateway fetch failed", e);
+    throw new AiError("تعذّر الاتصال بالمحلل، حاول مرة ثانية.", 502);
+  }
   if (!res.ok || !res.body) {
     const body = await res.text().catch(() => "");
     console.error("AI gateway error", res.status, body.slice(0, 500));
@@ -28,7 +40,9 @@ export async function callAI(instructions: string, input: Record<string, unknown
   const dec = new TextDecoder();
   let buf = "", text = "";
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try { chunk = await reader.read(); } catch (e) { if (signal.aborted) throw timedOut(); throw e; }
+    const { done, value } = chunk;
     if (done) break;
     buf += dec.decode(value, { stream: true });
     const lines = buf.split("\n");

@@ -12,6 +12,8 @@ import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
+import { IMAGE_NOTE, shouldSkipUserInsert } from "./chat-retry";
+import { MAX_THUMB_CHARS } from "./image";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -270,12 +272,21 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), thumb: z.string().startsWith("data:image/").max(MAX_THUMB_CHARS).optional(), retry: z.boolean().optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
-      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.image ? `${data.message}\n📎 (صورة مرفقة)` : data.message, image: data.image ?? null });
-      if (e1) throw e1;
+      const stored = data.image ? `${data.message}${IMAGE_NOTE}` : data.message;
+      let skip = false;
+      if (data.retry) {
+        const { data: last } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        skip = shouldSkipUserInsert(last, stored);
+      }
+      if (!skip) {
+        // Only a small preview is stored; the full image goes to the AI below.
+        const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: stored, image: data.thumb ?? null });
+        if (e1) throw e1;
+      }
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
