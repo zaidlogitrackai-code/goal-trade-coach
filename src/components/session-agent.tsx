@@ -28,7 +28,20 @@ function blobToBase64(b: Blob): Promise<string> {
   });
 }
 
-export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onChanged: () => void }) {
+export interface AgentChatProps {
+  hasActive: boolean;
+  onChanged: () => void;
+  /** Fixed thread title; defaults to today's session thread. */
+  title?: string;
+  greeting?: string;
+  quick?: string[];
+  mode?: "coach" | "risk";
+  placeholder?: string;
+  onReady?: (threadId: string) => void;
+}
+
+export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady }: AgentChatProps) {
+  const threadTitle = title ?? todayTitle();
   const qc = useQueryClient();
   const send = useServerFn(coachReply);
   const transcribe = useServerFn(transcribeAudio);
@@ -48,9 +61,9 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
 
   // Find (or create once) today's session thread, opened by the agent's question.
   const thread = useQuery({
-    queryKey: ["session-thread", todayTitle()],
+    queryKey: ["session-thread", threadTitle],
     queryFn: async () => {
-      const { data, error } = await supabase.from("coach_threads").select("id").eq("title", todayTitle()).order("created_at").limit(1);
+      const { data, error } = await supabase.from("coach_threads").select("id").eq("title", threadTitle).order("created_at").limit(1);
       if (error) throw error;
       return data[0]?.id ?? null;
     },
@@ -61,13 +74,15 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
     boot.current = true;
     (async () => {
       const user_id = await currentUserId();
-      const { data, error } = await supabase.from("coach_threads").insert({ user_id, title: todayTitle() }).select("id").single();
+      const { data, error } = await supabase.from("coach_threads").insert({ user_id, title: threadTitle }).select("id").single();
       if (error) { toast.error("ما قدرت أجهز محادثة الجلسة"); return; }
-      const content = hasActive ? "هلا هادي جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START;
+      const content = greeting ?? (hasActive ? "هلا هادي جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START);
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content });
       await qc.invalidateQueries({ queryKey: ["session-thread"] });
     })();
-  }, [thread.isLoading, thread.data, hasActive, qc]);
+  }, [thread.isLoading, thread.data, hasActive, qc, threadTitle, greeting]);
+
+  useEffect(() => { if (thread.data) onReady?.(thread.data); }, [thread.data, onReady]);
 
   const id = thread.data ?? null;
   const msgs = useQuery({
@@ -88,7 +103,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
     const img = image;
     setText(""); setImage(null); setPending(msg);
     try {
-      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
+      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(mode ? { mode } : {}) } });
       if (res?.messageId) setFreshId(res.messageId);
       await qc.invalidateQueries({ queryKey: ["messages", id] });
     } catch (e) {
@@ -127,7 +142,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
 
   const list = msgs.data ?? [];
   const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending);
-  const quick = hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"];
+  const quick = quickProp ?? (hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"]);
 
   return (
     <div className="-mx-4 -mb-2 flex h-[calc(100dvh-12.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[65vh]">
@@ -151,7 +166,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
         ))}
         {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">{pending}</div>}
         {busy && <div className="w-fit rounded-2xl bg-muted px-4 py-2 text-sm text-muted-foreground">يكتب…</div>}
-        {!busy && list.length > 0 && list.length < 4 && (
+        {!busy && list.length > 0 && (quickProp ? true : list.length < 4) && (
           <div className="flex flex-wrap gap-2">
             {quick.map((q) => (
               <button key={q} onClick={() => submit(q)} className="rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-accent">{q}</button>
@@ -174,7 +189,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
           rows={1}
           value={text}
           onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}
-          placeholder={recording ? "يسجّل… اضغط ■ للإرسال" : "رد على المساعد…"}
+          placeholder={recording ? "يسجّل… اضغط ■ للإرسال" : placeholder ?? "رد على المساعد…"}
           className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl py-2"
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
         />

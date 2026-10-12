@@ -38,7 +38,11 @@ export function RiskWatcher() {
             const known = new Set((seen ?? []).map((x) => x.dedupe_key));
             for (const a of alerts.filter((x) => !known.has(x.key))) {
               const { error } = await supabase.from("notifications").insert({ user_id, kind: "risk", day: new Date().toISOString().slice(0, 10), title: a.title, body: a.body, dedupe_key: a.key });
-              if (!error) { pop(a.title, a.body, a.level); added = true; }
+              if (!error) {
+                pop(a.title, a.body, a.level); added = true;
+                const { data: th } = await supabase.from("coach_threads").select("id").eq("title", RISK_THREAD).limit(1);
+                if (th?.[0]) await supabase.from("coach_messages").insert({ user_id, thread_id: th[0].id, role: "assistant", content: `**${a.title}**\n\n${a.body}` });
+              }
             }
           }
         }
