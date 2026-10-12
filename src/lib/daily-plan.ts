@@ -1,12 +1,12 @@
 export type DailyPlan = { target: number | null; max_trades: number | null; risk_per_trade: number | null; max_loss: number | null; revised_count: number };
 type T = { status: string; pnl: unknown; risk_amount: unknown; opened_at: string };
-type S = { starting_balance?: unknown; max_daily_profit?: unknown; max_risk_per_trade?: unknown };
+type S = { starting_balance?: unknown; current_balance?: unknown; max_daily_profit?: unknown; max_risk_per_trade?: unknown };
 
 /** Flags greed and plan breaches for today's plan. Pure; thresholds: >3% of balance, above profit cap, above avg winning day. */
 export function planCheck(plan: DailyPlan | null, todayTrades: T[], s: S, avgWinDay: number | null) {
   const flags: string[] = [];
   if (!plan) return { flags: ["ما حدد خطة اليوم بعد"], kept: null as boolean | null, pnl: 0, count: todayTrades.length };
-  const bal = Number(s.starting_balance) || 0, cap = Number(s.max_daily_profit) || 0, maxRisk = Number(s.max_risk_per_trade) || 0;
+  const bal = Number(s.current_balance ?? s.starting_balance) || 0, cap = Number(s.max_daily_profit) || 0, maxRisk = Number(s.max_risk_per_trade) || 0;
   const t = plan.target ?? 0;
   if (t > 0 && bal > 0 && t / bal > 0.03) flags.push(`طمع: الهدف ${t} = ${((t / bal) * 100).toFixed(1)}% من الرصيد (أكثر من 3%)`);
   if (t > 0 && cap > 0 && t > cap) flags.push(`طمع: الهدف ${t} أكبر من سقف الربح ${cap}`);

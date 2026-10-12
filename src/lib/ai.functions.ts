@@ -15,6 +15,7 @@ import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { MAX_THUMB_CHARS } from "./image";
 
+import { applyPctLimits } from "./effective-limits";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 type Sb = SupabaseClient<Database>;
@@ -54,6 +55,11 @@ async function buildContext(sb: Sb) {
   const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
   const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
+  {
+    const ledger0 = parseLedger(capitalRow.data?.[0]?.content);
+    const bal0 = computeCapital({ starting: Number(s.data?.starting_balance) || 0, since: s.data?.created_at ?? null, trades: closedAll.data ?? [], entries: ledger0.entries }).balance;
+    if (s.data) (s as { data: unknown }).data = applyPctLimits(s.data, bal0);
+  }
   const winDays = new Map<string, number>();
   for (const x of closedAll.data ?? []) { const k = (x.closed_at ?? x.opened_at).slice(0, 10); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
   const wins = [...winDays.values()].filter((v) => v > 0);

@@ -80,7 +80,7 @@ export function calculateRewardToRisk(input: {
  * Evaluates trade against risk parameters, session, emotions, and trading limits.
  */
 export function evaluateTradeGate(options: {
-  settings: StatusSettings & { starting_balance?: number; max_risk_per_trade?: number; currency?: string };
+  settings: StatusSettings & { starting_balance?: number; current_balance?: number; max_risk_per_trade?: number; currency?: string };
   metrics: DayMetrics;
   input: TradeInput;
   activeSession?: SessionContext | null;
@@ -96,7 +96,7 @@ export function evaluateTradeGate(options: {
     activeSession = null,
     allowedStrategyIds = [],
     openTrades = [],
-    currentBalance = (settings.starting_balance ?? 1000),
+    currentBalance = (settings.current_balance ?? settings.starting_balance ?? 1000),
     now = new Date(),
   } = options;
 
