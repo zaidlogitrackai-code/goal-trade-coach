@@ -1,3 +1,4 @@
+import { rememberChatImage } from "@/lib/agent-actions";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -101,6 +102,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     if (!msg || busy || !id) return;
     setBusy(true);
     const img = image;
+    rememberChatImage(img);
     setText(""); setImage(null); setPending(msg);
     try {
       const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(mode ? { mode } : {}) } });
