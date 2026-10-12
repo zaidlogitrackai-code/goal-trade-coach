@@ -3,8 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
   LayoutDashboard, Timer, PlusCircle, ListOrdered, ScanSearch, MessagesSquare, Layers,
-  ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut, ChevronDown, Menu,
-  Brain,
+  ShieldCheck, Gauge, LineChart, FileText, ScrollText, Settings, LogOut, ChevronDown, Menu,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
