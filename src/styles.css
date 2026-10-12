@@ -199,7 +199,7 @@
     font-family: var(--font-display);
   }
   /* Glass for any element that uses a translucent surface token */
-  :where([class*="bg-card"], [class*="bg-popover"], [class*="bg-sidebar"]) {
+  :where([class*="bg-card"], [class*="bg-popover"]) {
     backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   }
 }
