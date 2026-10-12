@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
   LayoutDashboard, Timer, PlusCircle, ListOrdered, ScanSearch, MessagesSquare, Layers,
-  ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut, ChevronDown,
+  ShieldCheck, Gauge, LineChart, FileText, ScrollText, BookOpen, Settings, LogOut, ChevronDown, Menu,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
@@ -11,6 +11,8 @@ import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries"
 import { isBlocked, useJourney } from "@/lib/use-journey";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 export const NAV_GROUPS = [
   {
@@ -58,6 +60,13 @@ type NavItem = (typeof NAV_GROUPS)[number]["items"][number];
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => [...g.items] as NavItem[]);
 
 const ITEM = Object.fromEntries(NAV.map((n) => [n.to, n])) as Record<NavPath, NavItem>;
+
+const MOBILE_NAV: NavItem[] = [
+  ITEM["/dashboard"],
+  ITEM["/session"],
+  ITEM["/new-trade"],
+  ITEM["/coach"],
+];
 
 /** Reorders the menu around what the trader is doing and has set up (see nav-plan.ts). */
 function useNavPlan(): NavPlan {
@@ -190,28 +199,59 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </nav>
 
-        <button onClick={signOut} className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+        <Button onClick={signOut} variant="ghost" className="mt-2 w-full justify-start gap-3 px-3 text-muted-foreground">
           <LogOut className="size-4" /> تسجيل الخروج
-        </button>
+        </Button>
         <p className="mt-2 text-center text-[10px] tracking-[0.2em] text-muted-foreground">انضباط. استراتيجية. حرية.</p>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
-          <Logo />
-          <div className="flex items-center gap-3"><NotificationsBell />
-          <button onClick={signOut} aria-label="تسجيل الخروج" className="text-muted-foreground"><LogOut className="size-5" /></button></div>
+        <header className="grid h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 lg:hidden">
+          <Logo className="min-w-0 scale-90 origin-right" />
+          <div className="flex shrink-0 items-center gap-1">
+            <div className="grid size-9 place-items-center"><NotificationsBell /></div>
+            <Button onClick={signOut} aria-label="تسجيل الخروج" title="تسجيل الخروج" variant="ghost" size="icon" className="text-muted-foreground">
+              <LogOut className="size-5" />
+            </Button>
+          </div>
         </header>
-        <main className="flex-1 px-4 pb-28 pt-6 lg:px-10 lg:pb-10">{children}</main>
+        <main className="flex-1 px-4 pb-24 pt-5 lg:px-10 lg:pb-10 lg:pt-6">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur lg:hidden">
-        {plan.mobile.map((p) => ITEM[p]).map((n) => (
-          <Link key={n.to} to={n.to} className="flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground" activeProps={{ className: "text-primary font-medium" }}>
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[4.5rem] grid-cols-5 border-t border-border bg-sidebar/95 px-1 backdrop-blur lg:hidden" aria-label="التنقل الرئيسي">
+        {MOBILE_NAV.map((n) => (
+          <Link key={n.to} to={n.to} className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] text-muted-foreground" activeProps={{ className: "text-foreground font-semibold" }}>
             <n.icon className="size-5" />
-            {n.label}
+            <span className="w-full truncate text-center">{n.label}</span>
           </Link>
         ))}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" className={`h-full min-w-0 flex-col gap-1 rounded-none px-1 text-[10px] ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
+              <Menu className="size-5" />
+              <span>المزيد</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-xl border-t p-5 pb-8 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+            <SheetHeader className="mb-5 text-right">
+              <SheetTitle>كل الأقسام</SheetTitle>
+            </SheetHeader>
+            <div className="grid grid-cols-2 gap-2">
+              {NAV.filter((n) => !MOBILE_NAV.some((fixed) => fixed.to === n.to)).map((n) => (
+                <SheetClose key={n.to} asChild>
+                  <Link
+                    to={n.to}
+                    className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 text-sm text-muted-foreground"
+                    activeProps={{ className: "border-foreground/30 text-foreground" }}
+                  >
+                    <n.icon className="size-4 shrink-0" />
+                    <span className="truncate">{n.label}</span>
+                  </Link>
+                </SheetClose>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
       </nav>
     </div>
   );
@@ -227,12 +267,12 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground lg:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+    <div className="mb-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:mb-6">
+      <div className="min-w-0">
+        <h1 className="font-display text-2xl font-bold text-foreground lg:text-3xl">{title}</h1>
+        {subtitle && <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{subtitle}</p>}
       </div>
-      {action && <div>{action}</div>}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
