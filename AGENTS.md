@@ -18,3 +18,4 @@
 - Mobile navigation uses four fixed primary destinations plus a complete “more” sheet — stable icon positions reduce cognitive load while preserving every route.
 - AI-created trades are de-duplicated via `src/lib/trade-dedupe.ts` (symbol+direction+entry, 24h) — re-uploading the same broker screenshot must never double-count.
 - Risk alerts come only from pure `src/lib/risk-watch.ts`, run client-side every minute by `RiskWatcher` and de-duplicated via `notifications.dedupe_key` — in-app only (user chose no push), so alerts never repeat.
+- Risk management page is a chat with the risk guardian (shared SessionAgent with title/mode props, thread "حارس المخاطر"; coachReply mode=risk adds RISK_MODE); daily morning note via riskMorning deduped by notifications.dedupe_key; RiskWatcher also posts alerts into that thread — one agent chat per area keeps everything conversational.
