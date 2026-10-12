@@ -1,3 +1,4 @@
+import { disciplineStreak } from "./streak";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -31,10 +32,13 @@ async function buildContext(sb: Sb) {
     sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
     sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
   ]);
-  const [{ data: alerts }, { data: reminders }] = await Promise.all([
+  const [{ data: alerts }, { data: reminders }, { data: stSess }, { data: stViol }] = await Promise.all([
     sb.from("notifications").select("title,body,created_at").in("kind", ["risk", "reminder"]).order("created_at", { ascending: false }).limit(8),
     sb.from("reminders").select("title,repeat,at_time,next_at").eq("active", true).limit(20),
+    sb.from("trading_sessions").select("started_at,ended_at,review").gte("started_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
+    sb.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
   ]);
+  const streak = disciplineStreak(stSess ?? [], stViol ?? [], s.data?.timezone || "Asia/Riyadh");
   const ledger = parseLedger(capitalRow.data?.[0]?.content);
   const capital = computeCapital({
     starting: Number(s.data?.starting_balance) || 0,
@@ -57,6 +61,7 @@ async function buildContext(sb: Sb) {
   });
   const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
   return `الأصول التي يغطيها النظام وتحللها دائماً بدون أي رفض أو اعتذار: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30 (يسمّى أيضاً US30USD)، EURUSD، GBPUSD، USDJPY، USOIL (نفط WTI)، وأي زوج عملات. إذا الصورة لواحد منها لا تقل أبداً "خارج نطاق النظام" أو "ما أحلل". العملات الرقمية والأسهم فقط خارج النظام؛ إذا طلبها قله بلطف.
+ستريك الانضباط: ${streak.current} يوم سوق متتالي (أفضل ${streak.best}). يزيد لما يسكّر جلسته بمراجعة بدون مخالفة؛ السبت والأحد ما ينحسبون. لما يسكّر جلسة نظيفة هنّيه بالرقم الجديد، ولو قرّب يكسر قاعدة ذكّره إنه بيخسر الستريك.
 ${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
 
 ${capitalForPrompt(capital, ledger.entries, s.data?.currency ?? "USD")}
