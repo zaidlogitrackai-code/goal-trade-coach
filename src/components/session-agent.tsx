@@ -41,9 +41,11 @@ export interface AgentChatProps {
   onReady?: (threadId: string) => void;
   /** Open this exact conversation instead of looking one up by title. */
   threadId?: string;
+  /** Analyst only: short answers. */
+  brief?: boolean;
 }
 
-export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId }: AgentChatProps) {
+export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId, brief }: AgentChatProps) {
   const threadTitle = title ?? todayTitle();
   const qc = useQueryClient();
   const send = useServerFn(coachReply);
@@ -110,7 +112,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     rememberChatImage(img);
     setText(""); setImage(null); setPending(msg);
     try {
-      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(mode ? { mode } : {}) } });
+      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(mode ? { mode } : {}), ...(brief != null ? { brief } : {}) } });
       if (res?.messageId) setFreshId(res.messageId);
       await qc.invalidateQueries({ queryKey: ["messages", id] });
     } catch (e) {
