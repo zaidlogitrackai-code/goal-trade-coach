@@ -216,7 +216,7 @@ function CoachPage() {
               </div>
             ))}
             {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
-            {busy && <div className="ml-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
+            {busy && <div className="mr-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
             <div ref={endRef} />
           </div>
 
