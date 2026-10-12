@@ -388,7 +388,7 @@ function NewTrade() {
             <Input
               id="symbol"
               dir="ltr"
-              placeholder="EURUSD أو XAUUSD"
+              placeholder="EURUSD أو XAUUSD أو US100"
               value={f.symbol}
               onChange={(e) => setF({ ...f, symbol: e.target.value })}
               aria-invalid={notForex || undefined}
@@ -412,7 +412,7 @@ function NewTrade() {
             {notForex && (
               <p id="symbol-forex" role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                {FOREX_ONLY_MSG} اكتب زوج مثل EURUSD أو XAUUSD.
+                {FOREX_ONLY_MSG} اكتب رمز مثل EURUSD أو XAUUSD أو US100 أو USOIL.
               </p>
             )}
             {marketWarnings.length > 0 && (

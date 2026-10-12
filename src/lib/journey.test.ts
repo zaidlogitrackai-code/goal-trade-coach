@@ -12,15 +12,21 @@ describe("forex only", () => {
     expect(forexSymbol("GOLD")).toBe("XAUUSD");
     expect(forexSymbol("XAGUSD")).toBe("XAGUSD");
   });
-  it("rejects crypto, indices, oil and stocks", () => {
+  it("accepts the indices and oil from the watchlist", () => {
+    expect(forexSymbol("US30USD")).toBe("US30");
+    expect(forexSymbol("US500")).toBe("US500");
+    expect(forexSymbol("NAS100")).toBe("US100");
+    expect(forexSymbol("USOIL")).toBe("USOIL");
+    expect(forexSymbol("USOIL.m")).toBe("USOIL");
+    expect(forexSymbol("US500.cash")).toBe("US500");
+    expect(forexSymbol("USDJPY")).toBe("USDJPY");
+  });
+  it("rejects crypto and stocks", () => {
     for (const s of [
       "BTCUSD",
       "BTCUSDT",
       "بيتكوين",
       "ETHUSD",
-      "NAS100",
-      "US30",
-      "USOIL",
       "2222",
       "AAPL",
       "USDUSD",
