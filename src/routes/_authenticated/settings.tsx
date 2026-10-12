@@ -194,7 +194,7 @@ function SettingsPage() {
 
         <div className="space-y-4 text-xs">
           <label className="flex items-center justify-between gap-4 cursor-pointer">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <span className="font-semibold text-sm text-foreground block">حفظ تحليلات الشارتات المرفوعة</span>
               <span className="text-muted-foreground">الاحتفاظ بسجل تحليلات الصور التي ترفعها للمحلل الذكي.</span>
             </div>
@@ -202,7 +202,7 @@ function SettingsPage() {
           </label>
 
           <label className="flex items-center justify-between gap-4 cursor-pointer">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <span className="font-semibold text-sm text-foreground block">السماح باستخدام البيانات مجهولة المصدر للتحسين</span>
               <span className="text-muted-foreground">استخدام أنماط السلوك المجردة لتحسين دقة كشف الطمع والانتقام.</span>
             </div>
@@ -210,7 +210,7 @@ function SettingsPage() {
           </label>
 
           <label className="flex items-center justify-between gap-4 cursor-pointer">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <span className="font-semibold text-sm text-foreground block">إشعارات الانضباط والرسالة الصباحية</span>
               <span className="text-muted-foreground">تلقي إشعارات عند اقتراب حدود المخاطر ورسالة صباحية بالخطة.</span>
             </div>
