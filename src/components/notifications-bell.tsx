@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Bell } from "lucide-react";
+import { Bell, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Md } from "@/components/md";
@@ -35,6 +35,17 @@ export function NotificationsBell() {
     qc.invalidateQueries({ queryKey: ["notifications"] });
   }
 
+  async function removeOne(id: string) {
+    await supabase.from("notifications").delete().eq("id", id);
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  }
+
+  async function removeAll() {
+    if (!list.length) return;
+    await supabase.from("notifications").delete().in("id", list.map((n) => n.id));
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  }
+
   return (
     <Popover onOpenChange={markRead}>
       <PopoverTrigger aria-label="الإشعارات" className="relative text-muted-foreground hover:text-foreground">
@@ -42,13 +53,25 @@ export function NotificationsBell() {
         {unread > 0 && <span className="absolute -top-1 -left-1 grid size-4 place-items-center rounded-full bg-destructive text-[10px] text-destructive-foreground">{unread}</span>}
       </PopoverTrigger>
       <PopoverContent align="start" className="max-h-[70vh] w-80 overflow-y-auto p-0" dir="rtl">
-        {list.length === 0 ? <p className="p-4 text-sm text-muted-foreground">لا توجد إشعارات بعد.</p> : list.map((n) => (
-          <div key={n.id} className="border-b border-border p-4 text-sm leading-7 last:border-0">
-            <p className="font-semibold">{n.title}</p>
-            <p className="mb-1 text-xs text-muted-foreground">{fmtDate(n.created_at)}</p>
-            <Md>{n.body}</Md>
-          </div>
-        ))}
+        {list.length === 0 ? (
+          <p className="p-4 text-sm text-muted-foreground">لا توجد إشعارات بعد.</p>
+        ) : (
+          <>
+            <button onClick={removeAll} className="flex w-full items-center justify-center gap-1.5 border-b border-border p-2 text-xs text-muted-foreground hover:bg-accent hover:text-destructive">
+              <Trash2 className="size-3.5" /> امسح كل الإشعارات
+            </button>
+            {list.map((n) => (
+              <div key={n.id} className="relative border-b border-border p-4 pr-8 text-sm leading-7 last:border-0">
+                <p className="font-semibold">{n.title}</p>
+                <p className="mb-1 text-xs text-muted-foreground">{fmtDate(n.created_at)}</p>
+                <Md>{n.body}</Md>
+                <button aria-label="حذف الإشعار" onClick={() => removeOne(n.id)} className="absolute left-2 top-3 rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-destructive">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

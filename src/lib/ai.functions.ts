@@ -486,7 +486,7 @@ export const disciplineMorning = createServerFn({ method: "POST" })
       if (seen?.length) return { skipped: true };
       const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "reminder", day: data.day, title: "حارس الانضباط", body: "حدد خطتك اليوم في صفحة الانضباط", dedupe_key: key, read: true } as never);
       if (lock) return { skipped: true };
-      const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين. ابدأ بـ صباح الخير هادي." }]);
+      const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين كحد أقصى. ممنوع فقرات طويلة." }]);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
       return { skipped: false };
     } catch (e) { fail(e); }
