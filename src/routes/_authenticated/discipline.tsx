@@ -1,3 +1,4 @@
+import { StreakCard } from "@/components/streak-card";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -85,6 +86,8 @@ function DisciplinePage() {
         title="الانضباط ومكافحة الطمع"
         subtitle="يقيس التزامك الحقيقي من صفقاتك فقط، ويكشف قرارات الانتقام والطمع بالأدلة."
       />
+
+      <StreakCard large />
 
       {/* COOLDOWN INTERVENTION PANEL */}
       <div className="panel p-6 space-y-4 border-2 border-border/80">
