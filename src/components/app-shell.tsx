@@ -33,7 +33,6 @@ export const NAV_GROUPS = [
       { to: "/analyst", label: "المحلل الذكي", icon: ScanSearch },
       { to: "/coach", label: "سَنَد", icon: MessagesSquare },
       { to: "/strategies", label: "الاستراتيجيات", icon: Layers },
-      { to: "/training", label: "تدريب الذكاء", icon: Brain },
     ],
   },
   {
@@ -49,7 +48,6 @@ export const NAV_GROUPS = [
     title: "المعرفة",
     items: [
       { to: "/rules", label: "القواعد", icon: ScrollText },
-      { to: "/knowledge", label: "مركز المعرفة", icon: BookOpen },
     ],
   },
   {
