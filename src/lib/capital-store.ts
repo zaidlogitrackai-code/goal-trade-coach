@@ -71,6 +71,8 @@ export async function loadCapital(): Promise<{
 
 export async function moveCapital(move: CapitalMove) {
   const { rowId, ledger, summary } = await loadCapital();
+  // Already at that balance: nothing to change, not an error.
+  if (move.kind === "set_balance" && Math.abs(Number(move.amount) - summary.balance) < 0.01) return { ledger, entry: null, balance: summary.balance };
   const next = applyMove(ledger, move, summary.balance);
   await writeLedger(rowId, next.ledger);
   return next;
