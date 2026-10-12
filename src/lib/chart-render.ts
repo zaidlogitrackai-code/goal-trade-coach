@@ -53,8 +53,15 @@ function chunk(type: string, data: Uint8Array) {
   return out;
 }
 async function deflate(b: Uint8Array) {
-  const s = new Blob([b as BlobPart]).stream().pipeThrough(new CompressionStream("deflate"));
-  return new Uint8Array(await new Response(s).arrayBuffer());
+  const cs = new CompressionStream("deflate");
+  const w = cs.writable.getWriter();
+  void w.write(b as Uint8Array<ArrayBuffer>); void w.close();
+  const out: Uint8Array[] = [];
+  const r = cs.readable.getReader();
+  for (;;) { const { done, value } = await r.read(); if (done) break; out.push(value); }
+  const all = new Uint8Array(out.reduce((a, x) => a + x.length, 0));
+  let o = 0; for (const x of out) { all.set(x, o); o += x.length; }
+  return all;
 }
 
 /** Indexed-colour PNG, as a data URL. */
