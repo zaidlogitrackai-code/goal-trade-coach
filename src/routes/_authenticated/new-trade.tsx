@@ -321,7 +321,7 @@ function NewTrade() {
     <div className="mx-auto max-w-4xl space-y-8">
       <PageHeader
         title="الصفقة الجديدة"
-        subtitle="اكتب الصفقة بكلامك أو ارفع صورة من MT5، والذكاء يعبّي كل شيء."
+        subtitle="اكتب الصفقة أو ارفع صورتها."
       />
 
       {/* Gate Alert Banner */}
@@ -346,9 +346,6 @@ function NewTrade() {
               <li key={i}>{r}</li>
             ))}
           </ul>
-          <p className="text-xs pt-1 border-t border-border/40 font-medium">
-            الإجراء الموصى به: {gateResult.nextAction}
-          </p>
         </div>
       )}
 
