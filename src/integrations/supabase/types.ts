@@ -50,6 +50,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          image: string | null
           role: string
           thread_id: string
           user_id: string
@@ -59,6 +60,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          image?: string | null
           role: string
           thread_id: string
           user_id: string
@@ -68,6 +70,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          image?: string | null
           role?: string
           thread_id?: string
           user_id?: string
