@@ -1,14 +1,16 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { History, ScanSearch } from "lucide-react";
+import { History, MessageSquare, ScanSearch, SquarePen, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { SessionAgent } from "@/components/session-agent";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { fmtDate } from "@/lib/queries";
+import { currentUserId, fmtDate } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/analyst")({
   head: () => ({
@@ -21,6 +23,7 @@ export const Route = createFileRoute("/_authenticated/analyst")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
+  validateSearch: z.object({ c: z.string().uuid().optional().catch(undefined) }),
   component: AnalystPage,
 });
 
@@ -64,8 +67,85 @@ function PastAnalyses() {
   );
 }
 
+const threadsQuery = {
+  queryKey: ["analyst-threads"],
+  queryFn: async () => {
+    const { data: threads, error } = await supabase
+      .from("coach_threads").select("id,title,updated_at")
+      .or(`title.eq.${ANALYST_THREAD},title.like.${ANALYST_THREAD} · %`)
+      .order("updated_at", { ascending: false }).limit(50);
+    if (error) throw error;
+    const ids = threads.map((t) => t.id);
+    const first = new Map<string, string>();
+    if (ids.length) {
+      const { data: msgs } = await supabase.from("coach_messages").select("thread_id,content").in("thread_id", ids).eq("role", "user").order("created_at").limit(400);
+      for (const m of msgs ?? []) if (!first.has(m.thread_id)) first.set(m.thread_id, m.content.replace(/\n📎.*$/s, "").trim());
+    }
+    return threads.map((t) => ({ ...t, preview: first.get(t.id) || "" }));
+  },
+};
+
+function Conversations({ activeId, onOpen, onClose }: { activeId: string | undefined; onOpen: (id: string | undefined) => void; onClose: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery(threadsQuery);
+  async function del(id: string) {
+    await supabase.from("coach_messages").delete().eq("thread_id", id);
+    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
+    if (error) { toast.error("ما قدرت أحذف المحادثة"); return; }
+    if (id === activeId) onOpen(undefined);
+    qc.invalidateQueries({ queryKey: ["analyst-threads"] });
+    qc.invalidateQueries({ queryKey: ["session-thread"] });
+  }
+  const list = q.data ?? [];
+  if (list.length === 0) return <EmptyState text="محادثاتك مع المحلل بتظهر هنا." />;
+  return (
+    <ul className="space-y-1">
+      {list.map((t) => {
+        const main = t.title === ANALYST_THREAD;
+        const active = activeId ? t.id === activeId : main;
+        return (
+          <li key={t.id} className={`group flex items-center gap-1 rounded-xl ${active ? "bg-accent" : "hover:bg-accent/60"}`}>
+            <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-start" onClick={() => { onOpen(main ? undefined : t.id); onClose(); }}>
+              <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm">{t.preview || "محادثة جديدة"}</span>
+                <span className="block text-xs text-muted-foreground">{fmtDate(t.updated_at)}</span>
+              </span>
+            </button>
+            <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="حذف المحادثة" onClick={() => void del(t.id)}><Trash2 className="size-3.5" /></Button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function AnalystPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { c } = Route.useSearch();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  function openThread(id: string | undefined) {
+    void navigate({ to: "/analyst", search: id ? { c: id } : {} });
+  }
+
+  async function startNew() {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const user_id = await currentUserId();
+      const stamp = new Date().toISOString();
+      const { data, error } = await supabase.from("coach_threads").insert({ user_id, title: `${ANALYST_THREAD} · ${stamp}` }).select("id").single();
+      if (error) throw error;
+      await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content: GREETING });
+      await qc.invalidateQueries({ queryKey: ["analyst-threads"] });
+      openThread(data.id);
+    } catch { toast.error("ما قدرت أبدأ محادثة جديدة"); }
+    finally { setCreating(false); }
+  }
+
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
       <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -76,24 +156,32 @@ function AnalystPage() {
             <p className="truncate text-xs text-muted-foreground">ارفع الشارت وتناقش معه — القرار النهائي لك</p>
           </div>
         </div>
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="التحليلات السابقة"><History className="size-4" /></Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
-            <SheetHeader><SheetTitle>التحليلات السابقة</SheetTitle></SheetHeader>
-            <div className="mt-4"><PastAnalyses /></div>
-          </SheetContent>
-        </Sheet>
+        <div className="flex items-center gap-2">
+          <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-4" /></Button>
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="سجل المحادثات"><History className="size-4" /></Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-md">
+              <SheetHeader><SheetTitle>سجل المحادثات</SheetTitle></SheetHeader>
+              <Button className="mt-4 w-full gap-2" disabled={creating} onClick={() => { setOpen(false); void startNew(); }}><SquarePen className="size-4" /> محادثة جديدة</Button>
+              <div className="mt-4"><Conversations activeId={c} onOpen={openThread} onClose={() => setOpen(false)} /></div>
+              <h3 className="mb-3 mt-8 text-sm font-semibold text-muted-foreground">التحليلات المحفوظة</h3>
+              <PastAnalyses />
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
       <SessionAgent
+        key={c ?? "main"}
+        {...(c ? { threadId: c } : {})}
         hasActive={false}
         title={ANALYST_THREAD}
         greeting={GREETING}
         quick={QUICK}
         mode="analyst"
         placeholder="ارفع الشارت أو اسأل المحلل…"
-        onChanged={() => qc.invalidateQueries({ queryKey: ["analyses"] })}
+        onChanged={() => { qc.invalidateQueries({ queryKey: ["analyses"] }); qc.invalidateQueries({ queryKey: ["analyst-threads"] }); }}
       />
     </div>
   );
