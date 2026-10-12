@@ -19,11 +19,12 @@ const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Numb
 
 export function splitTradeBlock(text: string): { body: string; raw: string | null } {
   const m = text.match(BLOCK);
-  return m ? { body: text.replace(BLOCK, "").trim(), raw: m[1].trim() } : { body: text, raw: null };
+  return m ? { body: text.replace(BLOCK, "").trim(), raw: (m[1] ?? "").trim() } : { body: text, raw: null };
 }
 
 export function parseTradeCard(raw: string): ParsedCard {
-  let j: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let j: { [k: string]: any };
   try { j = JSON.parse(raw); } catch { return { ok: false, error: "صيغة البطاقة غير صحيحة" }; }
   const d = String(j.direction ?? "none").toLowerCase();
   const direction = d === "buy" || d === "sell" ? d : "none";
