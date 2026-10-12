@@ -7,6 +7,7 @@ import {
   ACTION_LABEL,
   DESTRUCTIVE,
   NeedsConfirmation,
+  AlreadySaved,
   parseAction,
   runAction,
   type AgentAction,
@@ -57,7 +58,8 @@ export function AgentActions({
         ok++;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "فشل";
-        if (e instanceof NeedsConfirmation) next[i] = { ...a, status: undefined, note: msg };
+        if (e instanceof AlreadySaved) next[i] = { ...a, status: "done", note: msg };
+        else if (e instanceof NeedsConfirmation) next[i] = { ...a, status: undefined, note: msg };
         else {
           next[i] = { ...a, status: "failed", note: msg };
           if (!auto) toast.error(`${a.summary}: ${msg}`);
@@ -132,7 +134,7 @@ export function AgentActions({
                 </div>
               )}
             </div>
-            {a.note && a.status !== "done" && (
+            {a.note && (
               <p
                 className={`flex items-start gap-1 text-xs ${a.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}
               >

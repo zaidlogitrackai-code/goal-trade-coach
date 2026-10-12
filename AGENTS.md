@@ -16,3 +16,4 @@
 - AI-proposed changes are structured actions (`src/lib/agent-actions.ts`) validated with zod and executed in the browser only after the user clicks approve — the AI never writes data on its own.
 - The daily morning message is generated lazily on the first visit of the day (`morningGreeting`, unique per user/day) — no scheduler needed for a single-user app.
 - Mobile navigation uses four fixed primary destinations plus a complete “more” sheet — stable icon positions reduce cognitive load while preserving every route.
+- AI-created trades are de-duplicated via `src/lib/trade-dedupe.ts` (symbol+direction+entry, 24h) — re-uploading the same broker screenshot must never double-count.
