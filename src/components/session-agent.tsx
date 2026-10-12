@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { coachReply, transcribeAudio } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
 import { makeThumbnail, prepareImage } from "@/lib/image";
-import { friendlyError, retryText, sendWithRetry, retryDecision, unansweredMessage } from "@/lib/chat-retry";
+import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
+import { threadState } from "@/lib/chat-check";
 
 function todayTitle() {
   return `جلسة ${new Date().toLocaleDateString("en-CA")}`;
@@ -121,8 +122,12 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     if (!again) { setText(""); setImage(null); setPending(msg); }
     try {
       const thumb = img ? await makeThumbnail(img) : null;
-      const res = await sendWithRetry((retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}), ...(mode ? { mode } : {}), ...(brief != null ? { brief } : {}) } }));
-      if (res?.messageId) setFreshId(res.messageId);
+      const out = await sendReliably(
+        (retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}), ...(mode ? { mode } : {}), ...(brief != null ? { brief } : {}) } }),
+        () => threadState(id, msg),
+      );
+      if (out.kind === "reply" && out.value?.messageId) setFreshId(out.value.messageId);
+      if (out.kind === "pending") toast.error("الرد تأخر. اضغط «أعد المحاولة».");
       await qc.invalidateQueries({ queryKey: ["messages", id] });
     } catch (e) {
       await qc.invalidateQueries({ queryKey: ["messages", id] });

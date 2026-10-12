@@ -14,7 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
 import { makeThumbnail, prepareImage } from "@/lib/image";
-import { friendlyError, retryText, sendWithRetry, retryDecision, unansweredMessage } from "@/lib/chat-retry";
+import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
+import { threadState } from "@/lib/chat-check";
 import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
 
@@ -109,8 +110,12 @@ function CoachPage() {
       rememberChatImage(img);
       if (!again) { setText(""); setImage(null); setPending(msg); }
       const thumb = img ? await makeThumbnail(img) : null;
-      const res = await sendWithRetry((retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}) } }));
-      if (res?.messageId) setFreshId(res.messageId);
+      const out = await sendReliably(
+        (retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}) } }),
+        () => threadState(id, msg),
+      );
+      if (out.kind === "reply" && out.value?.messageId) setFreshId(out.value.messageId);
+      if (out.kind === "pending") toast.error("الرد تأخر. اضغط «أعد المحاولة».");
       await qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
