@@ -17,7 +17,8 @@ import { FocusCard } from "@/components/dashboard/focus-card";
 import { JourneySteps } from "@/components/dashboard/journey-steps";
 import { CapitalCard } from "@/components/dashboard/capital-card";
 import { useJourney } from "@/lib/use-journey";
-import { RefreshCw, AlertCircle, PlusCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, PlusCircle, ChevronDown } from "lucide-react";
+import { QuickCoach } from "@/components/dashboard/quick-coach";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -209,14 +210,6 @@ function Dashboard() {
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
 
-      {/* 2.1 The client's steps: one clear next action */}
-      {journey && <JourneySteps journey={journey.journey} />}
-
-      {/* 2.2 Focus: what the trader told the coach, next to what their trades show */}
-      <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
-
-      <CapitalCard currency={cur} />
-
       {/* 3. Four Core Metric Cards */}
       <CoreMetrics
         todayPnl={metrics.todayPnl}
@@ -232,6 +225,22 @@ function Dashboard() {
         consecutiveLosses={metrics.consecutiveLosses}
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
+
+      <QuickCoach />
+
+      <details className="group panel p-4 sm:p-5">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium">
+          تفاصيل أكثر
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-5 space-y-6">
+      {/* 2.1 The client's steps: one clear next action */}
+      {journey && <JourneySteps journey={journey.journey} />}
+
+      {/* 2.2 Focus: what the trader told the coach, next to what their trades show */}
+      <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
+
+      <CapitalCard currency={cur} />
 
       {/* 4. Limits Progress & Active Session Widget */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -324,6 +333,8 @@ function Dashboard() {
         {/* Recent Activity List */}
         <ActivityList items={activityItems} />
       </div>
+        </div>
+      </details>
     </div>
   );
 }
