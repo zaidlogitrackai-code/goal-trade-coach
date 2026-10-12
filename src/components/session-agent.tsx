@@ -17,7 +17,7 @@ function todayTitle() {
 }
 
 const GREETING_START =
-  "هلا هادي 👋\n\n**اليوم بتتداول؟** إذا إي، قل لي **كم التارقت عندك اليوم** وأي أسواق بتراقب، وأنا أبدأ لك الجلسة وأنظمها.\n\nرد كتابة، أو ارفع صورة، أو أرسل رسالة صوتية 🎙️";
+  "هلا هادي\n\n**اليوم بتتداول؟** إذا إي، قل لي **كم التارقت عندك اليوم** وأي أسواق بتراقب، وأنا أبدأ لك الجلسة وأنظمها.\n\nرد كتابة، أو ارفع صورة، أو أرسل رسالة صوتية";
 
 function blobToBase64(b: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -63,7 +63,7 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
       const user_id = await currentUserId();
       const { data, error } = await supabase.from("coach_threads").insert({ user_id, title: todayTitle() }).select("id").single();
       if (error) { toast.error("ما قدرت أجهز محادثة الجلسة"); return; }
-      const content = hasActive ? "هلا هادي 👋 جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START;
+      const content = hasActive ? "هلا هادي جلستك شغالة. احكيلي عن أي صفقة أو ارفع صورتها، ولما تخلص قل لي \"خلصت\" وأسوي معك المراجعة." : GREETING_START;
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content });
       await qc.invalidateQueries({ queryKey: ["session-thread"] });
     })();
@@ -109,11 +109,11 @@ export function SessionAgent({ hasActive, onChanged }: { hasActive: boolean; onC
         setRecording(false);
         const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
         if (blob.size < 1000) { toast.error("التسجيل قصير جدًا"); return; }
-        setBusy(true); setPending("🎙️ رسالة صوتية…");
+        setBusy(true); setPending("رسالة صوتية…");
         try {
           const { text: heard } = await transcribe({ data: { audio: await blobToBase64(blob), mime: blob.type || "audio/webm" } });
           setBusy(false); setPending(null);
-          await submit(`🎙️ ${heard}`);
+          await submit(heard);
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "ما قدرت أفهم التسجيل");
           setBusy(false); setPending(null);
