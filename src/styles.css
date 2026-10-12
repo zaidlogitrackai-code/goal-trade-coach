@@ -5,9 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
-  --font-display: "Readex Pro", "IBM Plex Sans Arabic", sans-serif;
-  --font-data: "Space Grotesk", "IBM Plex Sans Arabic", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-data: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -191,12 +191,16 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     background: var(--body-bg);
     background-attachment: fixed;
     min-height: 100vh;
   }
   h1, h2, h3 {
     font-family: var(--font-display);
+    font-weight: 600;
   }
   /* Glass for any element that uses a translucent surface token */
   :where([class*="bg-card"], [class*="bg-popover"]) {
