@@ -82,46 +82,41 @@ export function StatusBanner({
     Icon = AlertTriangle;
     primaryAction = { label: "سجل صفقة جديدة بحذر", href: "/new-trade" };
   } else if (!hasActiveSession) {
-    title = "جاهز — لا توجد جلسة نشطة";
-    description = "ابدأ جلسة تداول واكتب خطتك والأصول المراقبة قبل الدخول في السوق.";
+    title = "جاهز للتداول";
+    description = "ابدأ جلستك واكتب خطتك قبل الدخول.";
     tone = "primary";
     Icon = Clock;
-    primaryAction = { label: "ابدأ جلسة التداول الآن", href: "/session" };
+    primaryAction = { label: "ابدأ الجلسة", href: "/session" };
   }
 
   const borderStyles = {
     success: "border-success/40 bg-success/5 text-success",
     warning: "border-warning/40 bg-warning/5 text-warning",
     destructive: "border-destructive/40 bg-destructive/5 text-destructive",
-    primary: "border-primary/40 bg-primary/5 text-foreground",
+    primary: "text-muted-foreground",
   }[tone];
 
   return (
-    <div className={`panel relative overflow-hidden border p-4 transition-all sm:border-2 sm:p-8 ${borderStyles}`}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
-        <div className="space-y-1.5 sm:space-y-2">
-          <div className="flex items-center gap-2">
-            <Icon className="size-5 shrink-0 sm:size-6" aria-hidden="true" />
-            <span className="text-xs font-semibold opacity-80">قرار اليوم</span>
+    <div className={`panel relative overflow-hidden border p-4 sm:p-6 ${borderStyles}`}>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-8">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-muted/50">
+            <Icon className="size-5" aria-hidden="true" />
           </div>
-          <h2 className="font-display text-xl font-bold text-foreground sm:text-3xl lg:text-4xl">
-            {title}
-          </h2>
-          <p className="max-w-2xl text-xs leading-relaxed text-foreground/80 sm:text-base">
-            {description}
-          </p>
-          {maxConsecutiveLosses > 0 && consecutiveLosses > 0 && (
-            <p className="text-xs font-medium opacity-90">
-              الخسائر المتتالية الحالية: {consecutiveLosses} من {maxConsecutiveLosses} مسموح
-            </p>
-          )}
+          <div className="min-w-0 space-y-1">
+            <span className="text-xs font-medium opacity-80">قرار اليوم</span>
+            <h2 className="font-display text-xl font-semibold text-foreground lg:text-2xl">{title}</h2>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">{description}</p>
+            {maxConsecutiveLosses > 0 && consecutiveLosses > 0 && (
+              <p className="text-xs font-medium opacity-90">
+                خسائر متتالية: {consecutiveLosses} من {maxConsecutiveLosses}
+              </p>
+            )}
+          </div>
         </div>
-
-        <div className="shrink-0">
-          <Button asChild className="w-full font-medium sm:h-10 sm:w-auto sm:px-8 sm:text-base">
-            <Link to={primaryAction.href}>{primaryAction.label}</Link>
-          </Button>
-        </div>
+        <Button asChild className="w-full shrink-0 md:w-auto md:px-6">
+          <Link to={primaryAction.href}>{primaryAction.label}</Link>
+        </Button>
       </div>
     </div>
   );
