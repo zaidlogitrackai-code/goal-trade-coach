@@ -145,12 +145,12 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const quick = quickProp ?? (hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"]);
 
   return (
-    <div className="-mx-4 -mb-2 flex h-[calc(100dvh-12.5rem)] flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0 lg:h-[65vh]">
+    <div className="-mx-4 -mb-2 flex min-h-0 flex-1 flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0">
       <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
         {list.map((m) => (
           <div key={m.id} className={m.role === "user"
             ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
-            : "w-full break-words text-sm leading-6"}>
+            : "w-full min-w-0 break-words text-sm leading-6"}>
             {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
             {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
               <div className="mt-3 border-t border-border pt-3">
@@ -164,7 +164,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
             )}
           </div>
         ))}
-        {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">{pending}</div>}
+        {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">{pending}</div>}
         {busy && <div className="w-fit rounded-2xl bg-muted px-4 py-2 text-sm text-muted-foreground">يكتب…</div>}
         {!busy && list.length > 0 && (quickProp ? true : list.length < 4) && (
           <div className="flex flex-wrap gap-2">

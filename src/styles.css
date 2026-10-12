@@ -263,3 +263,11 @@
 @utility bg-brand-gradient {
   background-image: var(--gradient-brand);
 }
+
+/* Full-height agent chat page: fills space between mobile header/nav (or desktop padding). */
+@utility agent-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 11.75rem - env(safe-area-inset-bottom));
+  @media (width >= 64rem) { height: calc(100dvh - 4rem); }
+}
