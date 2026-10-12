@@ -89,6 +89,8 @@ function NewTrade() {
   const [checks, setChecks] = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<AiTrade[]>([]);
+  const [aiLoaded, setAiLoaded] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const settings = s.data;
   if (s.isLoading || t.isLoading || !settings) return <Loading />;
@@ -166,16 +168,34 @@ function NewTrade() {
   const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
   const potentialProfit = entryNum && tpNum && sizeNum ? Math.abs(tpNum - entryNum) * sizeNum : null;
 
+  /** Auto-answer what the AI can infer from the extracted trade itself. */
+  function autoChecks(form: typeof f) {
+    const e = num(form.entry), sl = num(form.sl), sz = num(form.size);
+    const risk = num(form.risk) ?? (e && sl && sz ? Math.abs(e - sl) * sz : null);
+    return CHECKLIST_ITEMS.map((it) =>
+      it.id === "strategy" ? !!form.strategy_id
+      : it.id === "sl" ? !!sl
+      : it.id === "risk" ? risk !== null && risk <= Number(settings!.max_risk_per_trade ?? Infinity)
+      : false,
+    );
+  }
+
+  function apply(target: AiTrade) {
+    const form = toForm(target, st.data ?? []);
+    setF(form);
+    setChecks(autoChecks(form));
+    setAiLoaded(true);
+  }
+
   function load(list: AiTrade[]) {
     const opens = list.filter((x) => x.action === "open");
     if (opens.length === 0) {
       toast.message("هذا إغلاق صفقة — سجّله من صفحة سجل الصفقات");
       return;
     }
-    const target = opens[0]!;
-    setF(toForm(target, st.data ?? []));
+    apply(opens[0]!);
     setQueue(opens.slice(1));
-    toast.success("تم استخراج بيانات الصفقة للمراجعة. تأكد منها قبل الحفظ.");
+    toast.success("جهّزت الصفقة. جاوب على السؤالين واضغط سجّل.");
   }
 
   async function executeSave(isOverride = false, overrideReasonText = "") {
