@@ -138,6 +138,7 @@ export type Database = {
           body: string
           created_at: string
           day: string
+          dedupe_key: string | null
           id: string
           kind: string
           read: boolean
@@ -148,6 +149,7 @@ export type Database = {
           body: string
           created_at?: string
           day: string
+          dedupe_key?: string | null
           id?: string
           kind?: string
           read?: boolean
@@ -158,9 +160,46 @@ export type Database = {
           body?: string
           created_at?: string
           day?: string
+          dedupe_key?: string | null
           id?: string
           kind?: string
           read?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reminders: {
+        Row: {
+          active: boolean
+          at_time: string | null
+          body: string
+          created_at: string
+          id: string
+          next_at: string
+          repeat: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          at_time?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          next_at: string
+          repeat?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          at_time?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          next_at?: string
+          repeat?: string
           title?: string
           user_id?: string
         }
