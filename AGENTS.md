@@ -21,7 +21,7 @@
 - Risk management page is a chat with the risk guardian (shared SessionAgent with title/mode props, thread "حارس المخاطر"; coachReply mode=risk adds RISK_MODE); daily morning note via riskMorning deduped by notifications.dedupe_key; RiskWatcher also posts alerts into that thread — one agent chat per area keeps everything conversational.
 - Discipline streak is computed only in pure src/lib/streak.ts (market days Mon–Fri, tz-aware) and shared by StreakCard and the AI context.
 - Performance dashboard metrics (period windows, drawdown, R, streaks, calendar) come only from pure `src/lib/perf.ts` (tested) — keeps the numbers tz-correct and consistent.
-- Each area (risk, strategies) is a dedicated agent chat thread via SessionAgent + coachReply mode (risk|strategy), hidden from the coach thread list — keeps everything conversational.
+- Each area (risk, strategies, discipline, analyst) is a dedicated agent chat thread via SessionAgent + coachReply mode (risk|strategy), hidden from the coach thread list — keeps everything conversational.
 - Daily plan (target/trades/stop/max loss) lives in daily_plans (one row per day, revised_count tracks mid-day changes); greed/breach checks only in pure src/lib/daily-plan.ts — the discipline agent reads them from context.
 - The agent persona is named سَنَد; every delete action is listed in DESTRUCTIVE so it always waits for a click — prevents accidental data loss in auto mode.
 - Query defaults: staleTime 60s, no focus refetch, polling paused when the tab is hidden; backdrop blur only ≥768px — keeps the mobile app smooth.
