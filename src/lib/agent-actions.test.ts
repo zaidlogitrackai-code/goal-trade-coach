@@ -1,3 +1,4 @@
+import { DESTRUCTIVE } from "./agent-actions";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 import { loosenedLimits, NeedsConfirmation, parseAction, runAction } from "./agent-actions";
@@ -75,8 +76,6 @@ describe("loosenedLimits", () => {
     expect(loosenedLimits(null, { max_daily_loss: 100 })).toEqual([]);
   });
 });
-import { describe, it, expect } from "vitest";
-import { DESTRUCTIVE } from "./agent-actions";
 describe("sanad deletions need approval", () => {
   it("new delete actions never auto-run", () => {
     for (const t of ["remove_trade_image", "delete_violation", "delete_daily_plan", "delete_session", "delete_notifications"] as const)
