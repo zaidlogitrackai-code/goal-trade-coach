@@ -317,8 +317,13 @@ export const coachReply = createServerFn({ method: "POST" })
         let live = "";
         let chartThumb: string | null = null;
         if (data.mode === "analyst") {
-          const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
-          const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
+          // Symbol comes from Hadi's own words only (never the greeting / AI replies).
+          // With an uploaded image and no named symbol, his image decides — no guessed chart.
+          let syms = detectSymbols(data.message);
+          if (!syms.length && !data.image) {
+            const users = (hist ?? []).filter((m) => m.role === "user").slice(-4).reverse();
+            for (const m of users) { const f = detectSymbols(m.content); if (f.length) { syms = f; break; } }
+          }
           if (syms.length) {
             const { marketContext, chartImages } = await import("./market.server");
             const [ctxText, charts] = await Promise.all([marketContext(syms), chartImages(syms[0]!)]);
