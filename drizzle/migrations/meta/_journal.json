@@ -64,6 +64,13 @@
       "when": 1791833621896,
       "tag": "0008_strategy_examples",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791834364921,
+      "tag": "0009_user_visits",
+      "breakpoints": true
     }
   ]
 }
