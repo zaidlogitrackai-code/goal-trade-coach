@@ -232,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-xl border-t p-5 pb-8" dir="rtl">
+          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-xl border-t p-5 pb-8 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
