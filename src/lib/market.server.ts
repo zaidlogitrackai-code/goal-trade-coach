@@ -25,7 +25,7 @@ async function tvSnapshot(tickers: string[]) {
 async function chart(yahoo: string, interval: string, range: string) {
   const key = `${yahoo}|${interval}|${range}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL) return hit.v as { meta: Record<string, number>; candles: Candle[] };
+  if (hit && Date.now() - hit.at < TTL_CANDLES) return hit.v as { meta: Record<string, number>; candles: Candle[] };
   const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahoo)}?interval=${interval}&range=${range}`, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) throw new Error(`price source ${res.status}`);
   const j = (await res.json()) as any;
