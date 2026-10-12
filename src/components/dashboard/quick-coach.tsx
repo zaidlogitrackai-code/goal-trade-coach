@@ -35,9 +35,9 @@ export function QuickCoach({ needsGoals = false }: { needsGoals?: boolean }) {
   return (
     <section className="panel space-y-3 p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold"><Bot className="size-4 shrink-0" /> قل للمدرب وهو ينفّذ</div>
+        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold"><Bot className="size-4 shrink-0" /> قل لسَنَد وهو ينفّذ</div>
         {needsGoals && (
-          <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={interview}>خلّ المدرب يسألني</Button>
+          <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={interview}>خلّ سَنَد يسألني</Button>
         )}
       </div>
       {needsGoals && (

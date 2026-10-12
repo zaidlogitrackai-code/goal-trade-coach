@@ -23,3 +23,4 @@
 - Performance dashboard metrics (period windows, drawdown, R, streaks, calendar) come only from pure `src/lib/perf.ts` (tested) — keeps the numbers tz-correct and consistent.
 - Each area (risk, strategies) is a dedicated agent chat thread via SessionAgent + coachReply mode (risk|strategy), hidden from the coach thread list — keeps everything conversational.
 - Daily plan (target/trades/stop/max loss) lives in daily_plans (one row per day, revised_count tracks mid-day changes); greed/breach checks only in pure src/lib/daily-plan.ts — the discipline agent reads them from context.
+- The agent persona is named سَنَد; every delete action is listed in DESTRUCTIVE so it always waits for a click — prevents accidental data loss in auto mode.
