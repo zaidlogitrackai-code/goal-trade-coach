@@ -546,3 +546,40 @@ export const disciplineMorning = createServerFn({ method: "POST" })
       return { skipped: false };
     } catch (e) { fail(e); }
   });
+
+const SCALP_FORMAT = {
+  type: "json_schema", name: "scalp", strict: true,
+  schema: { type: "object", additionalProperties: false, required: ["direction", "stop", "target", "reason"], properties: {
+    direction: { type: "string", enum: ["long", "short"] }, stop: { type: "number" }, target: { type: "number" }, reason: { type: "string" },
+  } },
+};
+
+/** Live price for the analyst's paper self-test. */
+export const paperPrice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ symbol: z.string().max(20) }).parse(d))
+  .handler(async ({ data }) => {
+    const s = detectSymbols(data.symbol)[0];
+    if (!s) throw new Error("الزوج غير مدعوم.");
+    const { livePrice } = await import("./market.server");
+    const price = await livePrice(s);
+    if (price == null) throw new Error("ما قدرت أجيب السعر الحي.");
+    return { price, digits: s.digits };
+  });
+
+/** One virtual scalp idea (never a real trade) from the analyst's skills + live charts. */
+export const paperIdea = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ symbol: z.string().max(20), history: z.string().max(3000).optional().default("") }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      const s = detectSymbols(data.symbol)[0];
+      if (!s) throw new Error("الزوج غير مدعوم.");
+      const { marketContext, chartImages, livePrice } = await import("./market.server");
+      const [ctx, live, charts, price] = await Promise.all([buildContext(context.supabase), marketContext([s]), chartImages(s), livePrice(s)]);
+      if (price == null) throw new Error("ما قدرت أجيب السعر الحي.");
+      const content: Record<string, unknown>[] = [{ type: "input_text", text: `اختبار ذاتي تجريبي (صفقات وهمية، مو حقيقية). السعر الآن ${price.toFixed(s.digits)} على ${s.key}. أعطني صفقة سكالب واحدة تدخل الآن بسعر السوق، تنتهي خلال دقائق: وقف قريب (تقريبًا 0.5–1 ATR فريم 15M) وهدف 1.5–2 ضعف الوقف، مبنية على خبراتك واستراتيجية هادي. reason سطر واحد بالعربي.${data.history ? `\nصفقاتك السابقة في هذا الاختبار: ${data.history}` : ""}\n${charts?.legend ?? ""}` }, ...(charts?.images ?? []).map((u) => ({ type: "input_image", image_url: u, detail: "high" }))];
+      const out = JSON.parse(await callAI(`${BASE_PERSONA}\n\n${ctx}\n\n${ANALYST_SKILLS}${live}`, [{ role: "user", content }], SCALP_FORMAT)) as { direction: "long" | "short"; stop: number; target: number; reason: string };
+      return { ...out, entry: price, digits: s.digits, symbol: s.key };
+    } catch (e) { fail(e); }
+  });
