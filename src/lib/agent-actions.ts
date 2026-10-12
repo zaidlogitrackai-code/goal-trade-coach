@@ -45,6 +45,7 @@ export const ACTION_TYPES = [
   "delete_thread",
   "add_reminder",
   "delete_reminder",
+  "set_daily_plan",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -73,6 +74,7 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   delete_thread: "حذف محادثة",
   add_reminder: "إضافة تذكير",
   delete_reminder: "حذف تذكير",
+  set_daily_plan: "خطة اليوم",
 };
 
 /** Always wait for an explicit click, even in auto mode. */
@@ -190,6 +192,13 @@ export const SCHEMAS = {
     in_minutes: z.coerce.number().int().min(1).max(10080).nullish(),
   }),
   delete_reminder: z.object({ title: z.string().min(1).max(120) }),
+  set_daily_plan: z.object({
+    target: num.min(0).nullish(),
+    max_trades: z.coerce.number().int().min(0).max(100).nullish(),
+    risk_per_trade: num.min(0).nullish(),
+    max_loss: num.min(0).nullish(),
+    note: z.string().max(500).nullish(),
+  }),
   close_trade: z.object({
     symbol: z.string().max(20).nullish(),
     pnl: num,
@@ -366,6 +375,16 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const { error } = await supabase
         .from("trading_settings")
         .upsert({ user_id, ...d, onboarded: true, updated_at: new Date().toISOString() });
+      return check(error);
+    }
+    case "set_daily_plan": {
+      const day = new Date().toLocaleDateString("en-CA");
+      const p = d as { target?: number | null; max_trades?: number | null; risk_per_trade?: number | null; max_loss?: number | null; note?: string | null };
+      const { data: cur } = await supabase.from("daily_plans").select("*").eq("day", day).maybeSingle();
+      const clean = Object.fromEntries(Object.entries(p).filter(([, v]) => v != null));
+      const { error } = cur
+        ? await supabase.from("daily_plans").update({ ...clean, revised_count: cur.revised_count + 1 }).eq("id", cur.id)
+        : await supabase.from("daily_plans").insert({ user_id, day, ...clean });
       return check(error);
     }
     case "add_strategy": {

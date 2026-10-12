@@ -1,4 +1,5 @@
 import { strategyStats } from "./perf";
+import { planCheck } from "./daily-plan";
 import { disciplineStreak } from "./streak";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -39,6 +40,13 @@ async function buildContext(sb: Sb) {
     sb.from("trading_sessions").select("started_at,ended_at,review").gte("started_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
     sb.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
   ]);
+  const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+  const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
+  const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
+  const winDays = new Map<string, number>();
+  for (const x of closedAll.data ?? []) { const k = (x.closed_at ?? x.opened_at).slice(0, 10); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
+  const wins = [...winDays.values()].filter((v) => v > 0);
+  const planStatus = planCheck(todayPlan && { ...todayPlan, target: todayPlan.target == null ? null : Number(todayPlan.target), risk_per_trade: todayPlan.risk_per_trade == null ? null : Number(todayPlan.risk_per_trade), max_loss: todayPlan.max_loss == null ? null : Number(todayPlan.max_loss) }, (month.data ?? []).filter((x) => x.opened_at >= dayStart), s.data ?? {}, wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null);
   const streak = disciplineStreak(stSess ?? [], stViol ?? [], s.data?.timezone || "Asia/Riyadh");
   const ledger = parseLedger(capitalRow.data?.[0]?.content);
   const capital = computeCapital({
@@ -76,6 +84,9 @@ ${focusForPrompt(focus)}
 القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
 أداء كل استراتيجية (من آخر 30 يوم): ${JSON.stringify(strategyStats(month.data ?? [], st.data ?? []))}
+خطة اليوم (اللي قالها هادي الصباح): ${JSON.stringify(todayPlan)}
+فحص الخطة اليوم: ${JSON.stringify(planStatus)}
+آخر 7 خطط: ${JSON.stringify(plans ?? [])}
 الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
 عناوين الملاحظات: ${JSON.stringify(notes.data ?? [])}
 آخر تنبيهات حارس المخاطر (خذها بالاعتبار، وإذا فيها "وقف" لا تشجعه على صفقة جديدة): ${JSON.stringify(alerts ?? [])}
@@ -121,7 +132,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -138,6 +149,7 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name"} (أرسل فقط الحقول المذكورة، أرقام موجبة)
 - add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
 - add_rule: {"title","description"}
+- set_daily_plan: {"target","max_trades","risk_per_trade","max_loss","note"} — خطة هادي لليوم بأرقامه هو (أرسل المذكور فقط)
 - create_trade: {"symbol" (مثل XAUUSD، أو null إذا ما ذكره),"direction":"long"|"short","entry_price","stop_loss","take_profit","position_size","risk_amount","strategy" (اسم استراتيجية موجودة أو null),"emotion","notes","status":"open"|"closed","pnl" (للصفقة المنتهية، سالب للخسارة),"exit_price","opened_at" (وقت الفتح ISO إذا ظهر بالصورة)} — نفس الصفقة لو انرفعت مرتين النظام ما يكررها، ولو صارت مقفولة يقفلها.
 - save_analysis: {"symbol","timeframe","question","result" (تحليلك للشارت markdown)} — احفظ أي تحليل شارت تسويه
 - delete_analysis: {"id"} أو {"symbol"} (آخر تحليل)
@@ -182,6 +194,13 @@ const RISK_MODE = `وضعك الحين: أنت "حارس المخاطر" لها�
 - لما يوصف صفقة يبي يدخلها، احسب كم يخاطر من أرقامه وقارنها بالمتبقي، وأعط حكم واحد واضح: ادخل، أو خفّف الحجم، أو لا تدخل.
 - كن صريح ضد الطمع والانتقام. ما تخترع أرقام ما عندك. ردود قصيرة.`;
 
+const DISCIPLINE_MODE = `وضعك الحين: أنت "حارس الانضباط" لهادي. شغلك تمسكه على خطته اليومية وتكشف الطمع والانتقام.
+- إذا "خطة اليوم" null: اسأله بسؤال واحد قصير: كم هدفك اليوم؟ كم صفقة بتاخذ؟ كم ستوبك (مخاطرة الصفقة) وأقصى خسارة اليوم؟ لما يجاوب جهّز set_daily_plan بأرقامه بالضبط بنفس الرد.
+- استخدم "فحص الخطة اليوم": أي flag فيه "طمع" قله بصراحة "هذا طمع" واقترح رقم أقل (≤3% من الرصيد). لو الستوب أكبر من الحد نبهه.
+- لو طلب يرفع الهدف بعد ربح أو يزيد الصفقات بعد خسارة: قل "هذا طمع" أو "هذا انتقام" وما تغيّر الخطة إلا لو أصر، وسجّل التغيير بـ set_daily_plan.
+- مراجعة اليوم: قارن الهدف بالربح الفعلي وعدد الصفقات بالخطة وقل التزم أو لا، واربطها بالستريك.
+- تقدر تبدأ تهدئة start_cooldown لو طلب. ردود قصيرة بالعامية، ما تخترع أرقام.`;
+
 const STRATEGY_MODE = `وضعك الحين: أنت "مدرّب الاستراتيجية" لهادي. هدفك تتعلّم استراتيجياته منه وتحللها وتختبره عليها.
 - المقابلة: إذا ما عنده استراتيجية أو قال "أشرح لك"، اطلب منه يشرح كأنك ما تعرف شي، واسأل سؤال أو سؤالين بالكثير كل مرة: الأصول، الفريم، شروط الدخول بالضبط، الوقف والهدف، ومتى ما يدخل أبداً. لا تكتبها قبل ما تكتمل الصورة.
 - لما تكتمل: جهّز add_strategy بنفس الرد (name, description, entry_conditions مرقمة, exit_conditions فيها الوقف والهدف وحالات عدم الدخول, markets, timeframes) من كلامه هو فقط.
@@ -199,7 +218,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy"]).optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy", "discipline"]).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
@@ -208,7 +227,7 @@ export const coachReply = createServerFn({ method: "POST" })
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : "", input);
+      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : "", input);
       const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
@@ -400,6 +419,23 @@ export const riskMorning = createServerFn({ method: "POST" })
       const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true } as never);
       if (lock) return { skipped: true };
       const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة: حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه)، ونصيحة وحدة لليوم. ابدأ بـ صباح الخير هادي." }]);
+      await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
+      return { skipped: false };
+    } catch (e) { fail(e); }
+  });
+
+export const disciplineMorning = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      const sb = context.supabase;
+      const key = `discipline-morning-${data.day}`;
+      const { data: seen } = await sb.from("notifications").select("id").eq("dedupe_key", key).limit(1);
+      if (seen?.length) return { skipped: true };
+      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "reminder", day: data.day, title: "حارس الانضباط", body: "حدد خطتك اليوم في صفحة الانضباط", dedupe_key: key, read: true } as never);
+      if (lock) return { skipped: true };
+      const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين. ابدأ بـ صباح الخير هادي." }]);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
       return { skipped: false };
     } catch (e) { fail(e); }

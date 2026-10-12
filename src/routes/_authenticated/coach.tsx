@@ -53,7 +53,7 @@ function CoachPage() {
       const { data, error } = await supabase.from("coach_threads").select("*").order("updated_at", { ascending: false });
       if (error) throw error;
       // Session and risk-guardian chats live on their own pages.
-      return data.filter((t) => t.title !== "حارس المخاطر" && t.title !== "مدرّب الاستراتيجية" && !/^جلسة \d{4}-\d{2}-\d{2}$/.test(t.title));
+      return data.filter((t) => t.title !== "حارس المخاطر" && t.title !== "مدرّب الاستراتيجية" && t.title !== "حارس الانضباط" && !/^جلسة \d{4}-\d{2}-\d{2}$/.test(t.title));
     },
   });
   const msgs = useQuery({

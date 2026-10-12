@@ -4,7 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loading, PageHeader, Stat } from "@/components/app-shell";
+import { Loading, Stat } from "@/components/app-shell";
+import { useCallback, useRef } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { SessionAgent } from "@/components/session-agent";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { disciplineMorning } from "@/lib/ai.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +22,64 @@ export const Route = createFileRoute("/_authenticated/discipline")({
   head: () => ({
     meta: [
       { title: "الانضباط والطمع — نظام هادي" },
-      { name: "description", content: "يكشف سلوكك الحقيقي، يحميك من الطمع والانتقام، ويوضح أسباب درجة انضباطك بدقة." },
+      { name: "description", content: "حارس الانضباط: يسألك عن خطتك كل يوم ويكشف الطمع والانتقام." },
+      { property: "og:title", content: "حارس الانضباط — نظام هادي" },
+      { property: "og:description", content: "حارس الانضباط: يسألك عن خطتك كل يوم ويكشف الطمع والانتقام." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: DisciplinePage,
 });
 
+export const DISCIPLINE_THREAD = "حارس الانضباط";
+const GREETING = "هلا هادي، أنا **حارس الانضباط**.\n\nكل يوم بسألك: كم هدفك؟ كم صفقة بتاخذ؟ كم ستوبك؟ وبمسكك على خطتك طول اليوم.";
+const QUICK = ["خطتي اليوم", "ليش درجتي كذا؟", "حطني على تهدئة", "راجع يومي"];
+
 function DisciplinePage() {
+  const qc = useQueryClient();
+  const morning = useServerFn(disciplineMorning);
+  const asked = useRef(false);
+  const onReady = useCallback((threadId: string) => {
+    if (asked.current) return;
+    asked.current = true;
+    morning({ data: { threadId, day: new Date().toLocaleDateString("en-CA") } })
+      .then((r) => { if (r && !r.skipped) qc.invalidateQueries({ queryKey: ["messages", threadId] }); })
+      .catch(() => {});
+  }, [morning, qc]);
+  return (
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Gauge className="size-5 shrink-0" />
+          <h1 className="truncate font-display text-lg font-semibold lg:text-xl">حارس الانضباط</h1>
+        </div>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="أرقامي"><ShieldAlert className="size-4" /></Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
+            <SheetHeader><SheetTitle>أرقامي</SheetTitle></SheetHeader>
+            <div className="mt-4"><DisciplineStats /></div>
+          </SheetContent>
+        </Sheet>
+      </div>
+      <div className="mb-3"><StreakCard /></div>
+      <SessionAgent
+        hasActive={false}
+        title={DISCIPLINE_THREAD}
+        greeting={GREETING}
+        quick={QUICK}
+        mode="discipline"
+        placeholder="قل لحارس الانضباط خطتك…"
+        onReady={onReady}
+        onChanged={() => qc.invalidateQueries()}
+      />
+    </div>
+  );
+}
+
+function DisciplineStats() {
   const qc = useQueryClient();
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
@@ -81,13 +137,7 @@ function DisciplinePage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <PageHeader
-        title="الانضباط ومكافحة الطمع"
-        subtitle="يقيس التزامك الحقيقي من صفقاتك فقط، ويكشف قرارات الانتقام والطمع بالأدلة."
-      />
-
-      <StreakCard large />
+    <div className="space-y-6">
 
       {/* COOLDOWN INTERVENTION PANEL */}
       <div className="panel p-6 space-y-4 border-2 border-border/80">
@@ -177,33 +227,7 @@ function DisciplinePage() {
 
       {/* DISCIPLINE SCORE & BREAKDOWN */}
       {rep.score == null ? (
-        /* DEMO EXAMPLE WHEN NO DATA (Required by Phase 6) */
-        <div className="space-y-6">
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3 text-xs">
-            <Info className="size-4 text-primary shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold text-foreground">مثال توضيحي افتراضي لكيفية قياس الانضباط</p>
-              <p className="text-muted-foreground leading-relaxed">
-                لم تسجل صفقات كافية بعد. هذا نموذج حي يوضح كيف سيقوم النظام بتقييم صفقاتك الحقيقية وشرح الأسباب خلف درجتك.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 opacity-70">
-            <Stat label="درجة الانضباط (مثال)" value="82/100" tone="success" />
-            <Stat label="الالتزام بوقف الخسارة (مثال)" value="90%" />
-            <Stat label="قائمة التحقق (مثال)" value="85%" />
-            <Stat label="تداول انتقامي (مثال)" value="1" tone="warning" />
-            <Stat label="صفقات الطمع (مثال)" value="0" />
-          </div>
-
-          <div className="panel p-6 space-y-3 opacity-80">
-            <h3 className="font-bold text-sm">شرح أسباب الدرجة (نموذج تفسيري)</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong>درجة الانضباط: 82/100</strong> — السبب: التزمت بوقف الخسارة في 9 من أصل 10 صفقات، وأكملت قائمة التحقق بنسبة 85%، لكن تم رصد صفقة واحدة فُتحت خلال 7 دقائق بعد خسارة (تداول انتقامي محتمل).
-            </p>
-          </div>
-        </div>
+        <p className="panel p-5 text-center text-sm text-muted-foreground">لا توجد بيانات بعد. سجّل أول صفقة وتطلع درجتك هنا.</p>
       ) : (
         /* REAL DISCIPLINE STATS */
         <div className="space-y-6">
@@ -300,4 +324,3 @@ function DisciplinePage() {
   );
 }
 
-export default DisciplinePage;

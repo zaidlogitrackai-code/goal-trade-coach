@@ -29,6 +29,13 @@
       "when": 1791817947957,
       "tag": "0003_risk_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791823878931,
+      "tag": "0004_daily_plans",
+      "breakpoints": true
     }
   ]
 }
