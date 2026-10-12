@@ -156,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <RiskWatcher />
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-l border-sidebar-border bg-sidebar/90 p-4 lg:flex">
+      <aside className="glass-strong sticky top-3 m-3 hidden h-[calc(100vh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4 lg:flex">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
         <nav className="mt-5 flex-1 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -208,7 +208,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="grid h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 lg:hidden">
+        <header className="grid h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
           <Logo className="min-w-0 scale-90 origin-right" />
           <div className="flex shrink-0 items-center gap-1">
             <div className="grid size-9 place-items-center"><NotificationsBell /></div>
@@ -217,24 +217,24 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </header>
-        <main className="flex-1 px-4 pb-24 pt-5 lg:px-10 lg:pb-10 lg:pt-6">{children}</main>
+        <main className="flex-1 px-4 pb-28 pt-3 lg:px-10 lg:pb-10 lg:pt-6">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[4.5rem] grid-cols-5 border-t border-border bg-sidebar/95 px-1 backdrop-blur lg:hidden" aria-label="التنقل الرئيسي">
+      <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
         {MOBILE_NAV.map((n) => (
-          <Link key={n.to} to={n.to} className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] text-muted-foreground" activeProps={{ className: "text-foreground font-semibold" }}>
+          <Link key={n.to} to={n.to} className="flex h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] text-muted-foreground" activeProps={{ className: "bg-foreground/15 text-foreground font-semibold shadow-[inset_0_1px_0_var(--glass-highlight)]" }}>
             <n.icon className="size-5" />
             <span className="w-full truncate text-center">{n.label}</span>
           </Link>
         ))}
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="ghost" className={`h-full min-w-0 flex-col gap-1 rounded-none px-1 text-[10px] ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
+            <Button variant="ghost" className={`h-[3.25rem] min-w-0 flex-col gap-1 rounded-2xl px-1 text-[10px] ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
               <Menu className="size-5" />
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-xl border-t p-5 pb-8 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-[2rem] p-5 pb-8 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
@@ -243,7 +243,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <SheetClose key={n.to} asChild>
                   <Link
                     to={n.to}
-                    className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 text-sm text-muted-foreground"
+                    className="flex min-w-0 items-center gap-3 glass rounded-2xl px-3 py-3 text-sm text-muted-foreground"
                     activeProps={{ className: "border-foreground/30 text-foreground" }}
                   >
                     <n.icon className="size-4 shrink-0" />
