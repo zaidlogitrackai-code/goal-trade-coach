@@ -17,7 +17,7 @@ function readPct(v: unknown): Pct {
 
 /** Replace dollar limits with pct × current balance; adds current_balance. */
 export function applyPctLimits<S extends Record<string, unknown>>(s: S, balance: number): S & { current_balance: number } {
-  const pct = readPct(s.limits_pct);
+  const pct = readPct(s["limits_pct"]);
   const out: Record<string, unknown> = { ...s, current_balance: balance };
   if (balance > 0) for (const k of PCT_FIELDS) if (pct[k] != null) out[k] = r2((pct[k]! / 100) * balance);
   return out as S & { current_balance: number };
