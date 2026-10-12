@@ -19,7 +19,7 @@ function todayTitle() {
   return `جلسة ${new Date().toLocaleDateString("en-CA")}`;
 }
 
-const GREETING_START =
+export const GREETING_START =
   "هلا هادي\n\n**اليوم بتتداول؟** إذا إي، قل لي **كم التارقت عندك اليوم** وأي أسواق بتراقب، وأنا أبدأ لك الجلسة وأنظمها.\n\nرد كتابة، أو ارفع صورة، أو أرسل رسالة صوتية";
 
 function blobToBase64(b: Blob): Promise<string> {
