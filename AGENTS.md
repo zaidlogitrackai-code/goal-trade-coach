@@ -26,3 +26,5 @@
 - The agent persona is named سَنَد; every delete action is listed in DESTRUCTIVE so it always waits for a click — prevents accidental data loss in auto mode.
 - Query defaults: staleTime 60s, no focus refetch, polling paused when the tab is hidden; backdrop blur only ≥768px — keeps the mobile app smooth.
 - Live market data for the nine instruments comes only from `src/lib/market.server.ts`: TradingView public scanner for price/indicators (matches the chart), Yahoo candles shifted onto that price for structure; analyst-only, no on-screen ticker — free, no key.
+- Notifications are hidden (`dismissed`), never deleted, by the bell's clear buttons — today's rows double as once-a-day locks (`dedupe_key`/`day`) for the daily AI messages, so deleting them regenerates duplicates.
+- Chat sends go through `src/lib/chat-retry.ts` (auto-retry once on network drop, `retry` flag lets coachReply skip re-saving or return the already-saved reply) and store only a small thumbnail in `coach_messages.image` — phone connections drop and must never lose or duplicate a message.
