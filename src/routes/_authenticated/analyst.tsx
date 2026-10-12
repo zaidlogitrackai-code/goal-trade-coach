@@ -3,11 +3,12 @@ import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { History, MessageSquare, ScanSearch, SquarePen, Trash2 } from "lucide-react";
+import { FlaskConical, History, MessageSquare, ScanSearch, SquarePen, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { SessionAgent } from "@/components/session-agent";
+import { PaperTestPanel } from "@/components/paper-test-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { currentUserId, fmtDate } from "@/lib/queries";
@@ -126,6 +127,7 @@ function AnalystPage() {
   const { c } = Route.useSearch();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   function openThread(id: string | undefined) {
     void navigate({ to: "/analyst", search: id ? { c: id } : {} });
@@ -175,6 +177,7 @@ function AnalystPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="اختبار ذاتي تجريبي" title="اختبار ذاتي 10 دقائق" onClick={() => setTesting(true)}><FlaskConical className="size-4" /></Button>
           <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-4" /></Button>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -190,6 +193,7 @@ function AnalystPage() {
           </Sheet>
         </div>
       </div>
+      {c && testing && <PaperTestPanel threadId={c} onClose={() => setTesting(false)} />}
       {c && <SessionAgent
         key={c}
         {...(c ? { threadId: c } : {})}
