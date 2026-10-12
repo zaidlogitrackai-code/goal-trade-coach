@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
 import { nextDaily, riskAlerts, type WatchTrade } from "@/lib/risk-watch";
+import { applyPctLimits } from "@/lib/effective-limits";
+import { loadCapital } from "@/lib/capital-store";
 import { eveningReview } from "@/lib/ai.functions";
 
 const EVERY_MS = 60_000;
@@ -33,7 +35,7 @@ export function RiskWatcher() {
         ]);
         let added = false;
         if (s.data && t.data) {
-          const alerts = riskAlerts(s.data, t.data as WatchTrade[]);
+          const alerts = riskAlerts(applyPctLimits(s.data, (await loadCapital()).summary.balance), t.data as WatchTrade[]);
           if (alerts.length) {
             const { data: seen } = await supabase.from("notifications").select("dedupe_key").in("dedupe_key", alerts.map((a) => a.key));
             const known = new Set((seen ?? []).map((x) => x.dedupe_key));

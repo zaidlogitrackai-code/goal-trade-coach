@@ -1,3 +1,4 @@
+import { syncLimitsPct } from "@/lib/capital-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ShieldCheck, Trash2 } from "lucide-react";
@@ -29,6 +30,7 @@ export function RiskGuardian({ settings }: { settings: { user_id: string; daily_
   async function fix() {
     if (!settings) return;
     const { error } = await supabase.from("trading_settings").update({ max_daily_profit: settings.daily_target }).eq("user_id", settings.user_id);
+    if (!error) await syncLimitsPct({ max_daily_profit: settings.daily_target });
     if (error) { toast.error("تعذر التصحيح"); return; }
     toast.success(`صار الحد الأعلى للربح ${settings.daily_target} مثل هدفك اليومي`);
     qc.invalidateQueries({ queryKey: ["settings"] });

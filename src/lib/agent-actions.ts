@@ -13,7 +13,8 @@ import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
 import type { CapitalMove } from "@/lib/capital";
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
-import { loadCapital, moveCapital } from "@/lib/capital-store";
+import { loadCapital, moveCapital, syncLimitsPct } from "@/lib/capital-store";
+import { applyPctLimits } from "@/lib/effective-limits";
 import { makeThumbnail } from "@/lib/image";
 
 /**
@@ -432,7 +433,9 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const { error } = await supabase
         .from("trading_settings")
         .upsert({ user_id, ...d, onboarded: true, updated_at: new Date().toISOString() });
-      return check(error);
+      check(error);
+      await syncLimitsPct(d);
+      return;
     }
     case "set_daily_plan": {
       const day = new Date().toLocaleDateString("en-CA");
@@ -900,6 +903,8 @@ async function gateForAiTrade(input: TradeInput) {
   if (err) throw new Error(err.message);
   if (!settings.data) throw new Error("أكمل إعداد حدود المخاطر قبل تسجيل الصفقات.");
   const all = trades.data ?? [];
+  const bal = (await loadCapital()).summary.balance;
+  settings.data = applyPctLimits(settings.data, bal);
   // Same gate as the new-trade form. The AI path never overrides a blocked trade.
   return evaluateTradeGate({
     settings: settings.data,
@@ -908,6 +913,6 @@ async function gateForAiTrade(input: TradeInput) {
     activeSession: session.data?.[0] ?? null,
     allowedStrategyIds: (strategies.data ?? []).map((x) => x.id),
     openTrades: all.filter((x) => x.status === "open"),
-    currentBalance: (await loadCapital()).summary.balance,
+    currentBalance: bal,
   });
 }

@@ -1,3 +1,4 @@
+import { syncLimitsPct } from "@/lib/capital-store";
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -83,6 +84,7 @@ export function LimitsForm({
       row["session_end"] = v.session_end || null;
       const { error } = await supabase.from("trading_settings").upsert(row as never);
       if (error) throw error;
+      await syncLimitsPct(row);
       await qc.invalidateQueries({ queryKey: ["settings"] });
       toast.success("تم حفظ إعدادات المخاطر بنجاح");
       onDone?.();
