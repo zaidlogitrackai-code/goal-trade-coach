@@ -64,7 +64,7 @@ export function NotificationsBell() {
               <div key={n.id} className="relative border-b border-border p-4 pr-8 text-sm leading-7 last:border-0">
                 <p className="font-semibold">{n.title}</p>
                 <p className="mb-1 text-xs text-muted-foreground">{fmtDate(n.created_at)}</p>
-                <Md>{n.body}</Md>
+                <div className="line-clamp-3"><Md>{n.body}</Md></div>
                 <button aria-label="حذف الإشعار" onClick={() => removeOne(n.id)} className="absolute left-2 top-3 rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-destructive">
                   <X className="size-3.5" />
                 </button>
