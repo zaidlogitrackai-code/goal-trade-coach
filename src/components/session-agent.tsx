@@ -70,6 +70,18 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   // Shrink the box back after sending a long message.
   useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
 
+  // Paste a copied image (screenshot / copied chart) straight into the chat, anywhere on the page.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const f = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
+      if (!f) return;
+      e.preventDefault();
+      prepareImage(f).then(setImage).catch((err) => toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"));
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
   useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
 
   // Find (or create once) today's session thread, opened by the agent's question.
