@@ -33,3 +33,19 @@ describe("disciplineStreak", () => {
     expect(r.current).toBe(2);
   });
 });
+
+import { loginStreak } from "./streak";
+describe("loginStreak", () => {
+  it("counts consecutive weekday visits, skipping the weekend", () => {
+    expect(loginStreak(["2026-10-08", "2026-10-09", "2026-10-12"], [], tz, MON).current).toBe(3);
+  });
+  it("a missed weekday resets it", () => {
+    expect(loginStreak(["2026-10-07", "2026-10-09"], [], tz, MON).current).toBe(1);
+  });
+  it("today without a visit yet does not reset it", () => {
+    expect(loginStreak(["2026-10-08", "2026-10-09"], [], tz, MON).current).toBe(2);
+  });
+  it("a violation day resets it", () => {
+    expect(loginStreak(["2026-10-08", "2026-10-09"], [{ occurred_at: "2026-10-09T10:00:00Z" }], tz, MON).current).toBe(0);
+  });
+});

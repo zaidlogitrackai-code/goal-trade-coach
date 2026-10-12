@@ -58,3 +58,29 @@ export function disciplineStreak(sessions: StreakSession[], violations: StreakVi
   }
   return { current: run, best, days: chrono.slice(-10) };
 }
+
+/**
+ * Login streak over market days (Mon–Fri): a day counts when Hadi opened the app
+ * and had no violation. A past weekday without a visit, or with a violation, resets it.
+ * Today stays "pending" until he visits. Weekends are skipped.
+ */
+export function loginStreak(visitDays: string[], violations: StreakViolation[], tz: string, now = new Date(), lookback = 120): StreakResult {
+  const today = dayKey(now, tz);
+  const visits = new Set(visitDays);
+  const violDays = new Set(violations.map((v) => dayKey(v.occurred_at, tz)));
+  const chrono: { date: string; state: DayState }[] = [];
+  let k = today;
+  for (let i = 0; i < lookback; i++) {
+    if (!isWeekend(k)) {
+      const state: DayState = violDays.has(k) ? "broken" : visits.has(k) ? "ok" : k === today ? "pending" : "broken";
+      chrono.unshift({ date: k, state });
+    }
+    k = prevKey(k);
+  }
+  let best = 0, run = 0;
+  for (const d of chrono) {
+    if (d.state === "ok") { run++; best = Math.max(best, run); }
+    else if (d.state === "broken") run = 0;
+  }
+  return { current: run, best, days: chrono.slice(-10) };
+}

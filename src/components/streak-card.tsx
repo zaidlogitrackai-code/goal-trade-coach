@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Flame } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { settingsQuery, violationsQuery } from "@/lib/queries";
-import { disciplineStreak, type DayState } from "@/lib/streak";
+import { loginStreak, type DayState } from "@/lib/streak";
 
 const DOT: Record<DayState, string> = { ok: "bg-success", broken: "bg-destructive", none: "bg-muted", pending: "border border-foreground/40" };
 
@@ -10,15 +10,15 @@ export function StreakCard({ large = false, compact = false }: { large?: boolean
   const s = useQuery(settingsQuery);
   const v = useQuery(violationsQuery);
   const sess = useQuery({
-    queryKey: ["sessions", "streak"],
+    queryKey: ["visits"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("trading_sessions").select("started_at,ended_at,review").gte("started_at", new Date(Date.now() - 180 * 864e5).toISOString());
+      const { data, error } = await supabase.from("user_visits").select("day").order("day", { ascending: false }).limit(200);
       if (error) throw error;
-      return data;
+      return data.map((x) => x.day);
     },
   });
   if (!sess.data || !v.data) return null;
-  const r = disciplineStreak(sess.data, v.data, s.data?.timezone || "Asia/Riyadh");
+  const r = loginStreak(sess.data, v.data, s.data?.timezone || "Asia/Riyadh");
   if (compact) return (
     <section className="glass grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-full px-3 py-1.5" aria-label="ستريك الانضباط">
       <p className="flex min-w-0 items-center gap-1.5 truncate text-xs">
@@ -41,7 +41,7 @@ export function StreakCard({ large = false, compact = false }: { large?: boolean
           <p className={`font-display font-semibold ${large ? "text-2xl" : "text-lg"}`}>
             <span className="font-data tabular-nums">{r.current}</span> {r.current === 1 ? "يوم" : "أيام"} انضباط
           </p>
-          <p className="text-xs leading-5 text-muted-foreground">أفضل ستريك: {r.best} · السبت والأحد ما ينحسبون</p>
+          <p className="text-xs leading-5 text-muted-foreground">أفضل ستريك: {r.best} · يزيد كل يوم تفتح فيه التطبيق · السبت والأحد ما ينحسبون</p>
         </div>
       </div>
       <div className="flex shrink-0 gap-1" dir="ltr" aria-label="آخر 10 أيام سوق">

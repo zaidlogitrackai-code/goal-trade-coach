@@ -9,6 +9,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { RiskWatcher } from "@/components/risk-watcher";
+import { VisitRecorder } from "@/components/visit-recorder";
 import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { isBlocked, useJourney } from "@/lib/use-journey";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
@@ -158,6 +159,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <RiskWatcher />
+      <VisitRecorder />
       <aside className="glass-strong sticky top-3 m-3 hidden h-[calc(100vh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4 lg:flex">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
