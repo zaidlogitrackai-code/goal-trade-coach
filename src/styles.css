@@ -193,6 +193,8 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     background: var(--body-bg);
+    background-repeat: no-repeat;
+    background-color: var(--background);
     min-height: 100vh;
   }
   h1, h2, h3 {
