@@ -31,6 +31,10 @@ async function buildContext(sb: Sb) {
     sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
     sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
   ]);
+  const [{ data: alerts }, { data: reminders }] = await Promise.all([
+    sb.from("notifications").select("title,body,created_at").in("kind", ["risk", "reminder"]).order("created_at", { ascending: false }).limit(8),
+    sb.from("reminders").select("title,repeat,at_time,next_at").eq("active", true).limit(20),
+  ]);
   const ledger = parseLedger(capitalRow.data?.[0]?.content);
   const capital = computeCapital({
     starting: Number(s.data?.starting_balance) || 0,
@@ -67,6 +71,8 @@ ${focusForPrompt(focus)}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
 الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
 عناوين الملاحظات: ${JSON.stringify(notes.data ?? [])}
+آخر تنبيهات حارس المخاطر (خذها بالاعتبار، وإذا فيها "وقف" لا تشجعه على صفقة جديدة): ${JSON.stringify(alerts ?? [])}
+التذكيرات المفعّلة: ${JSON.stringify(reminders ?? [])}
 آخر الصفقات (id للإشارة إليها): ${JSON.stringify(t.data ?? [])}`;
 }
 
@@ -108,7 +114,7 @@ const AGENT_SCHEMA = {
         items: {
           type: "object", additionalProperties: false, required: ["type", "summary", "data"],
           properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread"] },
+            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder"] },
             summary: { type: "string" },
             data: { type: "string" },
           },
@@ -142,6 +148,8 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 - end_session: {"review" (مراجعة الجلسة)}
 - start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
 - mark_notifications_read: {}
+- add_reminder: {"title","body","repeat":"once"|"daily","at" (HH:MM بتوقيته للتذكير اليومي أو لوقت اليوم),"in_minutes" (بديل لـ at للتذكير بعد مدة)} — لما يقول "ذكّرني" أو "نبهني كل يوم". أنت وحارس المخاطر ترسلون له تنبيهات داخل الموقع.
+- delete_reminder: {"title"}
 - update_focus: {"markets" (أصول مثل "EURUSD, XAUUSD, US100, USOIL" — يستبدل القائمة),"goal" (هدفه الحالي),"weakness" (نقطة ضعفه),"focus_rule" (القاعدة اللي يركز عليها),"style" (أسلوبه وجلسته),"add_note" (معلومة ثابتة تتذكرها عنه),"remove_note"} — أرسل فقط الحقول المتغيرة، والنص الفاضي يمسح الحقل
 - capital_move: {"kind" ("deposit" إيداع | "withdrawal" سحب | "set_balance" رصيده الحقيقي الآن),"amount","note"} — لما يحكي إنه أودع أو سحب أو إن رصيده صار كذا. أرباح وخسائر الصفقات المغلقة تنحسب على الرصيد تلقائيًا، فلا تسجلها هنا. لتصحيح الرصيد الحالي استخدم set_balance مش starting_balance. بعد سحب كبير اقترح تخفيض حدود المخاطرة لتناسب الرصيد الجديد.
 ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
@@ -211,6 +219,34 @@ export const morningGreeting = createServerFn({ method: "POST" })
       const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "morning", day, title: "صباح الخير يا هادي ☀️", body });
       if (error && error.code !== "23505") throw error;
       return { created: true };
+    } catch (e) { fail(e); }
+  });
+
+export const eveningReview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const sb = context.supabase;
+      const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+      const { data: existing } = await sb.from("notifications").select("id").eq("kind", "evening").eq("day", day).maybeSingle();
+      if (existing) return { created: false };
+      const ctx = await buildContext(sb);
+      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب مراجعة آخر اليوم (٤-٦ أسطر) لهادي بصفتك "حارس المخاطر": ملخص صفقات اليوم وربحها/خسارتها، هل التزم بحدوده وأهدافه، وش أحسن شيء سواه، ونصيحة وحدة لبكرة. إذا ما تداول اليوم امدح الانضباط. اليوم ${day}.` }]);
+      const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "evening", day, title: "مراجعة اليوم 🌙", body });
+      if (error && error.code !== "23505") throw error;
+      return { created: true };
+    } catch (e) { fail(e); }
+  });
+
+/** Risk guardian's opinion on a trade before entering it. */
+export const riskAdvice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ trade: z.string().max(2000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      const ctx = await buildContext(context.supabase);
+      const text = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `أنت "حارس المخاطر". قبل ما أدخل هذي الصفقة: ${data.trade}\nبثلاث نقاط قصيرة جداً: كم باقي لي من المخاطرة والخسارة اليوم، هل الصفقة تتعدى أي حد أو هدف (وطمع؟)، ثم الحكم بسطر: **ادخل** أو **خفّف الحجم** أو **لا تدخل** مع السبب.` }]);
+      return { text };
     } catch (e) { fail(e); }
   });
 
