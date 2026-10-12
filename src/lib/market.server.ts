@@ -13,7 +13,7 @@ const COLS = ["close", "change", "high", "low", ...TFS.flatMap((t) => [`EMA20|${
 async function tvSnapshot(tickers: string[]) {
   const key = tickers.join(",");
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL) return hit.v as Map<string, (number | null)[]>;
+  if (hit && Date.now() - hit.at < TTL_PRICE) return hit.v as Map<string, (number | null)[]>;
   const res = await fetch("https://scanner.tradingview.com/global/scan", { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" }, body: JSON.stringify({ symbols: { tickers }, columns: COLS }) });
   if (!res.ok) throw new Error(`tradingview ${res.status}`);
   const j = (await res.json()) as { data?: { s: string; d: (number | null)[] }[] };
