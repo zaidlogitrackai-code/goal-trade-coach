@@ -1,24 +1,34 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
 import { toast } from "sonner";
+import { History, ScanSearch } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { EmptyState, PageHeader } from "@/components/app-shell";
+import { EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
+import { SessionAgent } from "@/components/session-agent";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { analyzeChart } from "@/lib/ai.functions";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { fmtDate } from "@/lib/queries";
-import { prepareImage } from "@/lib/image";
-import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
 
 export const Route = createFileRoute("/_authenticated/analyst")({
-  head: () => ({ meta: [{ title: "المحلل الذكي — نظام هادي" }, { name: "description", content: "ارفع صورة الشارت واحصل على تحليل مبني على قواعدك واستراتيجياتك." }] }),
+  head: () => ({
+    meta: [
+      { title: "المحلل الذكي — نظام هادي" },
+      { name: "description", content: "تناقش مع المحلل الذكي على شارتاتك واحصل على رأيه بدقة." },
+      { property: "og:title", content: "المحلل الذكي — نظام هادي" },
+      { property: "og:description", content: "تناقش مع المحلل الذكي على شارتاتك واحصل على رأيه بدقة." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: AnalystPage,
 });
+
+export const ANALYST_THREAD = "المحلل الذكي";
+
+const GREETING =
+  "هلا هادي، أنا **المحلل الذكي**.\n\nارفع صورة الشارت (الذهب، الفضة، المؤشرات، العملات، أو النفط) وقل لي وش تفكر فيه. أحلله لك وأعطيك رأيي بصراحة، وبعدها نتناقش فيه.";
+const QUICK = ["وش رأيك أدخل؟", "وين الوقف والهدف؟", "وش السيناريو المعاكس؟", "يطابق استراتيجيتي؟"];
 
 const historyQuery = {
   queryKey: ["analyses"],
@@ -29,79 +39,62 @@ const historyQuery = {
   },
 };
 
-function AnalystPage() {
+function PastAnalyses() {
   const qc = useQueryClient();
-  const run = useServerFn(analyzeChart);
   const h = useQuery(historyQuery);
-  const [image, setImage] = useState<string | null>(null);
-  const [symbol, setSymbol] = useState("");
-  const [timeframe, setTimeframe] = useState("");
-  const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-
-  async function onFile(f: File | undefined) {
-    if (!f) return;
-    try { setImage(await prepareImage(f)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
-  }
-
-  async function submit() {
-    if (!image) { toast.error("ارفع صورة الشارت أولاً"); return; }
-    if (symbol.trim() && !forexSymbol(symbol)) { toast.error(FOREX_ONLY_MSG); return; }
-    setBusy(true); setResult(null);
-    try {
-      const row = await run({ data: { image, symbol: forexSymbol(symbol) ?? "", timeframe, question } });
-      setResult(row.result);
-      qc.invalidateQueries({ queryKey: ["analyses"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "فشل التحليل");
-    } finally { setBusy(false); }
-  }
-
   async function del(id: string) {
     const { error } = await supabase.from("chart_analyses").delete().eq("id", id);
     if (error) { toast.error("ما قدرت أحذف"); return; }
     qc.invalidateQueries({ queryKey: ["analyses"] });
   }
-
+  if ((h.data ?? []).length === 0) return <EmptyState text="أول تحليل لك بيظهر هنا." />;
   return (
-    <div className="mx-auto max-w-5xl">
-      <PageHeader title="المحلل الذكي" subtitle="ارفع صورة الشارت، ويحللها لك حسب قواعدك واستراتيجياتك." />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="panel space-y-4 p-5">
-          <label className="flex min-h-48 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted p-4 text-center text-sm text-muted-foreground">
-            {image ? <img src={image} alt="الشارت" className="max-h-72 rounded-md" /> : <>اضغط لاختيار صورة الشارت<span className="text-xs">PNG / JPG — حتى ٥ ميجا</span></>}
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="EURUSD, US100, USOIL" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
-            <div className="space-y-2"><Label>الفريم</Label><Input dir="ltr" placeholder="H1" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} /></div>
-          </div>
-          <div className="space-y-2"><Label>سؤالك (اختياري)</Label><Textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="مثلاً: هل الدخول شراء الآن مناسب؟" /></div>
-          <Button className="w-full" size="lg" disabled={busy} onClick={submit}>{busy ? "جارٍ التحليل… (قد يأخذ دقيقة)" : "حلّل الشارت"}</Button>
-          <p className="text-xs text-muted-foreground">التحليل للمساعدة فقط، والقرار النهائي لك.</p>
-        </div>
-        <div className="panel min-h-48 p-5">
-          <h2 className="mb-3 font-semibold">نتيجة التحليل</h2>
-          {result ? <Md>{result}</Md> : <p className="text-sm text-muted-foreground">{busy ? "يحلل الشارت الآن…" : "النتيجة تظهر هنا بعد التحليل."}</p>}
-        </div>
-      </div>
+    <div className="space-y-3">
+      {h.data!.map((a) => (
+        <details key={a.id} className="panel p-4">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
+            <span><span className="font-data font-semibold" dir="ltr">{a.symbol || "—"}</span> <span className="text-xs text-muted-foreground">{a.timeframe} · {fmtDate(a.created_at)}</span></span>
+            <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); void del(a.id); }}>حذف</Button>
+          </summary>
+          {a.question && <p className="mt-3 text-sm text-muted-foreground">سؤالك: {a.question}</p>}
+          <div className="mt-3"><Md>{a.result}</Md></div>
+        </details>
+      ))}
+    </div>
+  );
+}
 
-      <h2 className="mb-3 mt-10 text-lg font-semibold">التحليلات السابقة</h2>
-      {(h.data ?? []).length === 0 ? <EmptyState text="أول تحليل لك بيظهر هنا." /> : (
-        <div className="space-y-3">
-          {h.data!.map((a) => (
-            <details key={a.id} className="panel p-4">
-              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
-                <span><span className="font-data font-semibold" dir="ltr">{a.symbol || "—"}</span> <span className="text-xs text-muted-foreground">{a.timeframe} · {fmtDate(a.created_at)}</span></span>
-                <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); del(a.id); }}>حذف</Button>
-              </summary>
-              {a.question && <p className="mt-3 text-sm text-muted-foreground">سؤالك: {a.question}</p>}
-              <div className="mt-3"><Md>{a.result}</Md></div>
-            </details>
-          ))}
+function AnalystPage() {
+  const qc = useQueryClient();
+  return (
+    <div className="agent-page mx-auto w-full max-w-4xl">
+      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ScanSearch className="size-5 shrink-0" />
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-lg font-semibold lg:text-xl">المحلل الذكي</h1>
+            <p className="truncate text-xs text-muted-foreground">ارفع الشارت وتناقش معه — القرار النهائي لك</p>
+          </div>
         </div>
-      )}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="التحليلات السابقة"><History className="size-4" /></Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
+            <SheetHeader><SheetTitle>التحليلات السابقة</SheetTitle></SheetHeader>
+            <div className="mt-4"><PastAnalyses /></div>
+          </SheetContent>
+        </Sheet>
+      </div>
+      <SessionAgent
+        hasActive={false}
+        title={ANALYST_THREAD}
+        greeting={GREETING}
+        quick={QUICK}
+        mode="analyst"
+        placeholder="ارفع الشارت أو اسأل المحلل…"
+        onChanged={() => qc.invalidateQueries({ queryKey: ["analyses"] })}
+      />
     </div>
   );
 }
