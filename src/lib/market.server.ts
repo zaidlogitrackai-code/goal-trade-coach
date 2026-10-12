@@ -36,7 +36,8 @@ async function hourly4(yahoo: string) {
   const out: Candle[] = [];
   for (let i = 0; i < candles.length; i += 4) {
     const g = candles.slice(i, i + 4);
-    out.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c, v: g.reduce((a, x) => a + x.v, 0) });
+    if (!g.length) continue;
+    out.push({ t: g[0]!.t, o: g[0]!.o, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1]!.c, v: g.reduce((a, x) => a + x.v, 0) });
   }
   return out;
 }
