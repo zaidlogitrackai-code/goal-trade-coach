@@ -204,6 +204,9 @@ function CoachPage() {
                 ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
                 : "w-full break-words px-0.5 text-sm leading-6 lg:leading-7"}>
                 {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
+                {m.role === "user" && "image" in m && typeof m.image === "string" && (
+                  <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
+                )}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
                   <div className="mt-3 border-t border-border pt-3">
                     <AgentActions key={m.id} actions={m.actions as unknown as StoredAction[]} {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />

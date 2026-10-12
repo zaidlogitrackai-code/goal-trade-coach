@@ -207,6 +207,12 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
           </Button>
         )}
       </div>
+      {image && (
+        <div className="relative mx-3 mb-1 w-fit">
+          <img src={image} alt="الصورة المرفقة" className="size-12 rounded-lg border border-border object-cover" />
+          <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
+        </div>
+      )}
     </div>
   );
 }
