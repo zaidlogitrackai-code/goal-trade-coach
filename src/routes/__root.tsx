@@ -116,6 +116,11 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   useEffect(() => {
+    // "Remember me" off: end the session when a new browser session starts.
+    if (localStorage.getItem("hadi-ephemeral") === "1" && !sessionStorage.getItem("hadi-session-only")) {
+      localStorage.removeItem("hadi-ephemeral");
+      void supabase.auth.signOut();
+    }
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") router.invalidate();
     });
