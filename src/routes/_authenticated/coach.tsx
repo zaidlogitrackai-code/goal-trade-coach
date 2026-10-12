@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Crosshair, ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { Crosshair, ImagePlus, Menu, Plus, SendHorizontal, Trash2, X } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/app-shell";
@@ -29,6 +30,7 @@ function CoachPage() {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [image, setImage] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   // The assistant message whose actions should auto-run (only the reply we just received).
   const [freshId, setFreshId] = useState<string | null>(null);
   const [auto, setAuto] = useState(true);
@@ -117,71 +119,127 @@ function CoachPage() {
   const list = msgs.data ?? [];
   const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending && list[list.length - 1]?.role === "assistant");
 
+  const activeTitle = threads.data?.find((t) => t.id === active)?.title ?? "محادثة جديدة";
+  const suggestions = ["راجع آخر صفقاتي وقل لي وين أغلط", "اسألني عن أهدافي وحدودي", "ساعدني أكتب قواعد استراتيجيتي"];
+
+  const focusBox = focus.data && (
+    <Link
+      to="/dashboard"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground hover:border-primary/40"
+    >
+      <Crosshair className="size-3.5 text-primary" aria-hidden="true" />
+      {isFocusEmpty(focus.data) ? (
+        <span>المدرب لسا ما بيعرف سوقك وهدفك ونقطة ضعفك. احكيله عنهم وهو بيحفظهم.</span>
+      ) : (
+        <>
+          <span className="font-medium text-foreground">مركّز معك على:</span>
+          {focus.data.markets.length > 0 && <span dir="ltr" className="font-data">{focus.data.markets.join(" · ")}</span>}
+          {focus.data.weakness && <span>الضعف: {focus.data.weakness}</span>}
+          {focus.data.goal && <span>الهدف: {focus.data.goal}</span>}
+        </>
+      )}
+    </Link>
+  );
+
+  const threadList = (onPick?: () => void) => (
+    <div className="space-y-1">
+      {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
+      {threads.data?.map((t) => (
+        <div key={t.id} className={`flex items-center gap-1 rounded-xl px-3 py-2.5 text-sm ${active === t.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}>
+          <button className="min-w-0 flex-1 truncate text-right" onClick={() => { setActive(t.id); onPick?.(); }}>{t.title}</button>
+          <button aria-label="حذف" onClick={() => del(t.id)} className="shrink-0 p-1 opacity-60 hover:opacity-100"><Trash2 className="size-3.5" /></button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const autoToggle = (
+    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+      <label className="flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={auto} onChange={toggleAuto} className="accent-primary" />
+        تنفيذ تلقائي
+      </label>
+      <span>{auto ? "بوابة التداول والتهدئة تبقى مفعّلة" : "كل إجراء يحتاج ضغطة موافقة"}</span>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="المدرب الذكي" subtitle={auto ? "قل له شو بدك، وهو ينفّذ. الحذف وتخفيف حدود المخاطر بس بيحتاجوا موافقتك." : "يحلل معك، ينصحك، ويجهّز لك الإجراءات لتوافق عليها."} action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
-      {focus.data && (
-        <Link
-          to="/dashboard"
-          className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground hover:border-primary/40"
-        >
-          <Crosshair className="size-3.5 text-primary" aria-hidden="true" />
-          {isFocusEmpty(focus.data) ? (
-            <span>المدرب لسا ما بيعرف سوقك وهدفك ونقطة ضعفك. احكيله عنهم وهو بيحفظهم.</span>
-          ) : (
-            <>
-              <span className="font-medium text-foreground">مركّز معك على:</span>
-              {focus.data.markets.length > 0 && <span dir="ltr" className="font-data">{focus.data.markets.join(" · ")}</span>}
-              {focus.data.weakness && <span>الضعف: {focus.data.weakness}</span>}
-              {focus.data.goal && <span>الهدف: {focus.data.goal}</span>}
-            </>
-          )}
-        </Link>
-      )}
+      <div className="hidden lg:block">
+        <PageHeader title="المدرب الذكي" subtitle={auto ? "قل له شو بدك، وهو ينفّذ. الحذف وتخفيف حدود المخاطر بس بيحتاجوا موافقتك." : "يحلل معك، ينصحك، ويجهّز لك الإجراءات لتوافق عليها."} action={<Button onClick={newThread}><Plus className="size-4" /> محادثة جديدة</Button>} />
+        {focusBox && <div className="mb-4">{focusBox}</div>}
+      </div>
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <div className="panel max-h-[70vh] space-y-1 overflow-y-auto p-2">
-          {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
-          {threads.data?.map((t) => (
-            <div key={t.id} className={`group flex items-center gap-1 rounded-md px-3 py-2 text-sm ${active === t.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-              <button className="flex-1 truncate text-right" onClick={() => setActive(t.id)}>{t.title}</button>
-              <button aria-label="حذف" onClick={() => del(t.id)} className="opacity-60 hover:opacity-100"><Trash2 className="size-3.5" /></button>
+        <div className="panel hidden max-h-[70vh] overflow-y-auto p-2 lg:block">{threadList()}</div>
+        <div className="panel flex h-[calc(100dvh-12.5rem)] flex-col overflow-hidden lg:h-[70vh]">
+          {/* Mobile chat header */}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-2 py-2 lg:hidden">
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+              <SheetTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto">
+                <SheetHeader><SheetTitle className="text-right">المحادثات</SheetTitle></SheetHeader>
+                {focusBox}
+                {autoToggle}
+                {threadList(() => setSheetOpen(false))}
+              </SheetContent>
+            </Sheet>
+            <div className="min-w-0 text-center">
+              <p className="truncate text-sm font-semibold">{activeTitle}</p>
+              <p className="text-[11px] text-muted-foreground">{busy ? "يكتب…" : "المدرب الذكي"}</p>
             </div>
-          ))}
-        </div>
-        <div className="panel flex h-[70vh] flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 lg:space-y-4 lg:p-4">
             {list.length === 0 && !pending && (
-              <div className="py-16 text-center text-sm text-muted-foreground">ابدأ بسؤال، مثلاً: "راجع آخر صفقاتي وقل لي وين أغلط" أو "ساعدني أكتب قواعد دخول لاستراتيجيتي".</div>
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <p className="text-sm text-muted-foreground">شو بدك نشتغل عليه اليوم؟</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {suggestions.map((s) => (
+                    <button key={s} onClick={() => setText(s)} className="rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-accent">{s}</button>
+                  ))}
+                </div>
+              </div>
             )}
             {list.map((m) => (
-              <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-7 ${m.role === "user" ? "mr-auto bg-primary text-primary-foreground" : "ml-auto bg-muted"}`}>{m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
+              <div key={m.id} className={m.role === "user"
+                ? "mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm leading-6 text-primary-foreground"
+                : "ml-auto w-full max-w-[95%] break-words rounded-2xl rounded-tl-md bg-muted px-3.5 py-3 text-sm leading-7 lg:max-w-[85%]"}>
+                {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
-                  <AgentActions key={m.id} actions={m.actions as unknown as StoredAction[]} {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
+                  <div className="mt-3 border-t border-border pt-3">
+                    <AgentActions key={m.id} actions={m.actions as unknown as StoredAction[]} {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
+                  </div>
                 )}
               </div>
             ))}
-            {showPending && <div className="mr-auto max-w-[85%] whitespace-pre-wrap rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">{pending}</div>}
-            {busy && <div className="ml-auto rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">يكتب…</div>}
+            {showPending && <div className="mr-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
+            {busy && <div className="ml-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
             <div ref={endRef} />
           </div>
+
           {image && (
-            <div className="relative mx-3 mt-3 w-fit">
-              <img src={image} alt="الصورة المرفقة" className="max-h-24 rounded-lg border border-border" />
+            <div className="relative mx-3 mt-2 w-fit">
+              <img src={image} alt="الصورة المرفقة" className="max-h-20 rounded-lg border border-border" />
               <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
             </div>
           )}
-          <div className="flex items-center justify-between gap-2 border-t border-border px-3 pt-2 text-xs text-muted-foreground">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input type="checkbox" checked={auto} onChange={toggleAuto} className="accent-primary" />
-              تنفيذ تلقائي
-            </label>
-            <span>{auto ? "بوابة التداول والتهدئة تبقى مفعّلة" : "كل إجراء يحتاج ضغطة موافقة"}</span>
-          </div>
-          <div className="flex gap-2 p-3">
+          <div className="hidden border-t border-border px-3 pt-2 lg:block">{autoToggle}</div>
+          <div className="flex items-end gap-2 border-t border-border p-2 lg:border-t-0 lg:p-3">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
-            <Button type="button" variant="secondary" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
-            <Textarea onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب أي شيء: صفقة، استراتيجية، هدف، سؤال… وأنا أجهّز لك التنفيذ" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
-            <Button onClick={() => submit()} disabled={busy || !text.trim()}>إرسال</Button>
+            <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
+            <Textarea
+              onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
+              rows={1}
+              value={text}
+              onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}
+              placeholder="اكتب رسالتك…"
+              className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl py-2"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
+            />
+            <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy || !text.trim()}><SendHorizontal className="size-4 rotate-180" /></Button>
           </div>
         </div>
       </div>
