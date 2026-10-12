@@ -344,7 +344,11 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         throw new NeedsConfirmation("تخفيف حدود المخاطر يحتاج موافقتك");
       const merged = { currency: "USD", ...(current ?? {}), ...d } as unknown as RiskSettingsInput;
       const v = validateRiskSettings(merged);
-      if (!v.valid) throw new Error(v.errors.map((i) => i.message).join(" "));
+      // Only block on problems this change creates; an old conflict in saved settings
+      // must not stop the AI from changing an unrelated value.
+      const before = validateRiskSettings({ currency: "USD", ...(current ?? {}) } as unknown as RiskSettingsInput);
+      const fresh = v.errors.filter((e) => !before.errors.some((b) => b.message === e.message));
+      if (fresh.length) throw new Error(fresh.map((i) => i.message).join(" "));
       const { error } = await supabase
         .from("trading_settings")
         .upsert({ user_id, ...d, onboarded: true, updated_at: new Date().toISOString() });
