@@ -9,7 +9,7 @@ import { prepareImage } from "@/lib/image";
 export const COACH_DRAFT_KEY = "coach-draft";
 
 /** One box on the home page: type or attach an MT5/chart screenshot, the coach does the rest. */
-export function QuickCoach() {
+export function QuickCoach({ needsGoals = false }: { needsGoals?: boolean }) {
   const nav = useNavigate();
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
@@ -18,6 +18,11 @@ export function QuickCoach() {
   async function pick(file?: File) {
     if (!file) return;
     try { setImage(await prepareImage(file)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
+  }
+
+  function interview() {
+    sessionStorage.setItem(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
+    void nav({ to: "/coach" });
   }
 
   function go() {
@@ -30,6 +35,12 @@ export function QuickCoach() {
   return (
     <section className="panel space-y-3 p-4 sm:p-5">
       <div className="flex items-center gap-2 text-sm font-semibold"><Bot className="size-4" /> قل للمدرب وهو ينفّذ</div>
+      {needsGoals && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <p>قبل ما تتداول، المدرب يبي يعرف تارقتك وحد خسارتك عشان يوقفك قبل ما تطمع.</p>
+          <Button type="button" className="w-full" onClick={interview}>خلّ المدرب يسألني</Button>
+        </div>
+      )}
       <Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
         placeholder="اكتب أي شيء، أو ارفع لقطة من MetaTrader 5 ويسجّل صفقاتك" />
