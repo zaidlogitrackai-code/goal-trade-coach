@@ -12,7 +12,7 @@ import { inMarkets, type FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
 import type { CapitalMove } from "@/lib/capital";
-import { HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
+import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
 import { loadCapital, moveCapital } from "@/lib/capital-store";
 
 /**
@@ -40,6 +40,7 @@ export const ACTION_TYPES = [
   "start_cooldown",
   "mark_notifications_read",
   "update_focus",
+  "set_guard_style",
   "capital_move",
   "save_analysis",
   "delete_analysis",
@@ -78,6 +79,7 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   start_cooldown: "بدء فترة تهدئة",
   mark_notifications_read: "تعليم الإشعارات كمقروءة",
   update_focus: "تحديث ملف التركيز",
+  set_guard_style: "تحديث طريقة حارس الانضباط",
   capital_move: "حركة على رأس المال",
   save_analysis: "حفظ تحليل شارت",
   delete_analysis: "حذف تحليل",
@@ -299,6 +301,7 @@ export const SCHEMAS = {
   delete_session: z.object({ id: z.string().uuid().nullish() }),
   rename_thread: z.object({ title: z.string().min(1).max(200), new_title: z.string().min(1).max(200) }),
   delete_notifications: z.object({}).passthrough(),
+  set_guard_style: z.object({ style: z.string().min(1).max(2000) }),
   update_focus: z.object({
     markets: z.union([z.string().max(200), z.array(z.string().max(30)).max(10)]).nullish(),
     goal: opt,
@@ -452,6 +455,14 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
     case "capital_move": {
       await moveCapital(d as CapitalMove);
       return;
+    }
+    case "set_guard_style": {
+      const content = String(d["style"]);
+      const { data: row } = await supabase.from("knowledge_notes").select("id").eq("category", GUARD_STYLE_CATEGORY).limit(1).maybeSingle();
+      const { error } = row
+        ? await supabase.from("knowledge_notes").update({ content }).eq("id", row.id)
+        : await supabase.from("knowledge_notes").insert({ user_id, title: "طريقة حارس الانضباط", category: GUARD_STYLE_CATEGORY, content });
+      return check(error);
     }
     case "update_focus": {
       await saveFocus(d as FocusPatch);
