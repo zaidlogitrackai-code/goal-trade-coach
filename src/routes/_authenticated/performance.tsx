@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import { OpenTrades } from "@/components/dashboard/open-trades";
 import { fmtMoney, settingsQuery, strategiesQuery, tradesQuery } from "@/lib/queries";
 import { equityCurve, groupPnl, tradeStats } from "@/lib/stats";
 
@@ -69,6 +70,7 @@ function PerformancePage() {
         <Group title="حسب الاستراتيجية" data={byStrat} cur={cur} />
         <Group title="حسب الحالة النفسية" data={byEmo} cur={cur} />
       </div>
+      </>}
     </div>
   );
 }
