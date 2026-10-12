@@ -88,7 +88,7 @@
   --chart-4: hsl(280 67% 60%);
   --chart-5: hsl(0 72% 51%);
   --sidebar: rgba(52,50,48,0.55);
-  --sidebar-foreground: #7A7A7A;
+  --sidebar-foreground: hsl(30 4% 78%);
   --sidebar-primary: hsl(0 0% 95%);
   --sidebar-primary-foreground: hsl(0 0% 5%);
   --sidebar-accent: rgba(255,255,255,0.13);
@@ -111,8 +111,6 @@
   --btn-bg: rgba(255,255,255,0.18);
   --btn-bg-hover: rgba(255,255,255,0.28);
   --btn-danger-bg: rgba(239,68,68,0.30);
-  --curve-fill: rgba(255,255,255,0.07);
-  --curve-stroke: rgba(255,255,255,0.22);
   --body-bg:
     radial-gradient(ellipse 90% 55% at 15% 0%, hsl(30 9% 34%), transparent 70%),
     radial-gradient(ellipse 80% 55% at 100% 65%, hsl(24 10% 27%), transparent 70%),
