@@ -71,6 +71,13 @@
       "when": 1791834364921,
       "tag": "0009_user_visits",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791841031756,
+      "tag": "0010_limits_pct",
+      "breakpoints": true
     }
   ]
 }
