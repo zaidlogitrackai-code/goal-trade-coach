@@ -234,7 +234,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto rounded-t-[2rem] p-5 pb-8 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card p-5 pb-8 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-150 data-[state=open]:!duration-200 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
@@ -243,7 +243,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <SheetClose key={n.to} asChild>
                   <Link
                     to={n.to}
-                    className="flex min-w-0 items-center gap-3 glass rounded-2xl px-3 py-3 text-sm text-muted-foreground"
+                    preload={false}
+                    className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-3 py-3 text-sm text-muted-foreground"
                     activeProps={{ className: "border-foreground/30 text-foreground" }}
                   >
                     <n.icon className="size-4 shrink-0" />
