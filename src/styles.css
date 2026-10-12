@@ -8,6 +8,8 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-data: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Arabic", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  /* iOS-like spring curve for every motion in the app */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -178,12 +180,16 @@
   :root.light { color-scheme: light; }
   * {
     border-color: var(--color-border);
+    /* No grey flash on tap — iOS never shows one */
+    -webkit-tap-highlight-color: transparent;
   }
   html {
     color-scheme: dark;
     background-color: var(--background);
   }
   body {
+    /* No rubber-band chain-scrolling between page and fixed chrome */
+    overscroll-behavior-y: none;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -263,4 +269,20 @@
   flex-direction: column;
   height: calc(100dvh - 11.75rem - env(safe-area-inset-bottom));
   @media (width >= 64rem) { height: calc(100dvh - 4rem); }
+}
+
+/* iPhone-like screen entrance: short, transform-only, spring-eased */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@utility page-enter {
+  animation: page-in 0.3s var(--ease-ios) both;
+}
+
+/* iOS sheet curve; !important so it wins over tw-animate's shorthand */
+@utility ios-ease {
+  animation-timing-function: var(--ease-ios) !important;
+  transition-timing-function: var(--ease-ios);
 }
