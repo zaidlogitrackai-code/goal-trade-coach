@@ -164,7 +164,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
   const ctx = await buildContext(sb);
   const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
   const parsed = JSON.parse(out) as { reply: string; actions: { type: string; summary: string; data: string }[] };
-  return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 20) };
+  return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 30) };
 }
 
 export const coachReply = createServerFn({ method: "POST" })
