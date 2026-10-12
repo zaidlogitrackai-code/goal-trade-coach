@@ -86,9 +86,9 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     })();
   }, [threadId, thread.isLoading, thread.data, hasActive, qc, threadTitle, greeting]);
 
-  useEffect(() => { if (id) onReady?.(id); }, [id, onReady]);
 
   const id = threadId ?? thread.data ?? null;
+  useEffect(() => { if (id) onReady?.(id); }, [id, onReady]);
   const msgs = useQuery({
     queryKey: ["messages", id],
     enabled: !!id,
