@@ -396,7 +396,7 @@ function NewTrade() {
               <div className="space-y-1.5">
                 <Label htmlFor="quick-sl">وين وقف الخسارة؟</Label>
                 <Input id="quick-sl" dir="ltr" inputMode="decimal" value={f.sl}
-                  onChange={(e) => { const nf = { ...f, sl: e.target.value }; setF(nf); setChecks(autoChecks(nf).map((x, i) => x || (checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk"))); }} />
+                  onChange={(e) => { const nf = { ...f, sl: e.target.value }; setF(nf); setChecks(autoChecks(nf).map((x, i) => x || !!(checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk"))); }} />
               </div>
             )}
             {CHECKLIST_ITEMS.map((item, i) => checks[i] ? null : (
