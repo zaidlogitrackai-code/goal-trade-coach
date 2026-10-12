@@ -329,3 +329,29 @@ message: جملة عربية قصيرة للمتداول: ماذا قرأت، و
       return JSON.parse(out) as { message: string; trades: import("./ai-trade").AiTrade[] };
     } catch (e) { fail(e); }
   });
+
+export const transcribeAudio = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ audio: z.string().min(10).max(14_000_000), mime: z.string().startsWith("audio/").max(100) }).parse(d))
+  .handler(async ({ data }) => {
+    const key = process.env["LOVABLE_API_KEY"];
+    if (!key) throw new Error("خدمة الذكاء غير مهيأة.");
+    const bin = Uint8Array.from(atob(data.audio), (c) => c.charCodeAt(0));
+    const mime = data.mime.split(";")[0]!;
+    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("wav") ? "wav" : "webm";
+    const form = new FormData();
+    form.append("model", "openai/gpt-transcribe");
+    form.append("file", new File([bin], `voice.${ext}`, { type: mime }));
+    form.append("response_format", "json");
+    form.append("language", "ar");
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+    if (!res.ok) {
+      console.error("transcribe error", res.status, (await res.text().catch(() => "")).slice(0, 300));
+      if (res.status === 402 || res.status === 403) throw new Error("رصيد الذكاء الاصطناعي انتهى أو غير مفعّل.");
+      throw new Error("ما قدرت أفهم الرسالة الصوتية، جرّب مرة ثانية.");
+    }
+    const j = (await res.json()) as { text?: string };
+    const text = (j.text ?? "").trim();
+    if (!text) throw new Error("ما سمعت شي بالتسجيل.");
+    return { text };
+  });
