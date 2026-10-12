@@ -331,6 +331,50 @@ export type Database = {
         }
         Relationships: []
       }
+      strategy_examples: {
+        Row: {
+          created_at: string
+          id: string
+          image: string | null
+          reason: string
+          strategy_id: string | null
+          symbol: string | null
+          timeframe: string | null
+          user_id: string
+          verdict: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image?: string | null
+          reason?: string
+          strategy_id?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          user_id: string
+          verdict?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image?: string | null
+          reason?: string
+          strategy_id?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          user_id?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_examples_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trades: {
         Row: {
           checklist_passed: boolean
