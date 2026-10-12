@@ -8,6 +8,13 @@ import { Md } from "@/components/md";
 import { morningGreeting } from "@/lib/ai.functions";
 import { fmtDate } from "@/lib/queries";
 
+/** Start of today on this device (older notifications are cleared automatically, so the bell never piles up). */
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
 /** Bell with the AI coach's daily morning message (created once per day on first visit). */
 export function NotificationsBell() {
   const qc = useQueryClient();
@@ -16,7 +23,10 @@ export function NotificationsBell() {
   const q = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(20);
+      const since = startOfToday();
+      // Daily clean-up: anything from before today disappears on its own.
+      await supabase.from("notifications").delete().lt("created_at", since);
+      const { data, error } = await supabase.from("notifications").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(20);
       if (error) throw error;
       return data;
     },
@@ -54,7 +64,7 @@ export function NotificationsBell() {
       </PopoverTrigger>
       <PopoverContent align="start" className="max-h-[70vh] w-80 overflow-y-auto p-0" dir="rtl">
         {list.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">لا توجد إشعارات بعد.</p>
+          <p className="p-4 text-sm text-muted-foreground">ما في إشعارات اليوم. الإشعارات تختفي لحالها كل يوم.</p>
         ) : (
           <>
             <button onClick={removeAll} className="flex w-full items-center justify-center gap-1.5 border-b border-border p-2 text-xs text-muted-foreground hover:bg-accent hover:text-destructive">
