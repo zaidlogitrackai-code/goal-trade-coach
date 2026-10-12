@@ -105,3 +105,20 @@ export function delta(cur: number, prev: number) {
   if (prev === 0) return null;
   return ((cur - prev) / Math.abs(prev)) * 100;
 }
+
+/** Per-strategy performance (closed trades) plus count of trades without a strategy. */
+export function strategyStats(ts: { strategy_id: string | null; status: string; pnl: unknown; risk_amount: unknown }[], strategies: { id: string; name: string }[]) {
+  const rows = strategies.map((s) => {
+    const all = ts.filter((t) => t.strategy_id === s.id);
+    const c = all.filter((t) => t.status === "closed");
+    const p = c.map((t) => Number(t.pnl) || 0);
+    const rs = c.filter((t) => Number(t.risk_amount) > 0).map((t) => (Number(t.pnl) || 0) / Number(t.risk_amount));
+    return {
+      name: s.name, trades: all.length, closed: c.length,
+      winRate: c.length ? Math.round((p.filter((x) => x > 0).length / c.length) * 100) : null,
+      net: Math.round(p.reduce((a, b) => a + b, 0) * 100) / 100,
+      avgR: rs.length ? Math.round((rs.reduce((a, b) => a + b, 0) / rs.length) * 100) / 100 : null,
+    };
+  });
+  return { rows, withoutStrategy: ts.filter((t) => !t.strategy_id).length };
+}

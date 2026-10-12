@@ -21,3 +21,18 @@ describe("perf", () => {
     expect(new Date(r.start).toISOString()).toBe("2026-10-11T21:00:00.000Z");
   });
 });
+
+import { strategyStats } from "./perf";
+describe("strategyStats", () => {
+  it("counts trades, win rate, net and R per strategy", () => {
+    const ts = [
+      { strategy_id: "a", status: "closed", pnl: 100, risk_amount: 50 },
+      { strategy_id: "a", status: "closed", pnl: -50, risk_amount: 50 },
+      { strategy_id: "a", status: "open", pnl: null, risk_amount: 50 },
+      { strategy_id: null, status: "open", pnl: null, risk_amount: 20 },
+    ];
+    const r = strategyStats(ts, [{ id: "a", name: "اختراق" }]);
+    expect(r.rows[0]).toEqual({ name: "اختراق", trades: 3, closed: 2, winRate: 50, net: 50, avgR: 0.5 });
+    expect(r.withoutStrategy).toBe(1);
+  });
+});

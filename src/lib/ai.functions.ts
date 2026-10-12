@@ -1,3 +1,4 @@
+import { strategyStats } from "./perf";
 import { disciplineStreak } from "./streak";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -74,6 +75,7 @@ ${focusForPrompt(focus)}
 الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
 القواعد: ${JSON.stringify(r.data ?? [])}
 الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
+أداء كل استراتيجية (من آخر 30 يوم): ${JSON.stringify(strategyStats(month.data ?? [], st.data ?? []))}
 الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
 عناوين الملاحظات: ${JSON.stringify(notes.data ?? [])}
 آخر تنبيهات حارس المخاطر (خذها بالاعتبار، وإذا فيها "وقف" لا تشجعه على صفقة جديدة): ${JSON.stringify(alerts ?? [])}
@@ -189,7 +191,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk"]).optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy"]).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
@@ -198,7 +200,7 @@ export const coachReply = createServerFn({ method: "POST" })
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : "", input);
+      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : "", input);
       const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
