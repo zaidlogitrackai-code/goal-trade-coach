@@ -23,8 +23,7 @@ export function splitTradeBlock(text: string): { body: string; raw: string | nul
 }
 
 export function parseTradeCard(raw: string): ParsedCard {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let j: { [k: string]: any };
+  let j: Partial<Record<"direction" | "entry_from" | "entry_to" | "sl" | "tp1" | "tp2" | "confidence" | "skills" | "no_trade_reason", unknown>>;
   try { j = JSON.parse(raw); } catch { return { ok: false, error: "صيغة البطاقة غير صحيحة" }; }
   const d = String(j.direction ?? "none").toLowerCase();
   const direction = d === "buy" || d === "sell" ? d : "none";
