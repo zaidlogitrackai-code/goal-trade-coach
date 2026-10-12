@@ -18,9 +18,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
       { title: "حالة التداول اليوم — نظام هادي" },
-      { name: "description", content: "خطوتك التالية اليوم، والمدرب الذكي يمشّيك فيها." },
+      { name: "description", content: "خطوتك التالية اليوم، وسَنَد يمشّيك فيها." },
       { property: "og:title", content: "حالة التداول اليوم — نظام هادي" },
-      { property: "og:description", content: "خطوتك التالية اليوم، والمدرب الذكي يمشّيك فيها." },
+      { property: "og:description", content: "خطوتك التالية اليوم، وسَنَد يمشّيك فيها." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

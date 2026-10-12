@@ -341,6 +341,7 @@ export type Database = {
           pnl: number | null
           position_size: number | null
           risk_amount: number
+          screenshot_path: string | null
           status: string
           stop_loss: number | null
           strategy_id: string | null
@@ -363,6 +364,7 @@ export type Database = {
           pnl?: number | null
           position_size?: number | null
           risk_amount?: number
+          screenshot_path?: string | null
           status?: string
           stop_loss?: number | null
           strategy_id?: string | null
@@ -385,6 +387,7 @@ export type Database = {
           pnl?: number | null
           position_size?: number | null
           risk_amount?: number
+          screenshot_path?: string | null
           status?: string
           stop_loss?: number | null
           strategy_id?: string | null

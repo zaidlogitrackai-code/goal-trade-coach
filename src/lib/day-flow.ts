@@ -38,5 +38,5 @@ export function currentStep(i: FlowInput): FlowResult {
     return { step: 3, message: "عندك صفقة مفتوحة بدون وقف خسارة. حط الوقف الحين.", action: "شوف الصفقات", to: "/trades", danger: true };
   if (i.status === "high_risk" || i.status === "rules_broken")
     return { step: 3, message: "المخاطرة عالية. فكّر توقف أو خفّف الحجم.", action: "كلّم المدرب", to: "/coach", danger: true };
-  return { step: 3, message: "الجلسة شغالة. ارفع صورة أو قل للمدرب صفقتك.", action: "صفقة جديدة", to: "/new-trade" };
+  return { step: 3, message: "الجلسة شغالة. ارفع صورة أو قل لسَنَد صفقتك.", action: "صفقة جديدة", to: "/new-trade" };
 }

@@ -46,6 +46,15 @@ export const ACTION_TYPES = [
   "add_reminder",
   "delete_reminder",
   "set_daily_plan",
+  "attach_trade_image",
+  "remove_trade_image",
+  "add_violation",
+  "delete_violation",
+  "delete_daily_plan",
+  "update_session",
+  "delete_session",
+  "rename_thread",
+  "delete_notifications",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -75,7 +84,22 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   add_reminder: "إضافة تذكير",
   delete_reminder: "حذف تذكير",
   set_daily_plan: "خطة اليوم",
+  attach_trade_image: "إرفاق صورة بالصفقة",
+  remove_trade_image: "حذف صورة الصفقة",
+  add_violation: "تسجيل مخالفة",
+  delete_violation: "حذف مخالفة",
+  delete_daily_plan: "مسح خطة اليوم",
+  update_session: "تعديل جلسة",
+  delete_session: "حذف جلسة",
+  rename_thread: "تغيير اسم محادثة",
+  delete_notifications: "مسح التنبيهات",
 };
+
+/** The last image the user sent in chat, so the agent can attach it to a trade. */
+let lastImage: string | null = null;
+export function rememberChatImage(img: string | null) {
+  if (img) lastImage = img;
+}
 
 /** Always wait for an explicit click, even in auto mode. */
 export const DESTRUCTIVE: readonly ActionType[] = [
@@ -86,6 +110,11 @@ export const DESTRUCTIVE: readonly ActionType[] = [
   "delete_analysis",
   "delete_thread",
   "delete_reminder",
+  "remove_trade_image",
+  "delete_violation",
+  "delete_daily_plan",
+  "delete_session",
+  "delete_notifications",
 ];
 
 /** Thrown in auto mode when an action needs the user's click first. */
@@ -260,6 +289,15 @@ export const SCHEMAS = {
     amount: num.min(0),
     note: z.string().max(300).nullish(),
   }),
+  attach_trade_image: z.object({ trade_id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }).refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
+  remove_trade_image: z.object({ trade_id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }).refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
+  add_violation: z.object({ note: z.string().min(1).max(500), rule: z.string().max(200).nullish(), symbol: z.string().max(20).nullish() }),
+  delete_violation: z.object({ id: z.string().uuid().nullish() }),
+  delete_daily_plan: z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish() }),
+  update_session: z.object({ id: z.string().uuid().nullish(), plan: opt, review: opt, mood: z.string().max(40).nullish() }),
+  delete_session: z.object({ id: z.string().uuid().nullish() }),
+  rename_thread: z.object({ title: z.string().min(1).max(200), new_title: z.string().min(1).max(200) }),
+  delete_notifications: z.object({}).passthrough(),
   update_focus: z.object({
     markets: z.union([z.string().max(200), z.array(z.string().max(30)).max(10)]).nullish(),
     goal: opt,
@@ -716,6 +754,73 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const id = rows?.find((r) => r.title.trim() === String(d["title"]).trim())?.id;
       if (!id) throw new Error("ما لقيت التذكير");
       const { error } = await supabase.from("reminders").delete().eq("id", id);
+      return check(error);
+    }
+    case "attach_trade_image": {
+      if (!lastImage) throw new Error("ارفع الصورة في المحادثة أول");
+      const trade = await findTrade(d as { trade_id?: string | null; symbol?: string | null });
+      const blob = await (await fetch(lastImage)).blob();
+      const ext = blob.type.split("/")[1] ?? "jpg";
+      const path = `${user_id}/${trade.id}-${Date.now()}.${ext}`;
+      const up = await supabase.storage.from("trade-screenshots").upload(path, blob, { contentType: blob.type, upsert: true });
+      check(up.error);
+      const { data: old } = await supabase.from("trades").select("screenshot_path").eq("id", trade.id).maybeSingle();
+      if (old?.screenshot_path) await supabase.storage.from("trade-screenshots").remove([old.screenshot_path]);
+      const { error } = await supabase.from("trades").update({ screenshot_path: path }).eq("id", trade.id);
+      return check(error);
+    }
+    case "remove_trade_image": {
+      const trade = await findTrade(d as { trade_id?: string | null; symbol?: string | null });
+      const { data: row } = await supabase.from("trades").select("screenshot_path").eq("id", trade.id).maybeSingle();
+      if (!row?.screenshot_path) throw new Error("الصفقة ما فيها صورة");
+      await supabase.storage.from("trade-screenshots").remove([row.screenshot_path]);
+      const { error } = await supabase.from("trades").update({ screenshot_path: null }).eq("id", trade.id);
+      return check(error);
+    }
+    case "add_violation": {
+      const rule_id = d["rule"] ? await findByName("trading_rules", String(d["rule"])).catch(() => null) : null;
+      const trade_id = d["symbol"] ? (await findTrade({ symbol: String(d["symbol"]) }).catch(() => null))?.id ?? null : null;
+      const { error } = await supabase.from("rule_violations").insert({ user_id, note: String(d["note"]), rule_id, trade_id });
+      return check(error);
+    }
+    case "delete_violation": {
+      let q = supabase.from("rule_violations").select("id").order("occurred_at", { ascending: false }).limit(1);
+      if (d["id"]) q = q.eq("id", String(d["id"]));
+      const id = (await q).data?.[0]?.id;
+      if (!id) throw new Error("ما لقيت المخالفة");
+      const { error } = await supabase.from("rule_violations").delete().eq("id", id);
+      return check(error);
+    }
+    case "delete_daily_plan": {
+      let q = supabase.from("daily_plans").select("id").order("day", { ascending: false }).limit(1);
+      if (d["day"]) q = q.eq("day", String(d["day"]));
+      const id = (await q).data?.[0]?.id;
+      if (!id) throw new Error("ما لقيت خطة");
+      const { error } = await supabase.from("daily_plans").delete().eq("id", id);
+      return check(error);
+    }
+    case "update_session":
+    case "delete_session": {
+      let q = supabase.from("trading_sessions").select("id").order("started_at", { ascending: false }).limit(1);
+      if (d["id"]) q = q.eq("id", String(d["id"]));
+      const id = (await q).data?.[0]?.id;
+      if (!id) throw new Error("ما لقيت الجلسة");
+      if (a.type === "delete_session") {
+        const { error } = await supabase.from("trading_sessions").delete().eq("id", id);
+        return check(error);
+      }
+      const { error } = await supabase.from("trading_sessions").update(pick(d, ["plan", "review", "mood"]) as Upd<"trading_sessions">).eq("id", id);
+      return check(error);
+    }
+    case "rename_thread": {
+      const { data: rows } = await supabase.from("coach_threads").select("id,title");
+      const id = rows?.find((r) => r.title.trim() === String(d["title"]).trim())?.id;
+      if (!id) throw new Error("ما لقيت المحادثة");
+      const { error } = await supabase.from("coach_threads").update({ title: String(d["new_title"]) }).eq("id", id);
+      return check(error);
+    }
+    case "delete_notifications": {
+      const { error } = await supabase.from("notifications").delete().eq("user_id", user_id);
       return check(error);
     }
     case "mark_notifications_read": {

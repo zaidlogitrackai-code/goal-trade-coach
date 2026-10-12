@@ -1,3 +1,4 @@
+import { rememberChatImage } from "@/lib/agent-actions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -17,7 +18,7 @@ import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
 
 export const Route = createFileRoute("/_authenticated/coach")({
-  head: () => ({ meta: [{ title: "المدرب الذكي — نظام هادي" }, { name: "description", content: "مدرب شخصي يتكلم معك بالعربي ويعرف صفقاتك وقواعدك." }] }),
+  head: () => ({ meta: [{ title: "سَنَد — شريكك ضد الطمع" }, { name: "description", content: "شريكك ضد الطمع ومساعدك في كل شيء، يدير نظامك كامل." }] }),
   component: CoachPage,
 });
 
@@ -93,6 +94,7 @@ function CoachPage() {
       const id = draft ? await newThread() : active ?? (await newThread());
       if (!id) return;
       const img = draft ? draft.image : image;
+    rememberChatImage(img);
       setText(""); setImage(null); setPending(msg);
       const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}) } });
       if (res?.messageId) setFreshId(res.messageId);
@@ -181,7 +183,7 @@ function CoachPage() {
             </Sheet>
             <div className="min-w-0 text-center">
               <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
-              <p className="text-[11px] text-muted-foreground">{busy ? "يكتب…" : "المدرب الذكي"}</p>
+              <p className="text-[11px] text-muted-foreground">{busy ? "يكتب…" : "سَنَد · شريكك ضد الطمع"}</p>
             </div>
             <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
           </div>

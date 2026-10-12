@@ -29,7 +29,7 @@ export const NAV_GROUPS = [
     title: "التحليل",
     items: [
       { to: "/analyst", label: "المحلل الذكي", icon: ScanSearch },
-      { to: "/coach", label: "المدرب الذكي", icon: MessagesSquare },
+      { to: "/coach", label: "سَنَد", icon: MessagesSquare },
       { to: "/strategies", label: "الاستراتيجيات", icon: Layers },
     ],
   },

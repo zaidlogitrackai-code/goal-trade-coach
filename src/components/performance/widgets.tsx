@@ -77,7 +77,7 @@ export function Goals({ rows, cur }: { rows: { label: string; pnl: number; targe
             <div className="flex justify-between text-sm"><span>{r.label}</span><span className={`font-data ${r.pnl >= 0 ? "text-success" : "text-destructive"}`} dir="ltr">{fmtMoney(r.pnl, cur)}</span></div>
             <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full transition-all ${r.pnl >= 0 ? "bg-success" : "bg-destructive"}`} style={{ width: `${pct}%` }} /></div>
             <div className="flex justify-between text-xs text-muted-foreground">
-              {has ? <><span>الهدف {r.target > 0 ? fmtMoney(r.target, cur) : "—"}</span><span>حد الخسارة {r.loss > 0 ? fmtMoney(r.loss, cur) : "—"}</span></> : <span>ما حددت هدف لهذي الفترة — قل للمدرب.</span>}
+              {has ? <><span>الهدف {r.target > 0 ? fmtMoney(r.target, cur) : "—"}</span><span>حد الخسارة {r.loss > 0 ? fmtMoney(r.loss, cur) : "—"}</span></> : <span>ما حددت هدف لهذي الفترة — قل لسَنَد.</span>}
             </div>
           </div>
         );
