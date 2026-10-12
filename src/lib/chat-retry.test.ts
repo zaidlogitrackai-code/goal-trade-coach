@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { retryDecision, sendReliably, type RetryDecision, friendlyError, isNetworkError, retryText, shouldSkipUserInsert, unansweredMessage } from "./chat-retry";
+
+describe("chat retry", () => {
+  it("treats 'Failed to fetch' as a network drop", () => {
+    expect(isNetworkError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isNetworkError(new Error("صار خطأ"))).toBe(false);
+  });
+
+  it("never shows the English browser error", () => {
+    expect(friendlyError(new TypeError("Failed to fetch"))).toContain("أعد المحاولة");
+    expect(friendlyError(new Error("Internal"))).not.toContain("Internal");
+  });
+
+  it("skips re-saving the same unanswered user message on retry", () => {
+    expect(shouldSkipUserInsert({ role: "user", content: "مرحبا" }, "مرحبا")).toBe(true);
+    expect(shouldSkipUserInsert({ role: "assistant", content: "مرحبا" }, "مرحبا")).toBe(false);
+    expect(shouldSkipUserInsert({ role: "user", content: "هلا" }, "مرحبا")).toBe(false);
+    // Retried after a reload (image no longer in memory): still the same message.
+    expect(shouldSkipUserInsert({ role: "user", content: "حلل\n📎 (صورة مرفقة)" }, "حلل")).toBe(true);
+  });
+
+  it("returns the saved reply instead of asking the AI twice when only the response was lost", () => {
+    expect(retryDecision([{ role: "assistant", content: "حاضر" }, { role: "user", content: "مرحبا" }], "مرحبا")).toBe("already-answered");
+    expect(retryDecision([{ role: "user", content: "مرحبا" }], "مرحبا")).toBe("skip-insert");
+    expect(retryDecision([{ role: "assistant", content: "حاضر" }, { role: "user", content: "هلا" }], "مرحبا")).toBe("fresh");
+    expect(retryDecision([], "مرحبا")).toBe("fresh");
+  });
+
+  it("finds the last unanswered user message", () => {
+    expect(unansweredMessage([{ role: "assistant", content: "a" }, { role: "user", content: "b" }])?.content).toBe("b");
+    expect(unansweredMessage([{ role: "user", content: "b" }, { role: "assistant", content: "a" }])).toBeNull();
+  });
+
+  it("drops the image marker when resending", () => {
+    expect(retryText("حلل\n📎 (صورة مرفقة)")).toBe("حلل");
+  });
+
+
+  it("does not resend on a normal server error", async () => {
+    let n = 0;
+    await expect(sendReliably(async () => { n++; throw new Error("رصيد"); }, async () => "fresh", { pollMs: 0 })).rejects.toThrow();
+    expect(n).toBe(1);
+  });
+
+  it("after a drop, picks up the reply the server saved instead of asking again", async () => {
+    let calls = 0;
+    const states: RetryDecision[] = ["skip-insert", "already-answered"];
+    const out = await sendReliably(async () => { calls++; throw new TypeError("Failed to fetch"); }, async () => states.shift()!, { pollMs: 0 });
+    expect(out.kind).toBe("answered");
+    expect(calls).toBe(1);
+  });
+
+  it("after a drop, resends once when the message never reached the server", async () => {
+    const flags: boolean[] = [];
+    const out = await sendReliably(async (retry) => { flags.push(retry); if (!retry) throw new TypeError("Failed to fetch"); return "ok"; }, async () => "fresh", { pollMs: 0 });
+    expect(out).toEqual({ kind: "reply", value: "ok" });
+    expect(flags).toEqual([false, true]);
+  });
+
+  it("gives up waiting and shows the retry button when no reply comes", async () => {
+    const out = await sendReliably(async () => { throw new TypeError("Failed to fetch"); }, async () => "skip-insert", { pollMs: 1, maxWaitMs: 5 });
+    expect(out.kind).toBe("pending");
+  });
+});

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Camera, ImagePlus, Mic, SendHorizontal, Square, X } from "lucide-react";
+import { Camera, ImagePlus, Mic, RotateCw, SendHorizontal, Square, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { Md } from "@/components/md";
@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { coachReply, transcribeAudio } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
-import { prepareImage } from "@/lib/image";
+import { makeThumbnail, prepareImage } from "@/lib/image";
+import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
+import { threadState } from "@/lib/chat-check";
 
 function todayTitle() {
   return `جلسة ${new Date().toLocaleDateString("en-CA")}`;
@@ -62,6 +64,11 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const camRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const boot = useRef(false);
+  // Full image of the last send, kept so "retry" can resend it.
+  const lastImage = useRef<string | null>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Shrink the box back after sending a long message.
+  useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
 
   useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
 
@@ -98,27 +105,38 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     // Agent messages written elsewhere (morning note, watcher alerts) appear without a reload.
     refetchInterval: busy ? false : 15_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from("coach_messages").select("*").eq("thread_id", id!).order("created_at");
+      const { data, error } = await supabase.from("coach_messages").select("id,role,content,actions,image,created_at").eq("thread_id", id!).order("created_at");
       if (error) throw error;
       return data;
     },
   });
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [msgs.data, pending, busy]);
 
-  async function submit(override?: string) {
+  async function submit(override?: string, again = false) {
     const msg = (override ?? text).trim() || (image ? "شوف هذي الصورة" : "");
     if (!msg || busy || !id) return;
     setBusy(true);
-    const img = image;
+    const img = again ? lastImage.current : image;
+    lastImage.current = img;
     rememberChatImage(img);
-    setText(""); setImage(null); setPending(msg);
+    if (!again) { setText(""); setImage(null); setPending(msg); }
     try {
-      const res = await send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(mode ? { mode } : {}), ...(brief != null ? { brief } : {}) } });
-      if (res?.messageId) setFreshId(res.messageId);
+      const thumb = img ? await makeThumbnail(img) : null;
+      const out = await sendReliably(
+        (retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}), ...(mode ? { mode } : {}), ...(brief != null ? { brief } : {}) } }),
+        () => threadState(id, msg),
+      );
+      if (out.kind === "reply" && out.value?.messageId) setFreshId(out.value.messageId);
+      if (out.kind === "pending") toast.error("الرد تأخر. اضغط «أعد المحاولة».");
       await qc.invalidateQueries({ queryKey: ["messages", id] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "تعذّر الرد");
-      qc.invalidateQueries({ queryKey: ["messages", id] });
+      await qc.invalidateQueries({ queryKey: ["messages", id] });
+      const rows = [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", id]) ?? [])].reverse();
+      const state = retryDecision(rows, msg);
+      // The reply did arrive (only the response was lost): nothing to complain about.
+      if (state !== "already-answered") toast.error(friendlyError(e));
+      // If the message never reached the server, give it back so nothing typed is lost.
+      if (!again && state === "fresh") { setText(msg); if (img) setImage(img); }
     } finally { setBusy(false); setPending(null); }
   }
 
@@ -152,6 +170,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
 
   const list = msgs.data ?? [];
   const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending);
+  const stuck = !busy ? unansweredMessage(list) : null;
   const quick = quickProp ?? (hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"]);
 
   return (
@@ -179,6 +198,12 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
         ))}
         {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">{pending}</div>}
         {busy && <div className="w-fit rounded-2xl bg-muted px-4 py-2 text-sm text-muted-foreground">يكتب…</div>}
+        {stuck && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>ما وصل الرد على رسالتك.</span>
+            <button onClick={() => submit(retryText(stuck.content), true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
+          </div>
+        )}
         {!busy && list.length > 0 && (quickProp ? true : list.length < 4) && (
           <div className="flex flex-wrap gap-2">
             {quick.map((q) => (
@@ -195,6 +220,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
         <Textarea
+          ref={taRef}
           rows={1}
           value={text}
           onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}

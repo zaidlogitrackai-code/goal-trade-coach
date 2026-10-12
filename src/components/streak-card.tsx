@@ -41,7 +41,7 @@ export function StreakCard({ large = false, compact = false }: { large?: boolean
           <p className={`font-display font-semibold ${large ? "text-2xl" : "text-lg"}`}>
             <span className="font-data tabular-nums">{r.current}</span> {r.current === 1 ? "يوم" : "أيام"} انضباط
           </p>
-          <p className="truncate text-xs text-muted-foreground">أفضل ستريك: {r.best} · السبت والأحد ما ينحسبون</p>
+          <p className="text-xs leading-5 text-muted-foreground">أفضل ستريك: {r.best} · السبت والأحد ما ينحسبون</p>
         </div>
       </div>
       <div className="flex shrink-0 gap-1" dir="ltr" aria-label="آخر 10 أيام سوق">

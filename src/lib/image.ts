@@ -47,3 +47,27 @@ export async function prepareImage(file: File): Promise<string> {
   if (file.size > 5_000_000) throw new Error("ما قدرت أصغّر الصورة، جرّب لقطة أصغر");
   return readAsDataUrl(file);
 }
+
+/** Longest side of the small preview stored with a chat message (the AI still gets the full image). */
+export const THUMB_SIDE = 240;
+export const MAX_THUMB_CHARS = 60_000;
+
+/** Small JPEG preview for the chat bubble; null if it can't be made small enough. */
+export async function makeThumbnail(dataUrl: string): Promise<string | null> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const { width, height } = fitWithin(img.naturalWidth, img.naturalHeight, THUMB_SIDE);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, width, height);
+    const url = canvas.toDataURL("image/jpeg", 0.7);
+    return url.startsWith("data:image/jpeg") && url.length <= MAX_THUMB_CHARS ? url : null;
+  } catch {
+    return null;
+  }
+}

@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { requestContext } from "./lib/request-context.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -46,16 +47,26 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    try {
-      const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
-    } catch (error) {
-      console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
+    // Cloudflare's waitUntil arrives on the request (set by the host adapter) or on ctx.
+    type WU = { waitUntil?: (p: Promise<unknown>) => void };
+    const host = (ctx ?? {}) as WU;
+    const fromReq = (request as unknown as WU).waitUntil;
+    const waitUntil = fromReq ?? (host.waitUntil ? host.waitUntil.bind(host) : undefined);
+    const store = waitUntil ? { waitUntil } : {};
+    return requestContext.run(store, () => handle(request, env, ctx));
   },
 };
+
+async function handle(request: Request, env: unknown, ctx: unknown) {
+  try {
+    const handler = await getServerEntry();
+    const response = await handler.fetch(request, env, ctx);
+    return await normalizeCatastrophicSsrResponse(response);
+  } catch (error) {
+    console.error(error);
+    return new Response(renderErrorPage(), {
+      status: 500,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+}

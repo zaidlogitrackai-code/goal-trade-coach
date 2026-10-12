@@ -12,6 +12,8 @@ import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
+import { IMAGE_NOTE, retryDecision } from "./chat-retry";
+import { MAX_THUMB_CHARS } from "./image";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -270,28 +272,47 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), thumb: z.string().startsWith("data:image/").max(MAX_THUMB_CHARS).optional(), retry: z.boolean().optional(), mode: z.enum(["coach", "risk", "strategy", "discipline", "analyst"]).optional(), brief: z.boolean().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
-      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.image ? `${data.message}\n📎 (صورة مرفقة)` : data.message, image: data.image ?? null });
-      if (e1) throw e1;
-      const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
-      const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
-      if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      let live = "";
-      if (data.mode === "analyst") {
-        const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
-        const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
-        if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
+      const stored = data.image ? `${data.message}${IMAGE_NOTE}` : data.message;
+      let skip = false;
+      if (data.retry) {
+        const { data: newest } = await sb.from("coach_messages").select("id,role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(2);
+        const decision = retryDecision(newest ?? [], stored);
+        // Only the response was lost on the way back: hand back the saved reply, don't ask again.
+        if (decision === "already-answered" && newest?.[0]) return { reply: newest[0].content, messageId: newest[0].id };
+        skip = decision === "skip-insert";
       }
-      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
-      const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
-      if (e2) throw e2;
-      const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
-      if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
-      await sb.from("coach_threads").update(update).eq("id", data.threadId);
-      return { reply, messageId: saved.id };
+      if (!skip) {
+        // Only a small preview is stored; the full image goes to the AI below.
+        const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: stored, image: data.thumb ?? null });
+        if (e1) throw e1;
+      }
+      // The reply is produced in a task that outlives the request: if the phone drops
+      // the connection, it still gets saved and the chat picks it up.
+      const work = (async () => {
+        const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
+        const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
+        if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
+        let live = "";
+        if (data.mode === "analyst") {
+          const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
+          const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
+          if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
+        }
+        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
+        const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
+        if (e2) throw e2;
+        const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
+        if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
+        await sb.from("coach_threads").update(update).eq("id", data.threadId);
+        return { reply, messageId: saved.id };
+      })();
+      const { keepAlive } = await import("./request-context.server");
+      keepAlive(work);
+      return await work;
     } catch (e) { fail(e); }
   });
 
