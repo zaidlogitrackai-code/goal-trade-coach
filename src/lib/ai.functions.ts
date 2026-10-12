@@ -170,6 +170,11 @@ const AGENT_GUIDE = `أنت "المدرب الذكي" ومساعد المتدا�
 5. جلسة التداول (أنت منظمها بالكامل، ما في نماذج يدوية): إذا ما في جلسة مفتوحة وقال إنه بيتداول اليوم، اسأله باختصار (سؤالين بالكثير بكل رد): وش تارقتك اليوم؟ أي أسواق بتراقب؟ كم صفقة بالكثير؟ شي واحد ممنوع اليوم؟ وكيف نفسيتك؟ أول ما يعطيك التارقت والسوق ابدأ الجلسة بـ start_session (plan فيه الأصول والتارقت وأقصى صفقات والممنوع والخطة، mood بكلمة وحدة) وحدّث daily_target بـ update_settings إذا تغيّر. إذا التارقت طمع قل له. إذا قال ما بيتداول اليوم احترم قراره وما تبدأ جلسة. إذا في جلسة مفتوحة وقال "خلصت" أو "سكّر الجلسة": اسأله بسؤال واحد عن التزامه بالخطة وهل طمع أو انتقم وأفضل وأسوأ قرار، وبعد جوابه أضف end_session مع review مرتب. لو قال سكّرها بدون مراجعة سكّرها بمراجعة مختصرة من صفقات الجلسة.
 لا تخترع أرقام ما قالها ولا ظهرت بالصورة. summary جملة عربية قصيرة تشرح الإجراء. reply ردك بالعربي بصيغة markdown مختصر. إذا ما فيه شي يُحفظ خل actions فاضية.`;
 
+const RISK_MODE = `وضعك الحين: أنت "حارس المخاطر" لهادي. ركّز على حدوده (الهدف وسقف الربح وحد الخسارة اليومي والأسبوعي والشهري، المخاطرة لكل صفقة واليومية، عدد الصفقات، الخسائر المتتالية) وتنبيهات المراقب الأخيرة.
+- لما يطلب تغيير حد، جهّز update_settings بنفس الرد بالأرقام اللي قالها بالضبط. لو في تعارض (مثل الهدف اليومي أكبر من سقف الربح) قل له وجهّز التصحيح.
+- لما يوصف صفقة يبي يدخلها، احسب كم يخاطر من أرقامه وقارنها بالمتبقي، وأعط حكم واحد واضح: ادخل، أو خفّف الحجم، أو لا تدخل.
+- كن صريح ضد الطمع والانتقام. ما تخترع أرقام ما عندك. ردود قصيرة.`;
+
 async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
   const ctx = await buildContext(sb);
   const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
@@ -179,7 +184,7 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[])
 
 export const coachReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional() }).parse(d))
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), message: z.string().min(1).max(4000), image: z.string().startsWith("data:image/").max(8_000_000).optional(), mode: z.enum(["coach", "risk"]).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
@@ -188,7 +193,7 @@ export const coachReply = createServerFn({ method: "POST" })
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
       if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
-      const { reply, actions } = await runAgent(sb, "", input);
+      const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : "", input);
       const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
       if (e2) throw e2;
       const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
@@ -354,4 +359,22 @@ export const transcribeAudio = createServerFn({ method: "POST" })
     const text = (j.text ?? "").trim();
     if (!text) throw new Error("ما سمعت شي بالتسجيل.");
     return { text };
+  });
+
+/** Once-a-day morning note from the risk guardian, written straight into its chat. */
+export const riskMorning = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ threadId: z.string().uuid(), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(d))
+  .handler(async ({ data, context }) => {
+    try {
+      const sb = context.supabase;
+      const key = `risk-morning-${data.day}`;
+      const { data: seen } = await sb.from("notifications").select("id").eq("dedupe_key", key).limit(1);
+      if (seen?.length) return { skipped: true };
+      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true } as never);
+      if (lock) return { skipped: true };
+      const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة: حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه)، ونصيحة وحدة لليوم. ابدأ بـ صباح الخير هادي." }]);
+      await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
+      return { skipped: false };
+    } catch (e) { fail(e); }
   });
