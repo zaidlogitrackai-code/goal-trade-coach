@@ -273,7 +273,7 @@ export const coachReply = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     try {
       const sb = context.supabase;
-      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.image ? `${data.message}\n📎 (صورة مرفقة)` : data.message });
+      const { error: e1 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "user", content: data.image ? `${data.message}\n📎 (صورة مرفقة)` : data.message, image: data.image ?? null });
       if (e1) throw e1;
       const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
       const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));

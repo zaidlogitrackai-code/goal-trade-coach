@@ -161,6 +161,9 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
             ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
             : "w-full min-w-0 break-words text-sm leading-6"}>
             {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
+            {m.role === "user" && "image" in m && typeof m.image === "string" && (
+              <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
+            )}
             {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
               <div className="mt-3 border-t border-border pt-3">
                 <AgentActions
