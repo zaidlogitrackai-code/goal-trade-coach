@@ -31,8 +31,7 @@ export const tradesQuery = queryOptions({
     if (error) throw error;
     return data;
   },
-  refetchOnWindowFocus: true,
-  refetchInterval: 30_000,
+  refetchInterval: 60_000,
 });
 
 export const strategiesQuery = queryOptions({

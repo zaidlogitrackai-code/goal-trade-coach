@@ -65,7 +65,7 @@ export function RiskWatcher() {
       } catch { /* try again next minute */ }
     }
     void tick();
-    const id = setInterval(tick, EVERY_MS);
+    const id = setInterval(() => { if (!document.hidden) void tick(); }, EVERY_MS);
     return () => { stop = true; clearInterval(id); };
   }, [qc, review]);
   return null;
