@@ -1,6 +1,6 @@
 import { strategyStats } from "./perf";
 import { planCheck } from "./daily-plan";
-import { disciplineStreak } from "./streak";
+import { loginStreak } from "./streak";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -42,7 +42,7 @@ async function buildContext(sb: Sb) {
   const [{ data: alerts }, { data: reminders }, { data: stSess }, { data: stViol }] = await Promise.all([
     sb.from("notifications").select("title,body,created_at").in("kind", ["risk", "reminder"]).order("created_at", { ascending: false }).limit(8),
     sb.from("reminders").select("title,repeat,at_time,next_at").eq("active", true).limit(20),
-    sb.from("trading_sessions").select("started_at,ended_at,review").gte("started_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
+    sb.from("user_visits").select("day").order("day", { ascending: false }).limit(200),
     sb.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
   ]);
   const { data: guardRow } = await sb.from("knowledge_notes").select("content").eq("category", GUARD_STYLE_CATEGORY).limit(1).maybeSingle();
@@ -54,7 +54,7 @@ async function buildContext(sb: Sb) {
   for (const x of closedAll.data ?? []) { const k = (x.closed_at ?? x.opened_at).slice(0, 10); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
   const wins = [...winDays.values()].filter((v) => v > 0);
   const planStatus = planCheck(todayPlan && { ...todayPlan, target: todayPlan.target == null ? null : Number(todayPlan.target), risk_per_trade: todayPlan.risk_per_trade == null ? null : Number(todayPlan.risk_per_trade), max_loss: todayPlan.max_loss == null ? null : Number(todayPlan.max_loss) }, (month.data ?? []).filter((x) => x.opened_at >= dayStart), s.data ?? {}, wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null);
-  const streak = disciplineStreak(stSess ?? [], stViol ?? [], s.data?.timezone || "Asia/Riyadh");
+  const streak = loginStreak((stSess ?? []).map((x) => x.day), stViol ?? [], s.data?.timezone || "Asia/Riyadh");
   const ledger = parseLedger(capitalRow.data?.[0]?.content);
   const capital = computeCapital({
     starting: Number(s.data?.starting_balance) || 0,
