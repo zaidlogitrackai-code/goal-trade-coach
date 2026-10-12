@@ -286,3 +286,36 @@
   animation-timing-function: var(--ease-ios) !important;
   transition-timing-function: var(--ease-ios);
 }
+
+/* White petal celebration (login page): transform/opacity only, cheap on phones */
+@keyframes petal-fall {
+  0%   { transform: translate3d(0, -12vh, 0) rotate(0deg); opacity: 0; }
+  8%   { opacity: 0.95; }
+  50%  { transform: translate3d(var(--sway), 50vh, 0) rotate(calc(var(--spin) * 0.5)); }
+  92%  { opacity: 0.9; }
+  100% { transform: translate3d(calc(var(--sway) * -0.4), 112vh, 0) rotate(var(--spin)); opacity: 0; }
+}
+
+.petals {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.petal {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: var(--size);
+  height: calc(var(--size) * 1.35);
+  background: radial-gradient(ellipse at 30% 25%, hsl(0 0% 100%), hsl(0 0% 94%) 70%, hsl(0 0% 86%));
+  border-radius: 80% 0 80% 20%;
+  box-shadow: 0 0 6px hsl(0 0% 100% / 0.35), 0 0 0 1px hsl(0 0% 50% / 0.18);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: petal-fall var(--dur) linear var(--delay) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .petals { display: none; }
+}
