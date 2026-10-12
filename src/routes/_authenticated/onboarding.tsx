@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { LimitsForm } from "@/components/limits-form";
 import { Logo } from "@/components/app-shell";
 import { AiSetup } from "@/components/ai-setup";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ export const Route = createFileRoute("/_authenticated/onboarding")({
 });
 
 function Onboarding() {
-  const { data } = useQuery(settingsQuery);
+  useQuery(settingsQuery);
   const navigate = useNavigate();
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -22,10 +21,6 @@ function Onboarding() {
       <div className="mt-8 space-y-3">
         <AiSetup onFinished={() => navigate({ to: "/dashboard" })} />
         <Button variant="secondary" className="w-full" onClick={() => navigate({ to: "/dashboard" })}>خلصت، ودّني للرئيسية</Button>
-      </div>
-      <p className="mt-8 text-center text-sm text-muted-foreground">أو عبّيها بنفسك:</p>
-      <div className="mt-4">
-        <LimitsForm initial={data ?? null} submitLabel="ابدأ" onDone={() => navigate({ to: "/dashboard" })} />
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { LimitsForm } from "@/components/limits-form";
+import { LimitsSummary } from "@/components/limits-summary";
 import { RiskGauges } from "@/components/risk-gauges";
 import { RiskGuardian } from "@/components/risk-guardian";
 import { Loading } from "@/components/app-shell";
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/_authenticated/risk")({
 });
 
 const GREETING = "هلا هادي، أنا **حارس المخاطر**.\n\nأراقب حدودك كل دقيقة وأنبهك هنا. قل لي أي شيء: \"كم باقي لي اليوم؟\"، \"خلّ حد الخسارة 150\"، أو وصف صفقة تبي تدخلها وأعطيك رأيي.";
-const QUICK = ["كم باقي لي اليوم؟", "أبي أدخل صفقة", "عدّل حدودي", "صحّح التعارض"];
+const QUICK = ["كم باقي لي اليوم؟", "عدّل حدودي", "صحّح التعارض", "حدودي تناسب رصيدي؟", "خلّ الهدف 3%", "أبي أدخل صفقة"];
 
 function RiskPage() {
   const s = useQuery(settingsQuery);
@@ -98,10 +98,7 @@ function RiskPage() {
               <SheetHeader><SheetTitle>حدودي</SheetTitle></SheetHeader>
               <div className="mt-4 space-y-4">
                 <RiskGuardian settings={data} />
-                <details className="panel p-4">
-                  <summary className="cursor-pointer text-sm font-medium">تعديل يدوي (اختياري)</summary>
-                  <div className="mt-4"><LimitsForm key={data?.updated_at} initial={data} submitLabel="حفظ التغييرات" /></div>
-                </details>
+                {data && <LimitsSummary s={data} />}
               </div>
             </SheetContent>
           </Sheet>
