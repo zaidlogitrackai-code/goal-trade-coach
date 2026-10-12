@@ -26,7 +26,7 @@ export function RiskGauges({ s, m }: { s: StatusSettings; m: DayMetrics }) {
     <div className="mb-2 grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-4">
       <Gauge label="باقي من حد الخسارة" value={s.max_daily_loss > 0 ? money(Math.max(0, s.max_daily_loss - lossUsed)) : "غير محدد"}
         sub={`نتيجة اليوم ${money(m.todayPnl)}`} used={lossUsed} max={s.max_daily_loss} />
-      <Gauge label="المخاطرة المفتوحة" value={money(m.riskUsed)}
+      <Gauge label="المخاطرة المستخدمة اليوم" value={money(m.riskUsed)}
         sub={s.max_daily_risk > 0 ? `من ${money(s.max_daily_risk)} يوميًا` : "بدون سقف"} used={m.riskUsed} max={s.max_daily_risk} />
       <Gauge label="الصفقات اليوم" value={`${m.tradesToday}${s.max_trades_per_day > 0 ? ` / ${s.max_trades_per_day}` : ""}`}
         sub={m.tradesRemaining != null ? `باقي ${m.tradesRemaining}` : "بدون حد"} used={m.tradesToday} max={s.max_trades_per_day} />

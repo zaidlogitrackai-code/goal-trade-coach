@@ -26,7 +26,7 @@ export function NotificationsBell() {
       const since = startOfToday();
       // Daily clean-up: anything from before today disappears on its own.
       await supabase.from("notifications").delete().lt("created_at", since);
-      const { data, error } = await supabase.from("notifications").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(20);
+      const { data, error } = await supabase.from("notifications").select("*").gte("created_at", since).eq("dismissed", false).order("created_at", { ascending: false }).limit(20);
       if (error) throw error;
       return data;
     },
@@ -46,13 +46,14 @@ export function NotificationsBell() {
   }
 
   async function removeOne(id: string) {
-    await supabase.from("notifications").delete().eq("id", id);
+    // Hide, don't delete: today's rows also stop the daily messages from being written twice.
+    await supabase.from("notifications").update({ dismissed: true, read: true }).eq("id", id);
     qc.invalidateQueries({ queryKey: ["notifications"] });
   }
 
   async function removeAll() {
     if (!list.length) return;
-    await supabase.from("notifications").delete().in("id", list.map((n) => n.id));
+    await supabase.from("notifications").update({ dismissed: true, read: true }).in("id", list.map((n) => n.id));
     qc.invalidateQueries({ queryKey: ["notifications"] });
   }
 
