@@ -8,6 +8,7 @@ import { nextDaily, riskAlerts, type WatchTrade } from "@/lib/risk-watch";
 import { eveningReview } from "@/lib/ai.functions";
 
 const EVERY_MS = 60_000;
+export const RISK_THREAD = "حارس المخاطر";
 
 function pop(title: string, body: string, level: "danger" | "warning" | "success" | "info") {
   const fn = level === "danger" ? toast.error : level === "warning" ? toast.warning : level === "success" ? toast.success : toast.info;
