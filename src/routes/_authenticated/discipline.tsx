@@ -48,8 +48,8 @@ function DisciplinePage() {
       .catch(() => {});
   }, [morning, qc]);
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+    <div className="agent-page mx-auto w-full max-w-4xl">
+      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Gauge className="size-5 shrink-0" />
           <h1 className="truncate font-display text-lg font-semibold lg:text-xl">حارس الانضباط</h1>
@@ -64,7 +64,7 @@ function DisciplinePage() {
           </SheetContent>
         </Sheet>
       </div>
-      <div className="mb-3"><StreakCard /></div>
+      <div className="mb-2 shrink-0"><StreakCard compact /></div>
       <SessionAgent
         hasActive={false}
         title={DISCIPLINE_THREAD}

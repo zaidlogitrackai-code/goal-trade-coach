@@ -37,8 +37,8 @@ function StrategiesPage() {
   const { data } = useQuery(strategiesQuery);
   const n = data?.length ?? 0;
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+    <div className="agent-page mx-auto w-full max-w-4xl">
+      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <GraduationCap className="size-5 shrink-0" />
           <div className="min-w-0">
