@@ -43,7 +43,7 @@ export function RiskWatcher() {
               const { error } = await supabase.from("notifications").insert({ user_id, kind: "risk", day: new Date().toISOString().slice(0, 10), title: a.title, body: a.body, dedupe_key: a.key });
               if (!error) {
                 pop(a.title, a.body, a.level); added = true;
-                const { data: th } = await supabase.from("coach_threads").select("id").eq("title", RISK_THREAD).limit(1);
+                const { data: th } = await supabase.from("coach_threads").select("id").or(`title.eq.${RISK_THREAD},title.like.${RISK_THREAD} · %`).order("updated_at", { ascending: false }).limit(1);
                 if (th?.[0]) await supabase.from("coach_messages").insert({ user_id, thread_id: th[0].id, role: "assistant", content: `**${a.title}**\n\n${a.body}` });
               }
             }

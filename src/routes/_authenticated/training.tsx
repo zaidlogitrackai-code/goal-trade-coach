@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, Images, ThumbsDown, ThumbsUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -41,6 +42,7 @@ function TrainingPage() {
   const { data: examples } = useQuery(examplesQuery);
   const list = examples ?? [];
   const score = trainingScore({ strategies: strategies ?? [], examples: list });
+  const { c, controls } = useAgentChats(THREAD, GREETING);
   const good = list.filter((e) => e.verdict === "good").length;
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
@@ -57,6 +59,8 @@ function TrainingPage() {
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        {controls}
         <Sheet>
           <SheetTrigger asChild>
             <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="أمثلة التدريب"><Images className="size-4" /></Button>
@@ -82,8 +86,11 @@ function TrainingPage() {
             </div>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
-      <SessionAgent
+      {c && <SessionAgent
+        key={c}
+        threadId={c}
         hasActive={false}
         title={THREAD}
         greeting={GREETING}
@@ -94,7 +101,7 @@ function TrainingPage() {
           qc.invalidateQueries({ queryKey: ["strategy_examples"] });
           qc.invalidateQueries({ queryKey: ["strategies"] });
         }}
-      />
+      />}
     </div>
   );
 }

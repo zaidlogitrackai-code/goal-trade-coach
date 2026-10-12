@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loading, Stat } from "@/components/app-shell";
 import { useCallback, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { disciplineMorning } from "@/lib/ai.functions";
@@ -40,6 +41,7 @@ function DisciplinePage() {
   const qc = useQueryClient();
   const morning = useServerFn(disciplineMorning);
   const asked = useRef(false);
+  const { c, controls } = useAgentChats(DISCIPLINE_THREAD, GREETING);
   const onReady = useCallback((threadId: string) => {
     if (asked.current) return;
     asked.current = true;
@@ -54,6 +56,8 @@ function DisciplinePage() {
           <Gauge className="size-5 shrink-0" />
           <h1 className="truncate font-display text-lg font-semibold lg:text-xl">حارس الانضباط</h1>
         </div>
+        <div className="flex items-center gap-2">
+        {controls}
         <Sheet>
           <SheetTrigger asChild>
             <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="أرقامي"><ShieldAlert className="size-4" /></Button>
@@ -63,9 +67,12 @@ function DisciplinePage() {
             <div className="mt-4"><DisciplineStats /></div>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
       <div className="mb-2 shrink-0"><StreakCard compact /></div>
-      <SessionAgent
+      {c && <SessionAgent
+        key={c}
+        threadId={c}
         hasActive={false}
         title={DISCIPLINE_THREAD}
         greeting={GREETING}
@@ -74,7 +81,7 @@ function DisciplinePage() {
         placeholder="قل لحارس الانضباط خطتك…"
         onReady={onReady}
         onChanged={() => qc.invalidateQueries()}
-      />
+      />}
     </div>
   );
 }
