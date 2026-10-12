@@ -57,7 +57,7 @@
 /* Monochrome system: greyscale surfaces, white primary, semantic status colors only */
 :root {
   --radius: 1.125rem;
-  --background: hsl(30 6% 12%);
+  --background: hsl(0 0% 4%);
   --foreground: hsl(0 0% 96%);
   --card: rgba(255,255,255,0.08);
   --card-foreground: hsl(0 0% 96%);
@@ -112,9 +112,7 @@
   --btn-bg-hover: rgba(255,255,255,0.28);
   --btn-danger-bg: rgba(239,68,68,0.30);
   --body-bg:
-    radial-gradient(ellipse 90% 55% at 15% 0%, hsl(30 9% 34%), transparent 70%),
-    radial-gradient(ellipse 80% 55% at 100% 65%, hsl(24 10% 27%), transparent 70%),
-    linear-gradient(165deg, hsl(30 7% 19%), hsl(30 6% 10%));
+    linear-gradient(165deg, hsl(0 0% 7%), hsl(0 0% 3%));
 }
 
 /* Light theme: same monochrome system, inverted surfaces */
