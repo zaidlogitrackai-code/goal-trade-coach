@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { SessionAgent } from "@/components/session-agent";
-import { LiveTicker } from "@/components/live-ticker";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { currentUserId, fmtDate } from "@/lib/queries";
@@ -177,7 +176,6 @@ function AnalystPage() {
           </Sheet>
         </div>
       </div>
-      <LiveTicker />
       <SessionAgent
         key={c ?? "main"}
         {...(c ? { threadId: c } : {})}

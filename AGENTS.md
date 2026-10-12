@@ -25,4 +25,4 @@
 - Daily plan (target/trades/stop/max loss) lives in daily_plans (one row per day, revised_count tracks mid-day changes); greed/breach checks only in pure src/lib/daily-plan.ts — the discipline agent reads them from context.
 - The agent persona is named سَنَد; every delete action is listed in DESTRUCTIVE so it always waits for a click — prevents accidental data loss in auto mode.
 - Query defaults: staleTime 60s, no focus refetch, polling paused when the tab is hidden; backdrop blur only ≥768px — keeps the mobile app smooth.
-- Live market data for the nine instruments comes only from `src/lib/market.server.ts` (free Yahoo chart API, 30s cache); the analyst gets a short indicator summary via `indicators.ts` — free, no key, keeps prompts small.
+- Live market data for the nine instruments comes only from `src/lib/market.server.ts`: TradingView public scanner for price/indicators (matches the chart), Yahoo candles shifted onto that price for structure; analyst-only, no on-screen ticker — free, no key.
