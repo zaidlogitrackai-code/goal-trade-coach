@@ -74,7 +74,7 @@ function AnalystPage() {
             <input type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="EURUSD" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
+            <div className="space-y-2"><Label>الأصل</Label><Input dir="ltr" placeholder="EURUSD, US100, USOIL" value={symbol} onChange={(e) => setSymbol(e.target.value)} /></div>
             <div className="space-y-2"><Label>الفريم</Label><Input dir="ltr" placeholder="H1" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} /></div>
           </div>
           <div className="space-y-2"><Label>سؤالك (اختياري)</Label><Textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="مثلاً: هل الدخول شراء الآن مناسب؟" /></div>

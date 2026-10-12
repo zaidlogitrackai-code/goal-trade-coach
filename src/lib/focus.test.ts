@@ -28,7 +28,7 @@ const money = (n: number) => `${n}$`;
 
 describe("markets", () => {
   it("normalises Arabic names, slashes and separators", () => {
-    expect(splitMarkets("ذهب، EUR/USD و nas100 بيتكوين")).toEqual(["XAUUSD", "EURUSD"]);
+    expect(splitMarkets("ذهب، EUR/USD و nas100 بيتكوين")).toEqual(["XAUUSD", "EURUSD", "US100"]);
     expect(splitMarkets(["gold", "XAUUSD"])).toEqual(["XAUUSD"]);
   });
   it("judges symbols against specific markets only", () => {
