@@ -50,6 +50,9 @@ function CoachPage() {
   const endRef = useRef<HTMLDivElement>(null);
   // Full image of the last send, kept so "retry" can resend it.
   const lastImage = useRef<string | null>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Shrink the box back after sending a long message.
+  useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
 
   const focus = useQuery(focusQuery);
   const threads = useQuery({
@@ -255,6 +258,7 @@ function CoachPage() {
             <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
             <Textarea
               onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
+              ref={taRef}
               rows={1}
               value={text}
               onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}

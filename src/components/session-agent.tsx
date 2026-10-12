@@ -65,6 +65,9 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const boot = useRef(false);
   // Full image of the last send, kept so "retry" can resend it.
   const lastImage = useRef<string | null>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Shrink the box back after sending a long message.
+  useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
 
   useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
 
@@ -212,6 +215,7 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
         <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
         <Textarea
+          ref={taRef}
           rows={1}
           value={text}
           onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}
