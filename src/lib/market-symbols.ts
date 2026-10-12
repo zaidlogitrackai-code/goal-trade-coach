@@ -12,12 +12,21 @@ export const MARKET_SYMBOLS: MarketSymbol[] = [
   { key: "USDJPY", tv: "OANDA:USDJPY", label: "USDJPY", yahoo: "JPY=X", aliases: ["USDJPY", "USJPY", "ين"], digits: 3 },
 ];
 
-/** Finds every one of the nine symbols mentioned in free text. */
+/** Finds every one of the nine symbols mentioned in free text, in the order mentioned. */
 export function detectSymbols(text: string): MarketSymbol[] {
   const up = text.toUpperCase();
-  return MARKET_SYMBOLS.filter((s) => s.aliases.some((a) => {
-    const A = a.toUpperCase();
-    if (/^[A-Z0-9& ]+$/.test(A)) return new RegExp(`(^|[^A-Z])${A.replace(/[&]/g, "\\&")}([^A-Z]|$)`).test(up);
-    return up.includes(A);
-  }));
+  const pos = (s: MarketSymbol) => {
+    let best = -1;
+    for (const a of s.aliases) {
+      const A = a.toUpperCase();
+      let i = -1;
+      if (/^[A-Z0-9& ]+$/.test(A)) {
+        const m = new RegExp(`(^|[^A-Z])${A.replace(/[&]/g, "\\&")}([^A-Z]|$)`).exec(up);
+        if (m) i = m.index + m[1]!.length;
+      } else i = up.indexOf(A);
+      if (i >= 0 && (best < 0 || i < best)) best = i;
+    }
+    return best;
+  };
+  return MARKET_SYMBOLS.map((s) => ({ s, i: pos(s) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i).map((x) => x.s);
 }
