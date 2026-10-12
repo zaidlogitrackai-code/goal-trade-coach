@@ -28,7 +28,7 @@ export function money(n: number | null | undefined, currency = "USD") {
 }
 
 function Card({ to, label, Icon, value, tone, sub }: {
-  to: string; label: string; Icon: LucideIcon; value: string; tone?: string; sub: string;
+  to: string; label: string; Icon: LucideIcon; value: string; tone?: string | undefined; sub: string;
 }) {
   return (
     <Link
