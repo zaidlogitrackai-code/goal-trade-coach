@@ -314,13 +314,23 @@ export const coachReply = createServerFn({ method: "POST" })
         const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
         if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
         let live = "";
+        let chartThumb: string | null = null;
         if (data.mode === "analyst") {
           const recent = [data.message, ...(hist ?? []).slice(-4).map((m) => m.content)].join(" ");
           const syms = detectSymbols(data.message).length ? detectSymbols(data.message) : detectSymbols(recent);
-          if (syms.length) { const { marketContext } = await import("./market.server"); live = await marketContext(syms); }
+          if (syms.length) {
+            const { marketContext, chartImages } = await import("./market.server");
+            const [ctxText, charts] = await Promise.all([marketContext(syms), chartImages(syms[0]!)]);
+            live = ctxText;
+            if (charts) {
+              chartThumb = charts.thumb;
+              const note = data.image ? "هذه شارتات حية رسمها النظام للتأكيد؛ صورة هادي هي الأساس." : "هذه شارتات حية رسمها النظام الآن من الشموع الحقيقية. اقرأ الهيكل والسيولة ومناطق العرض والطلب منها بعينك.";
+              input.push({ role: "user", content: [{ type: "input_text", text: `${note}\n${charts.legend}` }, ...charts.images.map((u) => ({ type: "input_image", image_url: u, detail: "high" }))] });
+            }
+          }
         }
         const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
-        const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null }).select("id").single();
+        const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null, image: chartThumb }).select("id").single();
         if (e2) throw e2;
         const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
         if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);

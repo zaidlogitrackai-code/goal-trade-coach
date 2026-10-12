@@ -74,3 +74,25 @@ export async function marketContext(syms: MarketSymbol[]): Promise<string> {
   }));
   return `\n\n## بيانات السوق الحية (وقت ${new Date().toISOString()})\n${parts.join("\n\n")}\nاعتمد سعر TradingView والمؤشرات أعلاه أساسًا للدخول وTP1/TP2/SL حتى بدون صورة. لا تذكر مصدر البيانات إلا لو سألك. لو البيانات غير متوفرة اطلب صورة الشارت.`;
 }
+
+/** Draws the 4H/1H/15M charts the analyst looks at (prices shifted onto TradingView's). */
+export async function chartImages(s: MarketSymbol): Promise<{ images: string[]; legend: string; thumb: string } | null> {
+  try {
+    const { rasterize, rasterToPng, chartSvg } = await import("./chart-render");
+    let price: number | null = null;
+    try { price = (await tvSnapshot([s.tv])).get(s.tv)?.[0] ?? null; } catch { /* use Yahoo price */ }
+    const [m15, h1, h1long] = await Promise.all([chart(s.yahoo, "15m", "5d"), chart(s.yahoo, "60m", "1mo"), chart(s.yahoo, "60m", "60d")]);
+    const off = price != null ? price - m15.meta.regularMarketPrice : 0;
+    const sets: [string, Candle[]][] = [["4H", shift(to4h(h1long.candles), off)], ["1H", shift(h1.candles, off)], ["15M", shift(m15.candles, off)]];
+    const images: string[] = [];
+    const lines: string[] = [];
+    for (const [tf, c] of sets) {
+      if (c.length < 5) continue;
+      const r = rasterize(c);
+      images.push(await rasterToPng(r));
+      lines.push(`صورة ${images.length} = ${s.key} فريم ${tf}: أعلى الصورة ${r.hi.toFixed(s.digits)} وأسفلها ${r.lo.toFixed(s.digits)}، الخطوط الأفقية المنقطة من فوق لتحت: ${r.grid.map((g) => g.toFixed(s.digits)).join("، ")}. الخط الأبيض = السعر الحالي. أخضر صاعدة، أحمر هابطة.`);
+    }
+    if (!images.length) return null;
+    return { images, legend: lines.join("\n"), thumb: chartSvg(sets[1]![1], `${s.key} 1H`, s.digits) };
+  } catch { return null; }
+}
