@@ -47,8 +47,12 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    const host = (ctx ?? {}) as { waitUntil?: (p: Promise<unknown>) => void };
-    const store = host.waitUntil ? { waitUntil: host.waitUntil.bind(host) } : {};
+    // Cloudflare's waitUntil arrives on the request (set by the host adapter) or on ctx.
+    type WU = { waitUntil?: (p: Promise<unknown>) => void };
+    const host = (ctx ?? {}) as WU;
+    const fromReq = (request as unknown as WU).waitUntil;
+    const waitUntil = fromReq ?? (host.waitUntil ? host.waitUntil.bind(host) : undefined);
+    const store = waitUntil ? { waitUntil } : {};
     return requestContext.run(store, () => handle(request, env, ctx));
   },
 };
