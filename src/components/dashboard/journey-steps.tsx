@@ -9,9 +9,9 @@ export function JourneySteps({ journey }: { journey: Journey }) {
   const shown = setupDone ? steps.filter((s) => s.phase === "today") : steps;
 
   return (
-    <section className="panel space-y-4 p-5" aria-labelledby="journey-title">
+    <section className="panel space-y-3 p-4 sm:space-y-4 sm:p-5" aria-labelledby="journey-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="journey-title" className="text-lg font-semibold">
+        <h2 id="journey-title" className="text-base font-semibold sm:text-lg">
           {setupDone ? "خطوات اليوم" : "خطواتك للبداية"}
         </h2>
         {setupDone && (
@@ -21,22 +21,22 @@ export function JourneySteps({ journey }: { journey: Journey }) {
         )}
       </div>
 
-      <ol className="grid gap-2 sm:grid-cols-3">
+      <ol className="hidden gap-2 sm:grid sm:grid-cols-3">
         {shown.map((s) => (
           <StepItem key={s.key} step={s} current={current?.key === s.key} />
         ))}
       </ol>
 
       {current ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-          <div>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 sm:flex sm:flex-wrap sm:justify-between sm:p-4">
+          <div className="min-w-0">
             <p className="text-xs text-primary">
               الخطوة {current.n} من {steps.length}
             </p>
             <p className="mt-0.5 font-semibold">{current.title}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{current.hint}</p>
+            <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{current.hint}</p>
           </div>
-          <Button asChild>
+          <Button asChild size="sm" className="shrink-0 sm:h-9 sm:px-4 sm:text-sm">
             <Link to={current.to}>
               {current.cta}
               <ArrowLeft className="mr-1.5 size-4" aria-hidden="true" />

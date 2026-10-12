@@ -180,7 +180,7 @@ function Dashboard() {
   const openTrades = allTrades.filter((x) => x.status === "open");
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-8">
       {/* 1. Header */}
       <PageHeader
         title="حالة التداول اليوم"
@@ -200,9 +200,6 @@ function Dashboard() {
         }
       />
 
-      {/* 1.1 The client's steps: one clear next action */}
-      {journey && <JourneySteps journey={journey.journey} />}
-
       {/* 2. Main Status Banner (Single Primary Decision & Action) */}
       <StatusBanner
         status={bannerStatus}
@@ -212,7 +209,10 @@ function Dashboard() {
         maxConsecutiveLosses={settings.max_consecutive_losses}
       />
 
-      {/* 2.1 Focus: what the trader told the coach, next to what their trades show */}
+      {/* 2.1 The client's steps: one clear next action */}
+      {journey && <JourneySteps journey={journey.journey} />}
+
+      {/* 2.2 Focus: what the trader told the coach, next to what their trades show */}
       <FocusCard trades={allTrades} strategies={strategies.data ?? []} currency={cur} />
 
       <CapitalCard currency={cur} />
