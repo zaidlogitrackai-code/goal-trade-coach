@@ -248,7 +248,7 @@ const TRADE_BLOCK_RULE = `
 \`\`\`
   شراء: sl تحت الدخول وtp1<tp2 فوقه. بيع: العكس. لا صفقة: direction "none" مع no_trade_reason. skills = الخبرات اللي اتفقت (اثنتين على الأقل وإلا none). في ردود النقاش بدون صفقة جديدة لا تكتب البلوك.`;
 const BRIEF_RULE = `
-- الوضع المختصر: لا تتفلسف. بدون عناوين القالب. سطر واحد ليش (الخبرات اللي اتفقت)، وسطر واحد وش يلغي الفكرة، ثم البطاقة. لا تكرر الأرقام في النص.`;
+- الوضع المختصر (الافتراضي دايماً): تجاهل القالب الطويل فوق. لا تتفلسف، لا مقدمات، لا عناوين، لا تكرار. أقصى 4 أسطر قبل البطاقة. سطر واحد ليش (الخبرات اللي اتفقت)، وسطر واحد وش يلغي الفكرة، ثم البطاقة. لا تكرر الأرقام في النص.`;
 const DETAILED_RULE = `
 - الوضع المفصّل: اشرح أقسام القالب كاملة باختصار ثم البطاقة.`;
 
@@ -272,9 +272,11 @@ const ANALYST_MODE = `وضعك الحين: أنت "المحلل الذكي" له
 ${TRADE_BLOCK_RULE}
 ${ANALYST_SKILLS ? `\nخبرات المحلل:\n${ANALYST_SKILLS}` : ""}`;
 
+const SHORT_RULE = `- أسلوب الرد إلزامي: مختصر وواضح ومباشر. بدون مقدمات ولا مجاملات ولا كلام زايد ولا تكرار. جمل قصيرة أو نقاط قليلة، وأقصى سؤال واحد بالآخر.`;
+
 async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
   const ctx = await buildContext(sb);
-  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
+  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
   const parsed = JSON.parse(out) as { reply: string; actions: { type: string; summary: string; data: string }[] };
   return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 30) };
 }
