@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { LimitsForm } from "@/components/limits-form";
+import { RiskGuardian } from "@/components/risk-guardian";
 import { Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { settingsQuery } from "@/lib/queries";
@@ -30,6 +31,7 @@ function RiskPage() {
         subtitle="حدودك اليومية التي يحاسبك عليها النظام."
         action={<Button variant={data?.trading_paused ? "default" : "destructive"} onClick={togglePause}>{data?.trading_paused ? "استئناف التداول" : "إيقاف التداول الآن"}</Button>}
       />
+      <RiskGuardian settings={data ?? null} />
       <LimitsForm key={data?.updated_at} initial={data ?? null} submitLabel="حفظ التغييرات" />
     </div>
   );
