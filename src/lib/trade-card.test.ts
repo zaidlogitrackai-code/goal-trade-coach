@@ -12,6 +12,13 @@ describe("trade card", () => {
   it("rejects a sell whose TP2 is not beyond TP1", () => {
     expect(parseTradeCard(JSON.stringify({ direction: "sell", entry_from: 100, sl: 105, tp1: 95, tp2: 97 })).ok).toBe(false);
   });
+  it("reads trade style and holding time", () => {
+    const r = parseTradeCard(JSON.stringify({ direction: "buy", entry_from: 100, sl: 95, tp1: 105, style: "Scalp", hold: "10-30 دقيقة" }));
+    expect(r.ok && r.card.style).toBe("scalp");
+    expect(r.ok && r.card.hold).toBe("10-30 دقيقة");
+    const n = parseTradeCard(JSON.stringify({ direction: "sell", entry_from: 100, sl: 105, tp1: 95, style: "swing" }));
+    expect(n.ok && n.card.style).toBe("swing");
+  });
   it("accepts no-trade", () => {
     const r = parseTradeCard(JSON.stringify({ direction: "none", no_trade_reason: "انتظر" }));
     expect(r.ok && r.card.direction).toBe("none");

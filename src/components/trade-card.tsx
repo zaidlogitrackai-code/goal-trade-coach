@@ -1,5 +1,6 @@
 import { parseTradeCard } from "@/lib/trade-card";
 
+const STYLE_LABEL = { scalp: "سكالب", intraday: "داخل اليوم", swing: "سوينق" } as const;
 const f = (n: number | null) => (n == null ? "—" : String(n));
 
 function Row({ label, value, tone }: { label: string; value: string; tone: "success" | "destructive" | "muted" }) {
@@ -35,6 +36,9 @@ export function TradeCardView({ raw }: { raw: string }) {
           {c.confidence && <> · الثقة {c.confidence}</>}
         </span>
       </div>
+      {(c.style || c.hold) && (
+        <Row label="نوع الصفقة / المدة" value={[c.style ? STYLE_LABEL[c.style] : null, c.hold].filter(Boolean).join(" · ")} tone="muted" />
+      )}
       <Row label="الدخول" value={entry} tone="muted" />
       <div className="grid grid-cols-2 gap-2">
         <Row label="TP1" value={f(c.tp1)} tone="success" />
