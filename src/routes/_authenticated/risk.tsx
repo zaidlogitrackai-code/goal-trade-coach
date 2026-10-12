@@ -8,6 +8,7 @@ import { LimitsSummary } from "@/components/limits-summary";
 import { RiskGauges } from "@/components/risk-gauges";
 import { RiskGuardian } from "@/components/risk-guardian";
 import { Loading } from "@/components/app-shell";
+import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { RISK_THREAD } from "@/components/risk-watcher";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ function RiskPage() {
   const qc = useQueryClient();
   const morning = useServerFn(riskMorning);
   const asked = useRef(false);
+  const { c, controls } = useAgentChats(RISK_THREAD, GREETING);
 
   const onReady = useCallback((threadId: string) => {
     if (asked.current) return;
@@ -87,6 +89,7 @@ function RiskPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {controls}
           <Button size="sm" variant={data?.trading_paused ? "default" : "destructive"} onClick={togglePause}>
             {data?.trading_paused ? "استئناف" : "إيقاف التداول"}
           </Button>
@@ -105,7 +108,9 @@ function RiskPage() {
         </div>
       </div>
       {data && metrics && <RiskGauges s={data} m={metrics} />}
-      <SessionAgent
+      {c && <SessionAgent
+        key={c}
+        threadId={c}
         hasActive={false}
         title={RISK_THREAD}
         greeting={GREETING}
@@ -114,7 +119,7 @@ function RiskPage() {
         placeholder="اكتب لحارس المخاطر…"
         onReady={onReady}
         onChanged={() => qc.invalidateQueries({ queryKey: ["settings"] })}
-      />
+      />}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { currentUserId, strategiesQuery } from "@/lib/queries";
 import { Layers, Sparkles, Plus, AlertOctagon, GraduationCap } from "lucide-react";
+import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -36,6 +37,7 @@ function StrategiesPage() {
   const qc = useQueryClient();
   const { data } = useQuery(strategiesQuery);
   const n = data?.length ?? 0;
+  const { c, controls } = useAgentChats(STRATEGY_THREAD, GREETING);
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
       <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -46,6 +48,8 @@ function StrategiesPage() {
             <p className="text-xs text-muted-foreground">{n ? `عندك ${n} استراتيجية` : "ما عندك استراتيجية بعد — اشرح لي وحدة"}</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        {controls}
         <Sheet>
           <SheetTrigger asChild>
             <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="استراتيجياتي"><Layers className="size-4" /></Button>
@@ -55,8 +59,11 @@ function StrategiesPage() {
             <div className="mt-4"><StrategyManager /></div>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
-      <SessionAgent
+      {c && <SessionAgent
+        key={c}
+        threadId={c}
         hasActive={false}
         title={STRATEGY_THREAD}
         greeting={GREETING}
@@ -64,7 +71,7 @@ function StrategiesPage() {
         mode="strategy"
         placeholder="اشرح لمدرّب الاستراتيجية…"
         onChanged={() => qc.invalidateQueries({ queryKey: ["strategies"] })}
-      />
+      />}
     </div>
   );
 }
