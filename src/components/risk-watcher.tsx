@@ -56,7 +56,7 @@ export function RiskWatcher() {
           const r = await review().catch(() => null);
           if (r?.created) added = true;
         }
-        if (added && !stop) qc.invalidateQueries({ queryKey: ["notifications"] });
+        if (added && !stop) { qc.invalidateQueries({ queryKey: ["notifications"] }); qc.invalidateQueries({ queryKey: ["reminders"] }); }
       } catch { /* try again next minute */ }
     }
     void tick();
