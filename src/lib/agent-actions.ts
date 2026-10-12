@@ -1,3 +1,4 @@
+import { nextDaily } from "./risk-watch";
 import { findDuplicate } from "./trade-dedupe";
 import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
@@ -42,6 +43,8 @@ export const ACTION_TYPES = [
   "save_analysis",
   "delete_analysis",
   "delete_thread",
+  "add_reminder",
+  "delete_reminder",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -68,6 +71,8 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   save_analysis: "حفظ تحليل شارت",
   delete_analysis: "حذف تحليل",
   delete_thread: "حذف محادثة",
+  add_reminder: "إضافة تذكير",
+  delete_reminder: "حذف تذكير",
 };
 
 /** Always wait for an explicit click, even in auto mode. */
@@ -78,6 +83,7 @@ export const DESTRUCTIVE: readonly ActionType[] = [
   "delete_note",
   "delete_analysis",
   "delete_thread",
+  "delete_reminder",
 ];
 
 /** Thrown in auto mode when an action needs the user's click first. */
@@ -176,6 +182,14 @@ export const SCHEMAS = {
   }),
   delete_analysis: z.object({ id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }),
   delete_thread: z.object({ title: z.string().min(1).max(200) }),
+  add_reminder: z.object({
+    title: z.string().min(1).max(120),
+    body: z.string().max(500).nullish(),
+    repeat: z.enum(["once", "daily"]).nullish(),
+    at: z.string().regex(/^\d{1,2}:\d{2}$/).nullish(),
+    in_minutes: z.coerce.number().int().min(1).max(10080).nullish(),
+  }),
+  delete_reminder: z.object({ title: z.string().min(1).max(120) }),
   close_trade: z.object({
     symbol: z.string().max(20).nullish(),
     pnl: num,
@@ -665,6 +679,24 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       if (!id) throw new Error("ما لقيت المحادثة");
       await supabase.from("coach_messages").delete().eq("thread_id", id);
       const { error } = await supabase.from("coach_threads").delete().eq("id", id);
+      return check(error);
+    }
+    case "add_reminder": {
+      const at = (d["at"] as string | null) ?? null;
+      const mins = d["in_minutes"] as number | null;
+      const repeat = d["repeat"] === "daily" && at ? "daily" : "once";
+      const next = mins ? new Date(Date.now() + mins * 60_000) : at ? nextDaily(at) : new Date(Date.now() + 60_000);
+      const { error } = await supabase.from("reminders").insert({
+        user_id, title: String(d["title"]), body: (d["body"] as string | null) ?? "", repeat,
+        at_time: at, next_at: next.toISOString(),
+      });
+      return check(error);
+    }
+    case "delete_reminder": {
+      const { data: rows } = await supabase.from("reminders").select("id,title");
+      const id = rows?.find((r) => r.title.trim() === String(d["title"]).trim())?.id;
+      if (!id) throw new Error("ما لقيت التذكير");
+      const { error } = await supabase.from("reminders").delete().eq("id", id);
       return check(error);
     }
     case "mark_notifications_read": {
