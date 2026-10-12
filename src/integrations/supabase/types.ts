@@ -106,6 +106,45 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_plans: {
+        Row: {
+          day: string
+          id: string
+          max_loss: number | null
+          max_trades: number | null
+          note: string | null
+          revised_count: number
+          risk_per_trade: number | null
+          set_at: string
+          target: number | null
+          user_id: string
+        }
+        Insert: {
+          day: string
+          id?: string
+          max_loss?: number | null
+          max_trades?: number | null
+          note?: string | null
+          revised_count?: number
+          risk_per_trade?: number | null
+          set_at?: string
+          target?: number | null
+          user_id: string
+        }
+        Update: {
+          day?: string
+          id?: string
+          max_loss?: number | null
+          max_trades?: number | null
+          note?: string | null
+          revised_count?: number
+          risk_per_trade?: number | null
+          set_at?: string
+          target?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       knowledge_notes: {
         Row: {
           category: string
