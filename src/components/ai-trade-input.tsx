@@ -69,7 +69,7 @@ export function AiTradeInput({ onResult, placeholder }: { onResult: (t: AiTrade[
         <Button type="button" onClick={go} disabled={busy || preparing}>{busy ? "جارٍ القراءة…" : "عبّي لي"}</Button>
       </div>
       {hint && <p role="status" className="rounded-lg border border-warning/40 p-3 text-sm">{hint}</p>}
-      <p className="text-xs text-muted-foreground">اكتب الصفقة، أو الصق/ارفع لقطة فيها الدخول والوقف (مثل أداة Long/Short Position أو نافذة الأمر). لتحليل الشارت نفسه استخدم <Link to="/analyst" className="underline">المحلل</Link>. بتراجع البيانات قبل الحفظ.</p>
+      <p className="text-xs text-muted-foreground">اكتب الصفقة أو الصق صورتها. للشارت استخدم <Link to="/analyst" className="underline">المحلل</Link>.</p>
     </section>
   );
 }
