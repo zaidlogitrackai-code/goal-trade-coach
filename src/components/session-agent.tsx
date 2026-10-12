@@ -196,6 +196,11 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
             {m.role === "user" && "image" in m && typeof m.image === "string" && (
               <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
             )}
+            {m.role === "assistant" && "image" in m && typeof m.image === "string" && (
+              <a href={m.image} target="_blank" rel="noreferrer" className="mt-2 inline-block">
+                <img src={m.image} alt="الشارت اللي شافه المحلل" className="max-h-24 w-auto rounded-lg border border-border" />
+              </a>
+            )}
             {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
               <div className="mt-3 border-t border-border pt-3">
                 <AgentActions
