@@ -314,7 +314,7 @@ function NewTrade() {
     <div className="mx-auto max-w-4xl space-y-8">
       <PageHeader
         title="الصفقة الجديدة"
-        subtitle="راجع الشروط والمخاطرة قبل الضغط على تنفيذ."
+        subtitle="اكتب الصفقة بكلامك أو ارفع صورة من MT5، والذكاء يعبّي كل شيء."
       />
 
       {/* Gate Alert Banner */}
@@ -411,7 +411,7 @@ function NewTrade() {
           </section>
         )}
 
-        <details open={manualOpen || !aiLoaded ? undefined : false} onToggle={(e) => setManualOpen((e.target as HTMLDetailsElement).open)} className="group">
+        <details open={manualOpen} onToggle={(e) => setManualOpen((e.target as HTMLDetailsElement).open)} className="group">
           <summary className="cursor-pointer select-none text-sm text-muted-foreground">
             {aiLoaded ? "تعديل يدوي (اختياري)" : "أو عبّيها يدويًا (اختياري)"}
           </summary>
@@ -743,7 +743,7 @@ function NewTrade() {
         </details>
 
         {/* Submit Button */}
-        <Button
+        {(aiLoaded || manualOpen) && <Button
           type="submit"
           size="lg"
           disabled={busy || (!gateResult.allowed && !gateResult.canOverride)}
@@ -765,7 +765,7 @@ function NewTrade() {
             : overrideReasons.length > 0
             ? "تسجيل مع مبرر استثناء"
             : "تسجيل الصفقة بانضباط"}
-        </Button>
+        </Button>}
       </form>
 
       {/* Override Reason Modal */}
