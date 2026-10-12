@@ -217,24 +217,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </header>
-        <main className="flex-1 px-4 pb-28 pt-3 lg:px-10 lg:pb-10 lg:pt-6">{children}</main>
+        {/* Keyed by route so each screen enters with the same soft iOS motion */}
+        <main className="flex-1 px-4 pb-28 pt-3 lg:px-10 lg:pb-10 lg:pt-6">
+          <div key={pathname} className="page-enter">{children}</div>
+        </main>
       </div>
 
       <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
         {MOBILE_NAV.map((n) => (
-          <Link key={n.to} to={n.to} className="flex h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] text-muted-foreground" activeProps={{ className: "bg-foreground/15 text-foreground font-semibold shadow-[inset_0_1px_0_var(--glass-highlight)]" }}>
+          <Link key={n.to} to={n.to} className="flex h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] text-muted-foreground transition-transform duration-200 ease-ios active:scale-92" activeProps={{ className: "bg-foreground/15 text-foreground font-semibold shadow-[inset_0_1px_0_var(--glass-highlight)]" }}>
             <n.icon className="size-5" />
             <span className="w-full truncate text-center">{n.label}</span>
           </Link>
         ))}
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="ghost" className={`h-[3.25rem] min-w-0 flex-col gap-1 rounded-2xl px-1 text-[10px] ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
+            <Button variant="ghost" className={`h-[3.25rem] min-w-0 flex-col gap-1 rounded-2xl px-1 text-[10px] transition-transform duration-200 ease-ios active:scale-92 ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
               <Menu className="size-5" />
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[78vh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card p-5 pb-8 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-150 data-[state=open]:!duration-200 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+          <SheetContent side="bottom" className="ios-ease max-h-[78vh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card p-5 pb-8 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
