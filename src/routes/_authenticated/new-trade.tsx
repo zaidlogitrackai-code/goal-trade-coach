@@ -261,9 +261,8 @@ function NewTrade() {
       toast.success("تم تسجيل الصفقة بنجاح");
 
       if (queue.length > 0) {
-        setF(toForm(queue[0]!, st.data ?? []));
+        apply(queue[0]!);
         setQueue(queue.slice(1));
-        setChecks(CHECKLIST_ITEMS.map(() => false));
         setReflectionReason("");
         setIsCompensating(null);
         setOverrideNote("");
@@ -358,7 +357,7 @@ function NewTrade() {
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  setF(toForm(q, st.data ?? []));
+                  apply(q);
                   setQueue(queue.filter((_, j) => j !== i));
                 }}
               >
@@ -370,6 +369,53 @@ function NewTrade() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {aiLoaded && (
+          <section className="panel space-y-4 p-5" aria-label="ملخص الصفقة">
+            <div className="flex items-center gap-2 font-semibold">
+              <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+              <span>الصفقة جاهزة</span>
+            </div>
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              {[
+                ["الأصل", f.symbol || "—"],
+                ["الاتجاه", f.direction === "short" ? "بيع" : "شراء"],
+                ["الدخول", f.entry || "—"],
+                ["الوقف", f.sl || "—"],
+                ["الهدف", f.tp || "—"],
+                ["الحجم", f.size || "—"],
+                ["المخاطرة", riskNum !== null ? fmtMoney(riskNum) : "—"],
+                ["الاستراتيجية", chosenStrategy?.name ?? "—"],
+              ].map(([k, val]) => (
+                <div key={k} className="rounded-lg bg-muted/40 p-2.5">
+                  <dt className="text-xs text-muted-foreground">{k}</dt>
+                  <dd className="font-data font-semibold" dir="auto">{val}</dd>
+                </div>
+              ))}
+            </dl>
+            {!slNum && (
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-sl">وين وقف الخسارة؟</Label>
+                <Input id="quick-sl" dir="ltr" inputMode="decimal" value={f.sl}
+                  onChange={(e) => { const nf = { ...f, sl: e.target.value }; setF(nf); setChecks(autoChecks(nf).map((x, i) => x || (checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk"))); }} />
+              </div>
+            )}
+            {CHECKLIST_ITEMS.map((item, i) => checks[i] ? null : (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 p-3">
+                <span className="text-sm">{item.label}؟</span>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={() => setChecks(checks.map((x, j) => (j === i ? true : x)))}>نعم</Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => { setManualOpen(true); toast.message("راجع هذا البند قبل الدخول."); }}>لا</Button>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <details open={manualOpen || !aiLoaded ? undefined : false} onToggle={(e) => setManualOpen((e.target as HTMLDetailsElement).open)} className="group">
+          <summary className="cursor-pointer select-none text-sm text-muted-foreground">
+            {aiLoaded ? "تعديل يدوي (اختياري)" : "أو عبّيها يدويًا (اختياري)"}
+          </summary>
+          <div className="mt-4 space-y-6">
         {/* Checklist */}
         <section className="panel p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -692,6 +738,9 @@ function NewTrade() {
             />
           </div>
         </section>
+
+        </div>
+        </details>
 
         {/* Submit Button */}
         <Button
