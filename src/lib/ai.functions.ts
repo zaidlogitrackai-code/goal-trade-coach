@@ -306,7 +306,7 @@ export const morningGreeting = createServerFn({ method: "POST" })
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "morning").eq("day", day).maybeSingle();
       if (existing) return { created: false };
       const ctx = await buildContext(sb);
-      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب رسالة صباحية قصيرة (٤-٦ أسطر) لهادي: صباح الخير، يعطيك العافية، سلام ودّي. ثم ملخص سريع لأمس (إن وجدت صفقات)، تذكير بالهدف اليومي والأسبوعي والشهري وحد الخسارة، ونصيحة واحدة ضد الطمع. اليوم ${day}.` }]);
+      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب رسالة صباحية لهادي بسطرين فقط، بدون مقدمات: سطر صباح الخير وسطر وحدة فيه: هدفك اليوم وحد خسارتك ونصيحة ضد الطمع. ممنوع يزيد عن سطرين. اليوم ${day}.` }]);
       const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "morning", day, title: "صباح الخير يا هادي ☀️", body });
       if (error && error.code !== "23505") throw error;
       return { created: true };
@@ -322,7 +322,7 @@ export const eveningReview = createServerFn({ method: "POST" })
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "evening").eq("day", day).maybeSingle();
       if (existing) return { created: false };
       const ctx = await buildContext(sb);
-      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب مراجعة آخر اليوم (٤-٦ أسطر) لهادي بصفتك "حارس المخاطر": ملخص صفقات اليوم وربحها/خسارتها، هل التزم بحدوده وأهدافه، وش أحسن شيء سواه، ونصيحة وحدة لبكرة. إذا ما تداول اليوم امدح الانضباط. اليوم ${day}.` }]);
+      const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب مراجعة آخر اليوم لهادي بسطرين فقط بصفتك "حارس المخاطر": سطر يلخص ربح/خسارة اليوم والتزامه بحدوده، وسطر نصيحة واحدة لبكرة. ممنوع يزيد عن سطرين. اليوم ${day}.` }]);
       const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "evening", day, title: "مراجعة اليوم 🌙", body });
       if (error && error.code !== "23505") throw error;
       return { created: true };
@@ -469,7 +469,7 @@ export const riskMorning = createServerFn({ method: "POST" })
       if (seen?.length) return { skipped: true };
       const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true } as never);
       if (lock) return { skipped: true };
-      const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة: حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه)، ونصيحة وحدة لليوم. ابدأ بـ صباح الخير هادي." }]);
+      const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة جدًا (٣ أسطر كحد أقصى): حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه). ابدأ بـ صباح الخير هادي. ممنوع فقرات طويلة." }]);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
       return { skipped: false };
     } catch (e) { fail(e); }
