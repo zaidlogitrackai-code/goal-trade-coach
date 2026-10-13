@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Bell, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { Bell, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { SOUND_KEY, soundEnabled } from "@/components/notification-sound";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Md } from "@/components/md";
@@ -20,6 +22,13 @@ export function NotificationsBell() {
   const qc = useQueryClient();
   const greet = useServerFn(morningGreeting);
   const asked = useRef(false);
+  const [sound, setSound] = useState(true);
+  useEffect(() => { setSound(soundEnabled()); }, []);
+  function toggleSound() {
+    const next = !sound;
+    setSound(next);
+    window.localStorage.setItem(SOUND_KEY, next ? "on" : "off");
+  }
   const q = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
@@ -64,6 +73,9 @@ export function NotificationsBell() {
         {unread > 0 && <span className="absolute -top-1 -left-1 grid size-4 place-items-center rounded-full bg-destructive text-[10px] text-destructive-foreground">{unread}</span>}
       </PopoverTrigger>
       <PopoverContent align="start" className="max-h-[70vh] w-80 overflow-y-auto p-0" dir="rtl">
+        <button onClick={toggleSound} className="flex w-full items-center justify-center gap-1.5 border-b border-border p-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+          {sound ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />} {sound ? "صوت الإشعارات: شغّال" : "صوت الإشعارات: مطفي"}
+        </button>
         {list.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">ما في إشعارات اليوم. الإشعارات تختفي لحالها كل يوم.</p>
         ) : (
