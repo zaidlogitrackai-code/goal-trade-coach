@@ -25,28 +25,6 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-/** Falling white petals — deterministic values so nothing jumps between renders. */
-const PETALS = Array.from({ length: 26 }, (_, i) => {
-  const r = (n: number) => { const v = Math.sin((i + 1) * 12.9898 + n * 78.233) * 43758.5453; return v - Math.floor(v); };
-  return {
-    x: `${Math.round(r(1) * 100)}%`,
-    size: `${Math.round(10 + r(2) * 12)}px`,
-    dur: `${(9 + r(3) * 9).toFixed(1)}s`,
-    delay: `${(-r(4) * 18).toFixed(1)}s`,
-    sway: `${Math.round((r(5) - 0.5) * 140)}px`,
-    spin: `${Math.round(240 + r(6) * 480)}deg`,
-  };
-});
-
-function Petals() {
-  return (
-    <div className="petals" aria-hidden="true">
-      {PETALS.map((p, i) => (
-        <span key={i} className="petal" style={{ "--x": p.x, "--size": p.size, "--dur": p.dur, "--delay": p.delay, "--sway": p.sway, "--spin": p.spin } as React.CSSProperties} />
-      ))}
-    </div>
-  );
-}
 
 function AuthPage() {
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -93,13 +71,8 @@ function AuthPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <Petals />
       <div className="w-full max-w-md">
         <div className="mb-6 flex justify-center"><Logo /></div>
-        <div className="mb-6 text-center">
-          <p className="text-lg font-bold leading-relaxed sm:text-xl">تهانينا سيد هادي</p>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">أفضل نظام تداول في العالم</p>
-        </div>
         <form onSubmit={submit} className="panel glow-primary space-y-5 p-8">
           <div>
             <h1 className="text-2xl font-bold">{mode === "in" ? "مرحباً هادي" : "إنشاء حسابك"}</h1>
