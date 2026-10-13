@@ -163,11 +163,8 @@ function NewTrade() {
   const emotionCheckDone = !sensitive || (reflectionReason.trim().length >= MOTIVE_MIN && isCompensating !== null);
   const revenge = sensitive && isCompensating === true;
   // Everything that makes this trade a documented exception.
-  const overrideReasons = [
-    ...gateResult.reasons,
-    ...(!slNum && !gateResult.reasons.some((r) => r.includes("وقف الخسارة")) ? ["لم يتم تحديد وقف الخسارة قبل الدخول"] : []),
-    ...(revenge ? ["صفقة لتعويض خسارة سابقة (صفقة انتقامية)"] : []),
-  ];
+  // Advisory only: nothing here blocks or demands a justification.
+  const overrideReasons: string[] = [];
 
   // Calculations for display
   const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
@@ -297,12 +294,6 @@ function NewTrade() {
       return;
     }
 
-    // Hard blocked condition (cooldown, daily loss limit, paused)
-    if (!gateResult.allowed && !gateResult.canOverride) {
-      toast.error("التداول متوقف إجبارياً بحسب قواعد الحماية. لا يمكن فتح صفقات الآن.");
-      return;
-    }
-
     if (!emotionCheckDone) {
       toast.error("أجب عن سؤالَي فحص المشاعر قبل التسجيل.");
       return;
@@ -324,25 +315,15 @@ function NewTrade() {
         subtitle="اكتب الصفقة أو ارفع صورتها."
       />
 
-      {/* Gate Alert Banner */}
-      {!gateResult.allowed && (!gateResult.canOverride || entryNum != null) && (
-        <div
-          className={`panel p-5 border-2 space-y-2 ${
-            gateResult.canOverride
-              ? "border-warning/50 bg-warning/5 text-warning"
-              : "border-destructive/50 bg-destructive/5 text-destructive"
-          }`}
-        >
-          <div className="flex items-center gap-2 font-bold text-base">
-            {gateResult.canOverride ? (
-              <AlertTriangle className="size-5 shrink-0" />
-            ) : (
-              <ShieldAlert className="size-5 shrink-0" />
-            )}
-            <span>{gateResult.canOverride ? "تنبيه: الصفقة تخالف بعض القيود" : "التداول موقوف اليوم"}</span>
+      {/* Gate advisory (never blocks) */}
+      {gateResult.warnings.length > 0 && entryNum != null && (
+        <div className="panel p-4 border border-warning/40 bg-warning/5 text-warning space-y-1">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>تنبيه (للعلم فقط)</span>
           </div>
-          <ul className="list-disc list-inside space-y-1 text-xs sm:text-sm pr-1">
-            {gateResult.reasons.map((r, i) => (
+          <ul className="list-disc list-inside space-y-1 text-xs pr-1">
+            {gateResult.warnings.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
           </ul>
@@ -756,25 +737,15 @@ function NewTrade() {
         {(aiLoaded || manualOpen) && <Button
           type="submit"
           size="lg"
-          disabled={busy || (!gateResult.allowed && !gateResult.canOverride)}
-          variant={
-            !gateResult.allowed
-              ? "destructive"
-              : overrideReasons.length > 0
-              ? "outline"
-              : "default"
-          }
+          disabled={busy}
+          variant="default"
           className="w-full sm:w-auto text-base"
         >
           {busy
             ? "جارٍ الحفظ…"
-            : !gateResult.allowed && !gateResult.canOverride
-            ? "التداول موقوف اليوم"
             : !emotionCheckDone
             ? "أجب عن فحص المشاعر أولاً"
-            : overrideReasons.length > 0
-            ? "تسجيل مع مبرر استثناء"
-            : "تسجيل الصفقة بانضباط"}
+            : "تسجيل الصفقة"}
         </Button>}
       </form>
 

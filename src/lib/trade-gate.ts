@@ -100,11 +100,10 @@ export function evaluateTradeGate(options: {
     now = new Date(),
   } = options;
 
+  // Advisory only: the system manages greed, it never blocks trading.
   const reasons: string[] = [];
   const warnings: string[] = [];
   let nextAction = "راجع خطة الصفقة وتأكد من الالتزام بشروط الاستراتيجية";
-  let hardBlock = false;
-  let canOverride = true;
 
   const tradeRisk = Math.max(0, Number(input.risk_amount) || 0);
   const totalOpenRisk = openTrades.reduce((acc, t) => acc + (t.status === "open" ? (t.risk_amount ?? 0) : 0), 0);
@@ -133,90 +132,74 @@ export function evaluateTradeGate(options: {
 
   // 1. Manual Pause
   if (settings.trading_paused) {
-    reasons.push("التداول موقوف يدوياً.");
-    hardBlock = true;
-    canOverride = false;
+    warnings.push("التداول موقوف يدوياً.");
     nextAction = "استأنف التداول من صفحة إدارة المخاطر إذا كنت جاهزاً ذهنياً";
   }
 
   // 2. Active Cooldown
   if (settings.cooldown_until && new Date(settings.cooldown_until).getTime() > now.getTime()) {
     const endStr = new Date(settings.cooldown_until).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" });
-    reasons.push(`فترة تهدئة نشطة حتى ${endStr}.`);
-    hardBlock = true;
-    canOverride = false;
+    warnings.push(`فترة تهدئة نشطة حتى ${endStr}.`);
     nextAction = "ابتعد عن الشاشة وانتظر حتى انتهاء فترة التهدئة لمنع القرارات الانفعالية";
   }
 
   // 3. Daily Loss Limit
   if (settings.max_daily_loss > 0 && metrics.todayPnl <= -settings.max_daily_loss) {
-    reasons.push("تم الوصول إلى الحد الأقصى للخسارة اليومية (توقف إجباري).");
-    hardBlock = true;
-    canOverride = false;
+    warnings.push("تم الوصول إلى الحد الأقصى للخسارة اليومية (توقف إجباري).");
     nextAction = "أغلق المنصة لليوم، السوق مستمر ورأس مالك أهم";
   }
 
   // 4. Weekly / Monthly Loss Limits
   if ((settings.weekly_max_loss ?? 0) > 0 && metrics.weekPnl <= -(settings.weekly_max_loss ?? 0)) {
-    reasons.push("تم الوصول إلى حد الخسارة الأسبوعي.");
-    hardBlock = true;
-    canOverride = false;
+    warnings.push("تم الوصول إلى حد الخسارة الأسبوعي.");
     nextAction = "توقف عن التداول لنهاية الأسبوع لمراجعة خطتك";
   }
   if ((settings.monthly_max_loss ?? 0) > 0 && metrics.monthPnl <= -(settings.monthly_max_loss ?? 0)) {
-    reasons.push("تم الوصول إلى حد الخسارة الشهري.");
-    hardBlock = true;
-    canOverride = false;
+    warnings.push("تم الوصول إلى حد الخسارة الشهري.");
     nextAction = "توقف عن التداول لنهاية الشهر لحماية رأس المال";
   }
 
   // 5. Max Daily Profit Target Hit (Protect profits)
   if (settings.max_daily_profit > 0 && metrics.todayPnl >= settings.max_daily_profit) {
-    reasons.push("تم الوصول إلى الحد الأعلى للربح اليومي (حماية الأرباح من الطمع).");
-    hardBlock = true;
-    canOverride = false;
+    warnings.push("تم الوصول إلى الحد الأعلى للربح اليومي (حماية الأرباح من الطمع).");
     nextAction = "احمِ أرباحك وتوقف عن التداول اليوم لتجنب إعادة المكاسب للسوق";
   }
 
   // 6. Max Consecutive Losses
   if (settings.max_consecutive_losses > 0 && metrics.consecutiveLosses >= settings.max_consecutive_losses) {
-    reasons.push(`تم بلوغ الحد الأقصى للخسائر المتتالية (${metrics.consecutiveLosses} صفقات خاسرة).`);
-    hardBlock = true;
-    canOverride = false;
+    warnings.push(`تم بلوغ الحد الأقصى للخسائر المتتالية (${metrics.consecutiveLosses} صفقات خاسرة).`);
     nextAction = "ابدأ فترة تهدئة لمدة 30 دقيقة لكسر سلسلة الخسائر";
   }
 
   // 7. Max Trades per Day
   if (settings.max_trades_per_day > 0 && metrics.tradesToday >= settings.max_trades_per_day) {
-    reasons.push(`تم استهلاك الحد الأقصى لعدد الصفقات اليومي (${settings.max_trades_per_day} صفقات).`);
-    hardBlock = true;
-    canOverride = false;
+    warnings.push(`تم استهلاك الحد الأقصى لعدد الصفقات اليومي (${settings.max_trades_per_day} صفقات).`);
     nextAction = "التزم بعدد الصفقات المحدد وراجع يومك دون زيادة الصفقات (Overtrading)";
   }
 
   // 8. Max Risk per Trade
   const maxRiskPerTrade = settings.max_risk_per_trade ?? 0;
   if (maxRiskPerTrade > 0 && tradeRisk > maxRiskPerTrade) {
-    reasons.push(`المخاطرة المحددة (${tradeRisk}) تتجاوز الحد الأقصى لكل صفقة (${maxRiskPerTrade}).`);
-    if (!hardBlock) nextAction = "قلّل حجم العقد (Lot size) لتتوافق المخاطرة مع حد الصفقة الواحدة";
+    warnings.push(`المخاطرة المحددة (${tradeRisk}) تتجاوز الحد الأقصى لكل صفقة (${maxRiskPerTrade}).`);
+    nextAction = "قلّل حجم العقد (Lot size) لتتوافق المخاطرة مع حد الصفقة الواحدة";
   }
 
   // 9. Daily Risk Exceeded
   if (settings.max_daily_risk > 0 && metrics.riskUsed + tradeRisk > settings.max_daily_risk) {
-    reasons.push(`هذه الصفقة تتجاوز إجمالي المخاطرة اليومية المتبقية (${remainingDailyRisk ?? 0}).`);
-    if (!hardBlock) nextAction = "خفّض حجم المخاطرة أو انتظر إغلاق الصفقات المفتوحة";
+    warnings.push(`هذه الصفقة تتجاوز إجمالي المخاطرة اليومية المتبقية (${remainingDailyRisk ?? 0}).`);
+    nextAction = "خفّض حجم المخاطرة أو انتظر إغلاق الصفقات المفتوحة";
   }
 
   // 10. Stop Loss Requirement (Rule requirement)
   if (input.stop_loss == null || input.stop_loss === 0) {
-    reasons.push("لم يتم تحديد وقف الخسارة قبل الدخول (مخالفة لقاعدة الانضباط الأساسية).");
-    if (!hardBlock) nextAction = "حدد نقطة وقف الخسارة بدقة قبل إرسال الصفقة";
+    warnings.push("لم يتم تحديد وقف الخسارة قبل الدخول (مخالفة لقاعدة الانضباط الأساسية).");
+    nextAction = "حدد نقطة وقف الخسارة بدقة قبل إرسال الصفقة";
   }
 
   // 11. Active Session Check
   if (!activeSession) {
     warnings.push("لا توجد جلسة تداول نشطة بخطة محددة لليوم.");
-    if (!hardBlock && reasons.length === 0) nextAction = "ابدأ جلسة تداول وحدد خطتك اليومية أولاً";
+    if (warnings.length === 0) nextAction = "ابدأ جلسة تداول وحدد خطتك اليومية أولاً";
   }
 
   // 12. Strategy Check
@@ -235,11 +218,11 @@ export function evaluateTradeGate(options: {
     warnings.push("لم تكتمل بنود قائمة التحقق قبل الدخول.");
   }
 
-  const allowed = !hardBlock && reasons.length === 0;
+  const allowed = true;
 
   return {
     allowed,
-    canOverride: !hardBlock,
+    canOverride: true,
     reasons,
     warnings,
     nextAction,

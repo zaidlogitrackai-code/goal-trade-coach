@@ -59,70 +59,56 @@ describe("evaluateTradeGate", () => {
     expect(res.metrics.tradeRisk).toBe(50);
   });
 
-  it("blocks trade without stop loss with reason requiring override", () => {
+  it("never blocks: no stop loss is only a warning", () => {
     const res = evaluateTradeGate({
       settings: baseSettings,
       metrics: baseMetrics,
       input: { symbol: "EURUSD", direction: "long", entry_price: 1.08, stop_loss: null, risk_amount: 50 },
     });
-    expect(res.allowed).toBe(false);
-    expect(res.reasons.some((r) => r.includes("وقف الخسارة"))).toBe(true);
-    expect(res.canOverride).toBe(true);
+    expect(res.allowed).toBe(true);
+    expect(res.reasons).toHaveLength(0);
+    expect(res.warnings.some((r) => r.includes("وقف الخسارة"))).toBe(true);
   });
 
-  it("hard blocks trade when trading is manually paused", () => {
+  it("never blocks when trading is manually paused", () => {
     const res = evaluateTradeGate({
       settings: { ...baseSettings, trading_paused: true },
       metrics: baseMetrics,
       input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
     });
-    expect(res.allowed).toBe(false);
-    expect(res.canOverride).toBe(false);
-    expect(res.reasons.some((r) => r.includes("موقوف يدوياً"))).toBe(true);
+    expect(res.allowed).toBe(true);
+    expect(res.canOverride).toBe(true);
   });
 
-  it("hard blocks trade when daily loss limit is reached", () => {
+  it("never blocks after daily loss limit, only warns", () => {
     const res = evaluateTradeGate({
       settings: baseSettings,
       metrics: { ...baseMetrics, todayPnl: -350 },
       input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
     });
-    expect(res.allowed).toBe(false);
-    expect(res.canOverride).toBe(false);
-    expect(res.reasons.some((r) => r.includes("الحد الأقصى للخسارة"))).toBe(true);
+    expect(res.allowed).toBe(true);
+    expect(res.warnings.some((r) => r.includes("الحد الأقصى للخسارة"))).toBe(true);
   });
 
-  it("hard blocks trade when max consecutive losses is reached", () => {
-    const res = evaluateTradeGate({
-      settings: baseSettings,
-      metrics: { ...baseMetrics, consecutiveLosses: 3 },
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
-    });
-    expect(res.allowed).toBe(false);
-    expect(res.canOverride).toBe(false);
-    expect(res.reasons.some((r) => r.includes("خسائر"))).toBe(true);
-  });
-
-  it("hard blocks trade during active cooldown", () => {
+  it("never blocks after max consecutive losses or cooldown", () => {
     const future = new Date(Date.now() + 20 * 60000).toISOString();
     const res = evaluateTradeGate({
       settings: { ...baseSettings, cooldown_until: future },
-      metrics: baseMetrics,
+      metrics: { ...baseMetrics, consecutiveLosses: 3 },
       input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
     });
-    expect(res.allowed).toBe(false);
-    expect(res.canOverride).toBe(false);
-    expect(res.reasons.some((r) => r.includes("تهدئة"))).toBe(true);
+    expect(res.allowed).toBe(true);
+    expect(res.canOverride).toBe(true);
+    expect(res.warnings.some((r) => r.includes("تهدئة"))).toBe(true);
   });
 
-  it("blocks trade when single trade risk exceeds limit but allows override", () => {
+  it("warns (does not block) when single trade risk exceeds limit", () => {
     const res = evaluateTradeGate({
       settings: baseSettings,
       metrics: baseMetrics,
       input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 150 }, // limit is 100
     });
-    expect(res.allowed).toBe(false);
-    expect(res.canOverride).toBe(true);
-    expect(res.reasons.some((r) => r.includes("الحد الأقصى لكل صفقة"))).toBe(true);
+    expect(res.allowed).toBe(true);
+    expect(res.warnings.some((r) => r.includes("الحد الأقصى لكل صفقة"))).toBe(true);
   });
 });
