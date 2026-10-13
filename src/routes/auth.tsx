@@ -93,13 +93,8 @@ function AuthPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <Petals />
       <div className="w-full max-w-md">
         <div className="mb-6 flex justify-center"><Logo /></div>
-        <div className="mb-6 text-center">
-          <p className="text-lg font-bold leading-relaxed sm:text-xl">تهانينا سيد هادي</p>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">أفضل نظام تداول في العالم</p>
-        </div>
         <form onSubmit={submit} className="panel glow-primary space-y-5 p-8">
           <div>
             <h1 className="text-2xl font-bold">{mode === "in" ? "مرحباً هادي" : "إنشاء حسابك"}</h1>
