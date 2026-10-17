@@ -14,35 +14,106 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_action_log: {
+        Row: {
+          action_index: number | null
+          action_type: string
+          after: Json | null
+          before: Json | null
+          class: string | null
+          created_at: string
+          error: string | null
+          id: string
+          message_id: string | null
+          mode: string | null
+          status: string | null
+          target_id: string | null
+          target_table: string | null
+          thread_id: string | null
+          user_id: string
+        }
+        Insert: {
+          action_index?: number | null
+          action_type: string
+          after?: Json | null
+          before?: Json | null
+          class?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          mode?: string | null
+          status?: string | null
+          target_id?: string | null
+          target_table?: string | null
+          thread_id?: string | null
+          user_id: string
+        }
+        Update: {
+          action_index?: number | null
+          action_type?: string
+          after?: Json | null
+          before?: Json | null
+          class?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          mode?: string | null
+          status?: string | null
+          target_id?: string | null
+          target_table?: string | null
+          thread_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       chart_analyses: {
         Row: {
+          card: Json | null
           created_at: string
           id: string
           question: string | null
           result: string
           symbol: string | null
+          thread_id: string | null
           timeframe: string | null
+          trade_id: string | null
           user_id: string
         }
         Insert: {
+          card?: Json | null
           created_at?: string
           id?: string
           question?: string | null
           result: string
           symbol?: string | null
+          thread_id?: string | null
           timeframe?: string | null
+          trade_id?: string | null
           user_id: string
         }
         Update: {
+          card?: Json | null
           created_at?: string
           id?: string
           question?: string | null
           result?: string
           symbol?: string | null
+          thread_id?: string | null
           timeframe?: string | null
+          trade_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chart_analyses_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       circuit_breaks: {
         Row: {
@@ -93,6 +164,8 @@ export type Database = {
           created_at: string
           id: string
           image: string | null
+          image_path: string | null
+          kind: string
           role: string
           thread_id: string
           user_id: string
@@ -103,6 +176,8 @@ export type Database = {
           created_at?: string
           id?: string
           image?: string | null
+          image_path?: string | null
+          kind?: string
           role: string
           thread_id: string
           user_id: string
@@ -113,6 +188,8 @@ export type Database = {
           created_at?: string
           id?: string
           image?: string | null
+          image_path?: string | null
+          kind?: string
           role?: string
           thread_id?: string
           user_id?: string
@@ -130,21 +207,27 @@ export type Database = {
       coach_threads: {
         Row: {
           created_at: string
+          day: string | null
           id: string
+          kind: string
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          day?: string | null
           id?: string
+          kind?: string
           title?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          day?: string | null
           id?: string
+          kind?: string
           title?: string
           updated_at?: string
           user_id?: string
@@ -534,6 +617,145 @@ export type Database = {
             columns: ["strategy_id"]
             isOneToOne: false
             referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_events: {
+        Row: {
+          at: string
+          id: string
+          kind: string
+          new_value: number | null
+          note: string | null
+          old_value: number | null
+          planned: boolean | null
+          trade_id: string
+          user_id: string
+        }
+        Insert: {
+          at?: string
+          id?: string
+          kind: string
+          new_value?: number | null
+          note?: string | null
+          old_value?: number | null
+          planned?: boolean | null
+          trade_id: string
+          user_id: string
+        }
+        Update: {
+          at?: string
+          id?: string
+          kind?: string
+          new_value?: number | null
+          note?: string | null
+          old_value?: number | null
+          planned?: boolean | null
+          trade_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_events_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_reviews: {
+        Row: {
+          ai_extra: Json | null
+          ai_summary: string | null
+          answer: string | null
+          created_at: string
+          decision: string
+          execution_score: number | null
+          facts: Json | null
+          findings: Json
+          id: string
+          model: string | null
+          next_rules: Json
+          outcome: string | null
+          period_key: string | null
+          process_score: number | null
+          prompt_version: string | null
+          quadrant: string | null
+          quality_score: number | null
+          questions: Json
+          review_type: string
+          risk_score: number | null
+          root_cause: string | null
+          schema_version: number
+          tags: Json
+          trade_id: string | null
+          user_id: string
+          verdict: string
+        }
+        Insert: {
+          ai_extra?: Json | null
+          ai_summary?: string | null
+          answer?: string | null
+          created_at?: string
+          decision?: string
+          execution_score?: number | null
+          facts?: Json | null
+          findings?: Json
+          id?: string
+          model?: string | null
+          next_rules?: Json
+          outcome?: string | null
+          period_key?: string | null
+          process_score?: number | null
+          prompt_version?: string | null
+          quadrant?: string | null
+          quality_score?: number | null
+          questions?: Json
+          review_type: string
+          risk_score?: number | null
+          root_cause?: string | null
+          schema_version?: number
+          tags?: Json
+          trade_id?: string | null
+          user_id: string
+          verdict: string
+        }
+        Update: {
+          ai_extra?: Json | null
+          ai_summary?: string | null
+          answer?: string | null
+          created_at?: string
+          decision?: string
+          execution_score?: number | null
+          facts?: Json | null
+          findings?: Json
+          id?: string
+          model?: string | null
+          next_rules?: Json
+          outcome?: string | null
+          period_key?: string | null
+          process_score?: number | null
+          prompt_version?: string | null
+          quadrant?: string | null
+          quality_score?: number | null
+          questions?: Json
+          review_type?: string
+          risk_score?: number | null
+          root_cause?: string | null
+          schema_version?: number
+          tags?: Json
+          trade_id?: string | null
+          user_id?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_reviews_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: true
+            referencedRelation: "trades"
             referencedColumns: ["id"]
           },
         ]
