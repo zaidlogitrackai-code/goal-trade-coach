@@ -1,5 +1,7 @@
 # Database changes for the step system (سَنَد — نظام الخطوات)
 
+**Status: applied by Lovable on 2026-10-18** as `0011_apply_*`, `0012_apply_*` and `0013_apply_*` (registered in the journal; types.ts regenerated). The storage buckets were created through Lovable's storage tooling, not SQL. The prompt below is kept for reference.
+
 Lovable manages the database, so these SQL files only take effect once Lovable applies them.
 Paste the prompt below into the Lovable chat once. All three files are idempotent and safe to run more than once.
 
