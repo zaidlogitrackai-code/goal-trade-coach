@@ -44,6 +44,48 @@ export type Database = {
         }
         Relationships: []
       }
+      circuit_breaks: {
+        Row: {
+          active_until: string | null
+          detail: string | null
+          id: string
+          observed: number | null
+          period_key: string
+          released_at: string | null
+          rule: string
+          state: string
+          threshold: number | null
+          triggered_at: string
+          user_id: string
+        }
+        Insert: {
+          active_until?: string | null
+          detail?: string | null
+          id?: string
+          observed?: number | null
+          period_key: string
+          released_at?: string | null
+          rule: string
+          state: string
+          threshold?: number | null
+          triggered_at?: string
+          user_id: string
+        }
+        Update: {
+          active_until?: string | null
+          detail?: string | null
+          id?: string
+          observed?: number | null
+          period_key?: string
+          released_at?: string | null
+          rule?: string
+          state?: string
+          threshold?: number | null
+          triggered_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       coach_messages: {
         Row: {
           actions: Json | null
@@ -115,10 +157,15 @@ export type Database = {
           id: string
           max_loss: number | null
           max_trades: number | null
+          next_rule: string | null
+          no_trading: boolean
           note: string | null
           revised_count: number
           risk_per_trade: number | null
+          rules_ack_at: string | null
+          rules_today: Json
           set_at: string
+          start_balance: number | null
           target: number | null
           user_id: string
         }
@@ -127,10 +174,15 @@ export type Database = {
           id?: string
           max_loss?: number | null
           max_trades?: number | null
+          next_rule?: string | null
+          no_trading?: boolean
           note?: string | null
           revised_count?: number
           risk_per_trade?: number | null
+          rules_ack_at?: string | null
+          rules_today?: Json
           set_at?: string
+          start_balance?: number | null
           target?: number | null
           user_id: string
         }
@@ -139,10 +191,15 @@ export type Database = {
           id?: string
           max_loss?: number | null
           max_trades?: number | null
+          next_rule?: string | null
+          no_trading?: boolean
           note?: string | null
           revised_count?: number
           risk_per_trade?: number | null
+          rules_ack_at?: string | null
+          rules_today?: Json
           set_at?: string
+          start_balance?: number | null
           target?: number | null
           user_id?: string
         }
@@ -214,6 +271,99 @@ export type Database = {
         }
         Relationships: []
       }
+      pre_trade_checks: {
+        Row: {
+          actual_risk: number | null
+          ai_note: string | null
+          ai_plan_match: string | null
+          answers: Json | null
+          created_at: string
+          decision: string
+          direction: string | null
+          id: string
+          intent: string
+          max_lots: number | null
+          minutes_since_loss: number | null
+          override_reason: string | null
+          planned_risk: number | null
+          position_size: number | null
+          proceeded: boolean | null
+          reasons: Json
+          schema_version: number
+          session_id: string | null
+          source: string
+          symbol: string | null
+          trade_id: string | null
+          upstream: string | null
+          user_id: string
+        }
+        Insert: {
+          actual_risk?: number | null
+          ai_note?: string | null
+          ai_plan_match?: string | null
+          answers?: Json | null
+          created_at?: string
+          decision: string
+          direction?: string | null
+          id?: string
+          intent: string
+          max_lots?: number | null
+          minutes_since_loss?: number | null
+          override_reason?: string | null
+          planned_risk?: number | null
+          position_size?: number | null
+          proceeded?: boolean | null
+          reasons?: Json
+          schema_version?: number
+          session_id?: string | null
+          source?: string
+          symbol?: string | null
+          trade_id?: string | null
+          upstream?: string | null
+          user_id: string
+        }
+        Update: {
+          actual_risk?: number | null
+          ai_note?: string | null
+          ai_plan_match?: string | null
+          answers?: Json | null
+          created_at?: string
+          decision?: string
+          direction?: string | null
+          id?: string
+          intent?: string
+          max_lots?: number | null
+          minutes_since_loss?: number | null
+          override_reason?: string | null
+          planned_risk?: number | null
+          position_size?: number | null
+          proceeded?: boolean | null
+          reasons?: Json
+          schema_version?: number
+          session_id?: string | null
+          source?: string
+          symbol?: string | null
+          trade_id?: string | null
+          upstream?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_trade_checks_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "trading_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_trade_checks_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reminders: {
         Row: {
           active: boolean
@@ -255,7 +405,9 @@ export type Database = {
           id: string
           note: string | null
           occurred_at: string
+          pre_trade_check_id: string | null
           rule_id: string | null
+          source: string
           trade_id: string | null
           user_id: string
         }
@@ -263,7 +415,9 @@ export type Database = {
           id?: string
           note?: string | null
           occurred_at?: string
+          pre_trade_check_id?: string | null
           rule_id?: string | null
+          source?: string
           trade_id?: string | null
           user_id: string
         }
@@ -271,11 +425,20 @@ export type Database = {
           id?: string
           note?: string | null
           occurred_at?: string
+          pre_trade_check_id?: string | null
           rule_id?: string | null
+          source?: string
           trade_id?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "rule_violations_pre_trade_check_id_fkey"
+            columns: ["pre_trade_check_id"]
+            isOneToOne: false
+            referencedRelation: "pre_trade_checks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "rule_violations_rule_id_fkey"
             columns: ["rule_id"]
@@ -378,20 +541,28 @@ export type Database = {
       trades: {
         Row: {
           checklist_passed: boolean
+          client_ref: string | null
           close_notes: string | null
           closed_at: string | null
           created_at: string
           direction: string
           emotion: string | null
           entry_price: number | null
+          exit_emotion: string | null
           exit_price: number | null
+          exit_reason: string | null
           id: string
+          initial_stop_loss: number | null
           notes: string | null
           opened_at: string
           pnl: number | null
           position_size: number | null
+          pre_trade_check_id: string | null
           risk_amount: number
+          risk_source: string | null
           screenshot_path: string | null
+          session_id: string | null
+          source: string | null
           status: string
           stop_loss: number | null
           strategy_id: string | null
@@ -401,20 +572,28 @@ export type Database = {
         }
         Insert: {
           checklist_passed?: boolean
+          client_ref?: string | null
           close_notes?: string | null
           closed_at?: string | null
           created_at?: string
           direction: string
           emotion?: string | null
           entry_price?: number | null
+          exit_emotion?: string | null
           exit_price?: number | null
+          exit_reason?: string | null
           id?: string
+          initial_stop_loss?: number | null
           notes?: string | null
           opened_at?: string
           pnl?: number | null
           position_size?: number | null
+          pre_trade_check_id?: string | null
           risk_amount?: number
+          risk_source?: string | null
           screenshot_path?: string | null
+          session_id?: string | null
+          source?: string | null
           status?: string
           stop_loss?: number | null
           strategy_id?: string | null
@@ -424,20 +603,28 @@ export type Database = {
         }
         Update: {
           checklist_passed?: boolean
+          client_ref?: string | null
           close_notes?: string | null
           closed_at?: string | null
           created_at?: string
           direction?: string
           emotion?: string | null
           entry_price?: number | null
+          exit_emotion?: string | null
           exit_price?: number | null
+          exit_reason?: string | null
           id?: string
+          initial_stop_loss?: number | null
           notes?: string | null
           opened_at?: string
           pnl?: number | null
           position_size?: number | null
+          pre_trade_check_id?: string | null
           risk_amount?: number
+          risk_source?: string | null
           screenshot_path?: string | null
+          session_id?: string | null
+          source?: string | null
           status?: string
           stop_loss?: number | null
           strategy_id?: string | null
@@ -446,6 +633,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trades_pre_trade_check_id_fkey"
+            columns: ["pre_trade_check_id"]
+            isOneToOne: false
+            referencedRelation: "pre_trade_checks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trades_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "trading_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trades_strategy_id_fkey"
             columns: ["strategy_id"]
@@ -514,12 +715,15 @@ export type Database = {
       }
       trading_settings: {
         Row: {
+          breaker_since: string | null
+          coach_auto: boolean | null
           cooldown_minutes: number
           cooldown_until: string | null
           created_at: string
           currency: string
           daily_target: number
           display_name: string | null
+          limits_accepted_at: string | null
           limits_pct: Json | null
           max_consecutive_losses: number
           max_daily_loss: number
@@ -529,10 +733,12 @@ export type Database = {
           max_trades_per_day: number
           monthly_max_loss: number
           monthly_target: number
+          notification_sound: boolean
           onboarded: boolean
           session_end: string | null
           session_start: string | null
           starting_balance: number
+          streak_cooldown_hours: number
           timezone: string
           trading_paused: boolean
           updated_at: string
@@ -541,12 +747,15 @@ export type Database = {
           weekly_target: number
         }
         Insert: {
+          breaker_since?: string | null
+          coach_auto?: boolean | null
           cooldown_minutes?: number
           cooldown_until?: string | null
           created_at?: string
           currency?: string
           daily_target?: number
           display_name?: string | null
+          limits_accepted_at?: string | null
           limits_pct?: Json | null
           max_consecutive_losses?: number
           max_daily_loss?: number
@@ -556,10 +765,12 @@ export type Database = {
           max_trades_per_day?: number
           monthly_max_loss?: number
           monthly_target?: number
+          notification_sound?: boolean
           onboarded?: boolean
           session_end?: string | null
           session_start?: string | null
           starting_balance?: number
+          streak_cooldown_hours?: number
           timezone?: string
           trading_paused?: boolean
           updated_at?: string
@@ -568,12 +779,15 @@ export type Database = {
           weekly_target?: number
         }
         Update: {
+          breaker_since?: string | null
+          coach_auto?: boolean | null
           cooldown_minutes?: number
           cooldown_until?: string | null
           created_at?: string
           currency?: string
           daily_target?: number
           display_name?: string | null
+          limits_accepted_at?: string | null
           limits_pct?: Json | null
           max_consecutive_losses?: number
           max_daily_loss?: number
@@ -583,10 +797,12 @@ export type Database = {
           max_trades_per_day?: number
           monthly_max_loss?: number
           monthly_target?: number
+          notification_sound?: boolean
           onboarded?: boolean
           session_end?: string | null
           session_start?: string | null
           starting_balance?: number
+          streak_cooldown_hours?: number
           timezone?: string
           trading_paused?: boolean
           updated_at?: string
