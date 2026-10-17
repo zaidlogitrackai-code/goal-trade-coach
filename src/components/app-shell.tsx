@@ -211,7 +211,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="mobile-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
+        <header className="mobile-header sticky top-0 z-30 grid bg-background grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
           <Logo className="min-w-0 scale-90 origin-right" />
           <div className="flex shrink-0 items-center gap-1">
             <div className="grid size-11 place-items-center"><NotificationsBell /></div>

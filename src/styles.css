@@ -286,6 +286,19 @@
   padding-bottom: calc(5.75rem + max(0.75rem, env(safe-area-inset-bottom)));
 }
 
+/* Home-screen app uses black-translucent (white status-bar glyphs). In the light theme keep a
+   dark strip behind the status bar so the clock and battery stay readable. */
+@media (display-mode: standalone) {
+  :root.light body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: env(safe-area-inset-top);
+    background: #0a0a0a;
+    z-index: 60;
+  }
+}
+
 /* Full-height agent chat page: fills space between mobile header/nav (or desktop padding). */
 @utility agent-page {
   display: flex;
