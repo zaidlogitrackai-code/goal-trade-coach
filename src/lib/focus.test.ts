@@ -141,7 +141,7 @@ describe("planNav", () => {
   it("puts setup gaps and the session first for a new trader, tucks empty pages away", () => {
     const p = planNav({ ...base, strategies: 0, rules: 0, trades: 0, closed: 0, notes: 0 });
     expect(p.pinned).toEqual(["/session", "/strategies", "/rules", "/coach"]);
-    expect(p.more).toEqual(["/trades", "/discipline", "/performance", "/reports", "/knowledge"]);
+    expect(p.more).toEqual(["/trades", "/discipline", "/performance", "/reports"]);
     expect(p.mobile[0]).toBe("/dashboard");
     expect(p.mobile).toHaveLength(5);
   });

@@ -200,6 +200,12 @@
     background-repeat: no-repeat;
     background-color: var(--background);
     min-height: 100vh;
+    min-height: 100dvh;
+  }
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select {
+      font-size: 16px;
+    }
   }
   h1, h2, h3 {
     font-family: var(--font-display);
@@ -263,11 +269,28 @@
   background-image: var(--gradient-brand);
 }
 
+/* iPhone chrome. Needs viewport-fit=cover (see __root.tsx) for env() to be non-zero.
+   Mobile header = 4rem + status bar / Dynamic Island; floating tab bar = 4.25rem,
+   sitting on the home indicator (or 0.75rem above the edge on phones without one). */
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+@utility mobile-header {
+  padding-top: env(safe-area-inset-top);
+  height: calc(4rem + env(safe-area-inset-top));
+}
+@utility tab-bar-bottom {
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+@utility pb-tab-bar {
+  padding-bottom: calc(5.75rem + max(0.75rem, env(safe-area-inset-bottom)));
+}
+
 /* Full-height agent chat page: fills space between mobile header/nav (or desktop padding). */
 @utility agent-page {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 11.75rem - env(safe-area-inset-bottom));
+  height: calc(100dvh - 10.5rem - env(safe-area-inset-top) - max(0.75rem, env(safe-area-inset-bottom)));
   @media (width >= 64rem) { height: calc(100dvh - 4rem); }
 }
 

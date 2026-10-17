@@ -67,7 +67,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // viewport-fit=cover turns on env(safe-area-inset-*) so the shell can clear the notch,
+      // Dynamic Island and home indicator; the apple-* tags make "Add to Home Screen" a real app.
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "theme-color", content: "#0a0a0a" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "HADI" },
+      { name: "format-detection", content: "telephone=no" },
       { title: "نظام هادي للتداول" },
       { name: "description", content: "نظام هادي الشخصي لإدارة التداول والانضباط والمخاطر." },
       { name: "author", content: "Hadi Alajmi" },
@@ -84,6 +92,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -130,7 +140,12 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <Toaster position="top-center" richColors />
+      <Toaster
+        position="top-center"
+        richColors
+        offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
+        mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)" }}
+      />
     </QueryClientProvider>
   );
 }

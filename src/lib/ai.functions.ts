@@ -311,7 +311,9 @@ export const coachReply = createServerFn({ method: "POST" })
       // The reply is produced in a task that outlives the request: if the phone drops
       // the connection, it still gets saved and the chat picks it up.
       const work = (async () => {
-        const { data: hist } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at").limit(40);
+        // Newest 40, back in chronological order — long threads must still include the latest message.
+        const { data: newestFirst } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(40);
+        const hist = (newestFirst ?? []).reverse();
         const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
         if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
         let live = "";

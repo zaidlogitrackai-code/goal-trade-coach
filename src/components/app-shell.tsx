@@ -155,11 +155,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-dvh">
       <RiskWatcher />
       <NotificationSound />
       <VisitRecorder />
-      <aside className="glass-strong sticky top-3 m-3 hidden h-[calc(100vh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4 lg:flex">
+      <aside className="glass-strong sticky top-3 m-3 hidden h-[calc(100dvh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4 lg:flex">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
         <nav className="mt-5 flex-1 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -167,7 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="space-y-1 rounded-lg bg-primary/5 py-2">
               <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-primary/80">لك الآن</p>
               <div className="space-y-0.5">
-                {plan.pinned.map((p) => (
+                {plan.pinned.filter((p) => ITEM[p]).map((p) => (
                   <NavLink key={p} n={ITEM[p]} pinned />
                 ))}
               </div>
@@ -196,7 +196,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
               </summary>
               <div className="space-y-0.5">
-                {plan.more.map((p) => (
+                {plan.more.filter((p) => ITEM[p]).map((p) => (
                   <NavLink key={p} n={ITEM[p]} />
                 ))}
               </div>
@@ -211,22 +211,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="grid h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
+        <header className="mobile-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
           <Logo className="min-w-0 scale-90 origin-right" />
           <div className="flex shrink-0 items-center gap-1">
-            <div className="grid size-9 place-items-center"><NotificationsBell /></div>
-            <Button onClick={signOut} aria-label="تسجيل الخروج" title="تسجيل الخروج" variant="ghost" size="icon" className="text-muted-foreground">
-              <LogOut className="size-5" />
-            </Button>
+            <div className="grid size-11 place-items-center"><NotificationsBell /></div>
           </div>
         </header>
         {/* Keyed by route so each screen enters with the same soft iOS motion */}
-        <main className="flex-1 px-4 pb-28 pt-3 lg:px-10 lg:pb-10 lg:pt-6">
+        <main className="pb-tab-bar flex-1 px-4 pt-3 lg:px-10 lg:pb-10 lg:pt-6">
           <div key={pathname} className="page-enter">{children}</div>
         </main>
       </div>
 
-      <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
+      <nav className="glass-strong tab-bar-bottom fixed inset-x-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
         {MOBILE_NAV.map((n) => (
           <Link key={n.to} to={n.to} className="flex h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] text-muted-foreground transition-transform duration-200 ease-ios active:scale-92" activeProps={{ className: "bg-foreground/15 text-foreground font-semibold shadow-[inset_0_1px_0_var(--glass-highlight)]" }}>
             <n.icon className="size-5" />
@@ -240,7 +237,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="ios-ease max-h-[78vh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card p-5 pb-8 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+          <SheetContent side="bottom" className="ios-ease max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card px-5 pt-5 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
@@ -259,6 +256,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SheetClose>
               ))}
             </div>
+            <Button onClick={signOut} variant="ghost" className="mt-6 h-11 w-full justify-center gap-2 text-muted-foreground">
+              <LogOut className="size-4" /> تسجيل الخروج
+            </Button>
           </SheetContent>
         </Sheet>
       </nav>

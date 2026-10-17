@@ -58,7 +58,6 @@ export function planNav(s: NavState | null): NavPlan {
   const dormant: NavPath[] = [];
   if (s.trades === 0) dormant.push("/trades", "/discipline");
   if (s.closed < 3) dormant.push("/performance", "/reports");
-  if (s.notes === 0) dormant.push("/knowledge");
   const more = [...new Set(dormant)].filter((p) => !pinned.includes(p));
 
   const mobile = [
