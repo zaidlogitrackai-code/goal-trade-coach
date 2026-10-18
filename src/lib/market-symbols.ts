@@ -1,18 +1,23 @@
-export type MarketSymbol = { key: string; label: string; yahoo: string; tv: string; aliases: string[]; digits: number };
+/** volume: the feed carries real traded volume (spot forex has none, so no Volume Analysis there). */
+export type MarketSymbol = { key: string; label: string; yahoo: string; tv: string; aliases: string[]; digits: number; volume: boolean };
 
 // Arabic aliases are bare stems: the article and attached prefixes (ال، ب، بال، و…) are matched in detectSymbols.
 // No bare 'ين' for the yen: it sits inside وين/الحين/بين/لين and pulled USDJPY into gold analyses.
+// Indices read the 24h CFD / futures, not the cash index that freezes outside the US session.
 export const MARKET_SYMBOLS: MarketSymbol[] = [
-  { key: "XAUUSD", tv: "OANDA:XAUUSD", label: "ذهب", yahoo: "GC=F", aliases: ["XAUUSD", "GOLD", "GOLD SPOT", "ذهب"], digits: 2 },
-  { key: "XAGUSD", tv: "TVC:SILVER", label: "فضة", yahoo: "SI=F", aliases: ["XAGUSD", "SILVER", "فضة"], digits: 3 },
-  { key: "US500", tv: "SP:SPX", label: "S&P 500", yahoo: "^GSPC", aliases: ["US500", "SPX", "SP500", "S&P"], digits: 1 },
-  { key: "US100", tv: "NASDAQ:NDX", label: "ناسداك", yahoo: "^NDX", aliases: ["US100", "NAS100", "NASDAQ", "ناسداك", "نازداك"], digits: 1 },
-  { key: "US30", tv: "OANDA:US30USD", label: "داو", yahoo: "^DJI", aliases: ["US30USD", "US30", "DOW", "داو"], digits: 1 },
-  { key: "USOIL", tv: "NYMEX:CL1!", label: "نفط", yahoo: "CL=F", aliases: ["USOIL", "WTI", "OIL", "نفط"], digits: 3 },
-  { key: "EURUSD", tv: "OANDA:EURUSD", label: "EURUSD", yahoo: "EURUSD=X", aliases: ["EURUSD", "يورو"], digits: 5 },
-  { key: "GBPUSD", tv: "OANDA:GBPUSD", label: "GBPUSD", yahoo: "GBPUSD=X", aliases: ["GBPUSD", "باوند", "استرليني"], digits: 5 },
-  { key: "USDJPY", tv: "OANDA:USDJPY", label: "USDJPY", yahoo: "JPY=X", aliases: ["USDJPY", "USJPY", "دولار ين", "ين ياباني"], digits: 3 },
+  { key: "XAUUSD", tv: "OANDA:XAUUSD", label: "ذهب", yahoo: "GC=F", aliases: ["XAUUSD", "GOLD", "GOLD SPOT", "ذهب"], digits: 2, volume: true },
+  { key: "XAGUSD", tv: "TVC:SILVER", label: "فضة", yahoo: "SI=F", aliases: ["XAGUSD", "SILVER", "فضة"], digits: 3, volume: true },
+  { key: "US500", tv: "OANDA:SPX500USD", label: "S&P 500", yahoo: "ES=F", aliases: ["US500", "SPX", "SP500", "S&P"], digits: 1, volume: true },
+  { key: "US100", tv: "OANDA:NAS100USD", label: "ناسداك", yahoo: "NQ=F", aliases: ["US100", "NAS100", "NASDAQ", "ناسداك", "نازداك"], digits: 1, volume: true },
+  { key: "US30", tv: "OANDA:US30USD", label: "داو", yahoo: "YM=F", aliases: ["US30USD", "US30", "DOW", "داو"], digits: 1, volume: true },
+  { key: "USOIL", tv: "NYMEX:CL1!", label: "نفط", yahoo: "CL=F", aliases: ["USOIL", "WTI", "OIL", "نفط"], digits: 3, volume: true },
+  { key: "EURUSD", tv: "OANDA:EURUSD", label: "EURUSD", yahoo: "EURUSD=X", aliases: ["EURUSD", "يورو"], digits: 5, volume: false },
+  { key: "GBPUSD", tv: "OANDA:GBPUSD", label: "GBPUSD", yahoo: "GBPUSD=X", aliases: ["GBPUSD", "باوند", "استرليني"], digits: 5, volume: false },
+  { key: "USDJPY", tv: "OANDA:USDJPY", label: "USDJPY", yahoo: "JPY=X", aliases: ["USDJPY", "USJPY", "دولار ين", "ين ياباني"], digits: 3, volume: false },
 ];
+
+export const symbolByKey = (key: string | null | undefined): MarketSymbol | undefined =>
+  key ? MARKET_SYMBOLS.find((s) => s.key === key.trim().toUpperCase()) ?? detectSymbols(key)[0] : undefined;
 
 /** Diacritics and tatweel dropped, alef/taa marbuta/alef maqsura unified — how the phone actually types. */
 const normAr = (s: string) =>

@@ -17,6 +17,7 @@ import { anchorBalance, applyPctLimits } from "@/lib/effective-limits";
 import { makeThumbnail } from "@/lib/image";
 import { actionIssue, isClosedUpload, parseAction, type ActionType, type AgentAction } from "@/lib/agent-action-spec";
 import { needsApproval, type PolicyContext } from "@/lib/action-policy";
+import { parseTradeCard, splitTradeBlock } from "@/lib/trade-card";
 
 /**
  * Runs the AI's actions in the browser. What an action is and whether it may run by
@@ -511,9 +512,25 @@ async function execute(type: ActionType, d: Record<string, unknown>, user_id: st
       return check(error);
     }
     case "save_analysis": {
-      const a2 = d as { symbol?: string | null; timeframe?: string | null; question?: string | null; result: string };
-      const { error } = await supabase.from("chart_analyses").insert({ user_id, ...a2 });
-      return check(error);
+      const a2 = d as { symbol?: string | null; timeframe?: string | null; question?: string | null; result: string; card?: unknown };
+      // The card is stored as parsed, so the week's analyst stats read one shape.
+      const raw = a2.card != null ? (typeof a2.card === "string" ? a2.card : JSON.stringify(a2.card)) : splitTradeBlock(a2.result).raw;
+      const parsed = raw ? parseTradeCard(raw) : null;
+      const card = parsed?.ok ? parsed.card : null;
+      const symbol = a2.symbol ?? card?.symbol ?? null;
+      const { error } = await supabase.from("chart_analyses").insert({
+        user_id, symbol, timeframe: a2.timeframe ?? card?.timeframe ?? null, question: a2.question ?? null, result: a2.result,
+        card: card ? (JSON.parse(JSON.stringify(card)) as Database["public"]["Tables"]["chart_analyses"]["Row"]["card"]) : null,
+      });
+      if (error) return check(error);
+      // «راقبها» is a gate decision too: it lands in the week's "watched, not taken".
+      if (card?.intent === "watch") {
+        const { error: e2 } = await supabase.from("pre_trade_checks").insert({
+          user_id, intent: "watch", decision: "NO_ACTIONABLE", source: "ai", symbol, direction: card.direction === "none" ? null : card.direction,
+        });
+        if (e2) console.warn("[save_analysis] watch check not saved", e2.message);
+      }
+      return check(null);
     }
     case "delete_analysis": {
       let q = supabase.from("chart_analyses").select("id").order("created_at", { ascending: false }).limit(1);

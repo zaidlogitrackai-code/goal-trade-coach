@@ -315,6 +315,7 @@ export const SCHEMAS = {
     timeframe: z.string().max(20).nullish(),
     question: opt,
     result: z.string().min(1).max(8000),
+    card: z.unknown().optional(),
   }),
   delete_analysis: z.object({ id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }),
   delete_thread: z.object({ title: z.string().min(1).max(200) }),

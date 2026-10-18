@@ -9,6 +9,8 @@ import { ChatHeader, EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { SessionAgent } from "@/components/session-agent";
 import { PaperTestPanel } from "@/components/paper-test-panel";
+import { TradeCardView } from "@/components/trade-card";
+import { splitTradeBlock } from "@/lib/trade-card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -75,9 +77,21 @@ function PastAnalyses() {
             <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); setAsking(a.id); }}>حذف</Button>
           </summary>
           {a.question && <p className="mt-3 text-sm text-muted-foreground">سؤالك: {a.question}</p>}
-          <div className="mt-3"><Md>{a.result}</Md></div>
+          <SavedAnalysis id={a.id} result={a.result} card={a.card} />
         </details>
       ))}
+    </div>
+  );
+}
+
+/** A saved analysis with its card; the card knows its row, so the stepper can link the trade back. */
+function SavedAnalysis({ id, result, card }: { id: string; result: string; card: unknown }) {
+  const { body, raw } = splitTradeBlock(result);
+  const cardRaw = card != null ? JSON.stringify(card) : raw;
+  return (
+    <div className="mt-3">
+      <Md>{body}</Md>
+      {cardRaw && <TradeCardView raw={cardRaw} analysisId={id} />}
     </div>
   );
 }
