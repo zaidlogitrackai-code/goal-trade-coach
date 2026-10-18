@@ -21,3 +21,16 @@ export const isSensitive = (e: string | null | undefined) => has(SENSITIVE, e);
  */
 export const REVENGE_MARKER = "[هل هو تعويض]: نعم";
 export const revengeLine = (yes: boolean) => (yes ? REVENGE_MARKER : "[هل هو تعويض]: لا");
+
+/**
+ * Minutes after a losing close in which a new entry counts as revenge. Never under 30,
+ * and longer when his own cooldown is longer — one window for the report, focus and gate.
+ */
+export function REVENGE_WINDOW_MIN(s?: { cooldown_minutes?: number | null } | null): number {
+  const m = Number(s?.cooldown_minutes);
+  return Number.isFinite(m) ? Math.max(30, m) : 30;
+}
+
+/** Was an entry opened `gapMs` after a losing close still inside the revenge window? */
+export const inRevengeWindow = (gapMs: number, windowMin: number) =>
+  gapMs >= 0 && gapMs < windowMin * 60_000;

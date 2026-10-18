@@ -5,7 +5,7 @@
  */
 import { countConsecutiveLosses } from "./trading-status";
 import { dayKey, dayStart } from "./trading-day";
-import { isGreed, REVENGE_MARKER } from "./emotions";
+import { inRevengeWindow, isGreed, REVENGE_MARKER, REVENGE_WINDOW_MIN } from "./emotions";
 
 export interface DisciplineTrade {
   status: string;
@@ -23,7 +23,7 @@ export interface DisciplineViolation {
   trade_id: string | null;
 }
 
-const REVENGE_MS = 15 * 60_000;
+// A sharper signal inside the revenge window: straight back in after the loss.
 const QUICK_MS = 5 * 60_000;
 export const WINDOW_DAYS = 30;
 
@@ -55,6 +55,8 @@ export interface DisciplineReport {
     violations: number;
     gateOverrides: number;
     revengeCount: number;
+    /** Minutes after a losing close that count as revenge (REVENGE_WINDOW_MIN). */
+    revengeWindowMin: number;
     quickReentryCount: number;
     selfDeclaredRevenge: number;
     greedCount: number;
@@ -69,10 +71,11 @@ export interface DisciplineReport {
 export function disciplineReport(
   allTrades: DisciplineTrade[],
   allViolations: DisciplineViolation[],
-  opts: { maxRiskPerTrade: number; now?: Date; tz?: string | null },
+  opts: { maxRiskPerTrade: number; now?: Date; tz?: string | null; revengeWindowMin?: number },
 ): DisciplineReport {
   const now = opts.now ?? new Date();
   const tz = opts.tz;
+  const windowMin = opts.revengeWindowMin ?? REVENGE_WINDOW_MIN();
   const since = now.getTime() - WINDOW_DAYS * 86_400_000;
   const trades = allTrades.filter((t) => new Date(t.opened_at).getTime() >= since);
   const violations = allViolations.filter((v) => new Date(v.occurred_at).getTime() >= since);
@@ -86,6 +89,7 @@ export function disciplineReport(
     violations: violations.length,
     gateOverrides: violations.filter((v) => v.trade_id).length,
     revengeCount: 0,
+    revengeWindowMin: windowMin,
     quickReentryCount: 0,
     selfDeclaredRevenge: 0,
     greedCount: 0,
@@ -132,7 +136,7 @@ export function disciplineReport(
       gaps.push(+new Date(cur.opened_at) - +new Date(prev.opened_at));
     if (prev.status === "closed" && (prev.pnl ?? 0) < 0 && prev.closed_at) {
       const gap = +new Date(cur.opened_at) - +new Date(prev.closed_at);
-      if (gap >= 0 && gap < REVENGE_MS) revengeCount++;
+      if (inRevengeWindow(gap, windowMin)) revengeCount++;
       if (gap >= 0 && gap < QUICK_MS) quickReentryCount++;
     }
   }
@@ -167,7 +171,7 @@ export function disciplineReport(
   const of = (a: number, b: number) => `${a} من ${b}`;
   if (quickReentryCount) neg.push(`دخلت ${quickReentryCount} مرة خلال 5 دقائق بعد خسارة.`);
   if (revengeCount > quickReentryCount)
-    neg.push(`فتحت ${revengeCount} صفقة خلال 15 دقيقة بعد خسارة (تداول انتقامي محتمل).`);
+    neg.push(`فتحت ${revengeCount} صفقة خلال ${windowMin} دقيقة بعد خسارة (تداول انتقامي محتمل).`);
   if (selfDeclaredRevenge) neg.push(`أقررت أن ${selfDeclaredRevenge} صفقة كانت تعويضًا عن خسارة.`);
   if (tradesAfterTwoLosses)
     neg.push(`واصلت التداول ${tradesAfterTwoLosses} مرة بعد خسارتين متتاليتين في نفس اليوم.`);
@@ -197,6 +201,7 @@ export function disciplineReport(
       violations: violations.length,
       gateOverrides,
       revengeCount,
+      revengeWindowMin: windowMin,
       quickReentryCount,
       selfDeclaredRevenge,
       greedCount,

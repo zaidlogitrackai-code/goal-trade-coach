@@ -99,11 +99,24 @@ describe("signals", () => {
   const s = deriveSignals(trades, [], focus, now);
   it("ignores trades older than 30 days", () => expect(s.recentCount).toBe(4));
   it("finds the revenge window, worst emotion, outside-market and no-stop trades", () => {
-    expect(s.afterLoss).toEqual({ count: 2, pnl: -80 });
+    expect(s.afterLoss).toEqual({ count: 2, pnl: -80, minutes: 30 });
     expect(s.worstEmotion).toEqual({ emotion: "متوتر", pnl: -80, count: 2 });
     expect(s.outsideFocus).toEqual({ count: 1, pnl: -80, symbols: ["GBPJPY"] });
     expect(s.noStop).toBe(1);
     expect(s.topSymbols[0]).toEqual({ symbol: "XAUUSD", count: 3 });
+  });
+  it("uses the shared revenge window, stretched by a longer cooldown", () => {
+    const late = [
+      tr({ pnl: -100, closed_at: "2026-10-10T10:30:00Z" }),
+      tr({ pnl: -20, opened_at: "2026-10-10T11:10:00Z", closed_at: "2026-10-10T11:12:00Z" }),
+      tr({ pnl: -20, opened_at: "2026-10-10T11:50:00Z", closed_at: "2026-10-10T11:52:00Z" }),
+    ];
+    expect(deriveSignals(late, [], focus, now).afterLoss).toBeNull();
+    const wide = deriveSignals(late, [], focus, now, 60);
+    expect(wide.afterLoss).toEqual({ count: 2, pnl: -40, minutes: 60 });
+    expect(buildInsights(wide, focus, money).map((i) => i.text).join(" ")).toContain(
+      "خلال 60 دقيقة بعد خسارة",
+    );
   });
   it("puts warnings first and caps the list", () => {
     const ins = buildInsights(s, focus, money);

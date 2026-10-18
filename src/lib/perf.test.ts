@@ -17,6 +17,11 @@ describe("perf", () => {
   it("long vs short split uses the DB direction values", () => {
     expect(sideSplit(trades)).toEqual({ long: { count: 3, pnl: 0 }, short: { count: 1, pnl: 150 } });
   });
+  it("long/short split counts both sides, never zeroes one out", () => {
+    const s = sideSplit([t(80, "2026-10-05T08:00:00Z"), t(-30, "2026-10-06T08:00:00Z", { direction: "short" }), { ...t(500, "2026-10-07T08:00:00Z"), status: "open" } as Trade]);
+    expect(s.long).toEqual({ count: 1, pnl: 80 });
+    expect(s.short).toEqual({ count: 1, pnl: -30 });
+  });
   it("daily pnl groups by local day", () => { expect(dailyPnl(trades, "Asia/Riyadh").get("2026-10-06")?.pnl).toBe(-50); });
   it("week starts Monday in Riyadh time", () => {
     const r = periodRange("week", new Date("2026-10-12T16:00:00Z"), "Asia/Riyadh")!;

@@ -18,6 +18,7 @@ import { currentUserId, settingsQuery, tradesQuery, violationsQuery } from "@/li
 import { parseDecimal } from "@/lib/num";
 import { dayKey } from "@/lib/trading-day";
 import { disciplineReport } from "@/lib/stats";
+import { REVENGE_WINDOW_MIN } from "@/lib/emotions";
 import { countConsecutiveLosses } from "@/lib/trading-status";
 import { Gauge, ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
@@ -114,7 +115,7 @@ function DisciplineStats() {
   const violations = v.data ?? [];
   const settings = s.data!;
 
-  const rep = disciplineReport(trades, violations, Number(settings.max_risk_per_trade) || 0);
+  const rep = disciplineReport(trades, violations, Number(settings.max_risk_per_trade) || 0, REVENGE_WINDOW_MIN(settings));
   const until = settings.cooldown_until ? new Date(settings.cooldown_until).getTime() : 0;
   const left = Math.max(0, until - now);
   const streak = countConsecutiveLosses(
@@ -290,7 +291,7 @@ function DisciplineStats() {
                 </li>
                 {rep.revenge > 0 ? (
                   <li className="text-destructive font-medium">
-                    خصم {rep.revenge * 5} نقاط بسبب {rep.revenge} صفقات فُتحت مباشرة خلال 15 دقيقة بعد خسارة (سلوك انتقامي).
+                    خصم {rep.revenge * 5} نقاط بسبب {rep.revenge} صفقات فُتحت خلال {rep.revengeWindowMin} دقيقة بعد خسارة (سلوك انتقامي).
                   </li>
                 ) : (
                   <li className="text-success font-medium">

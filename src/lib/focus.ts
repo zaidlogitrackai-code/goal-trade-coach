@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { forexSymbol } from "./forex";
+import { inRevengeWindow, REVENGE_WINDOW_MIN } from "./emotions";
 
 /**
  * The trader's focus profile: what they told the coach (or typed) about themselves.
@@ -157,7 +158,7 @@ export type FocusSignals = {
   topSymbols: { symbol: string; count: number }[];
   worstEmotion: { emotion: string; pnl: number; count: number } | null;
   bestStrategy: { id: string; name: string; pnl: number; count: number } | null;
-  afterLoss: { count: number; pnl: number } | null;
+  afterLoss: { count: number; pnl: number; minutes: number } | null;
   outsideFocus: { count: number; pnl: number; symbols: string[] } | null;
   noStop: number;
 };
@@ -169,6 +170,7 @@ export function deriveSignals(
   strategies: { id: string; name: string }[],
   focus: FocusProfile,
   now = new Date(),
+  revengeWindowMin = REVENGE_WINDOW_MIN(),
 ): FocusSignals {
   const since = now.getTime() - 30 * DAY;
   const recent = trades.filter((t) => new Date(t.opened_at).getTime() >= since);
@@ -203,13 +205,13 @@ export function deriveSignals(
     .sort((a, b) => b[1].pnl - a[1].pnl)[0];
   const stratName = strat ? strategies.find((s) => s.id === strat[0])?.name : undefined;
 
-  // Trades opened within 60 minutes after a losing close: the revenge window.
+  // Trades opened inside the revenge window after a losing close.
   const losses = closed
     .filter((t) => (t.pnl ?? 0) < 0 && t.closed_at)
     .map((t) => new Date(t.closed_at!).getTime());
   const after = closed.filter((t) => {
     const o = new Date(t.opened_at).getTime();
-    return losses.some((l) => o > l && o - l <= 60 * 60_000);
+    return losses.some((l) => o > l && inRevengeWindow(o - l, revengeWindowMin));
   });
 
   const outside = recent.filter((t) => inMarkets(t.symbol, focus.markets) === false);
@@ -221,7 +223,11 @@ export function deriveSignals(
     bestStrategy: strat && stratName ? { id: strat[0], name: stratName, ...strat[1] } : null,
     afterLoss:
       after.length >= 2
-        ? { count: after.length, pnl: after.reduce((a, t) => a + (t.pnl ?? 0), 0) }
+        ? {
+            count: after.length,
+            pnl: after.reduce((a, t) => a + (t.pnl ?? 0), 0),
+            minutes: revengeWindowMin,
+          }
         : null,
     outsideFocus: outside.length
       ? {
@@ -251,7 +257,7 @@ export function buildInsights(
   if (s.afterLoss && s.afterLoss.pnl < 0)
     out.push({
       tone: "warning",
-      text: `الصفقات خلال ساعة بعد خسارة: ${s.afterLoss.count} صفقة، نتيجتها ${money(s.afterLoss.pnl)}.`,
+      text: `الصفقات خلال ${s.afterLoss.minutes} دقيقة بعد خسارة: ${s.afterLoss.count} صفقة، نتيجتها ${money(s.afterLoss.pnl)}.`,
     });
   if (s.worstEmotion)
     out.push({

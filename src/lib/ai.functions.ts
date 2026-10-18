@@ -18,7 +18,7 @@ import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { MAX_THUMB_CHARS } from "./image";
 
 import { applyPctLimits } from "./effective-limits";
-import { EMOTIONS } from "./emotions";
+import { EMOTIONS, REVENGE_WINDOW_MIN } from "./emotions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 type Sb = SupabaseClient<Database>;
@@ -98,7 +98,7 @@ async function buildContext(sb: Sb) {
     tradesToday: monthTrades.filter((x) => isToday(x.opened_at)).length,
     blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
   });
-  const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
+  const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus, new Date(), REVENGE_WINDOW_MIN(s.data)), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
   return `الأصول التي يغطيها النظام وتحللها دائماً بدون أي رفض أو اعتذار: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30 (يسمّى أيضاً US30USD)، EURUSD، GBPUSD، USDJPY، USOIL (نفط WTI)، وأي زوج عملات. إذا الصورة لواحد منها لا تقل أبداً "خارج نطاق النظام" أو "ما أحلل". العملات الرقمية والأسهم فقط خارج النظام؛ إذا طلبها قله بلطف.
 اليوم عند هادي: ${todayKey} (منطقته ${tz}) — "اليوم" و"هالأسبوع" بتوقيته هو.
 ستريك الانضباط: ${streak.current} يوم سوق متتالي (أفضل ${streak.best}). يزيد لما يسكّر جلسته بمراجعة بدون مخالفة؛ السبت والأحد ما ينحسبون. لما يسكّر جلسة نظيفة هنّيه بالرقم الجديد، ولو قرّب يكسر قاعدة ذكّره إنه بيخسر الستريك.

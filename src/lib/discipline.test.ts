@@ -50,6 +50,30 @@ describe("disciplineReport", () => {
     expect(scoreSummary(r)).toContain("خلال 5 دقائق بعد خسارة");
   });
 
+  it("counts a re-entry 20 minutes after a loss as revenge", () => {
+    const trades = [
+      tr({ at: "2026-10-11T09:00:00", close: "2026-10-11T09:20:00", pnl: -50 }),
+      tr({ at: "2026-10-11T09:40:00", close: "2026-10-11T10:00:00", pnl: 30 }),
+    ];
+    const r = disciplineReport(trades, [], { maxRiskPerTrade: 100, now });
+    expect(r.metrics.revengeWindowMin).toBe(30);
+    expect(r.metrics.revengeCount).toBe(1);
+    expect(r.metrics.quickReentryCount).toBe(0);
+    expect(r.concerns.join(" ")).toContain("خلال 30 دقيقة بعد خسارة");
+  });
+
+  it("stretches the revenge window to a longer cooldown", () => {
+    const trades = [
+      tr({ at: "2026-10-11T09:00:00", close: "2026-10-11T09:20:00", pnl: -50 }),
+      tr({ at: "2026-10-11T10:00:00" }),
+    ];
+    const at = (revengeWindowMin: number) =>
+      disciplineReport(trades, [], { maxRiskPerTrade: 100, now, revengeWindowMin }).metrics
+        .revengeCount;
+    expect(at(30)).toBe(0);
+    expect(at(60)).toBe(1);
+  });
+
   it("measures stop-loss adherence and losses beyond planned risk", () => {
     const trades = [
       tr({ at: "2026-10-10T09:00:00", close: "2026-10-10T10:00:00", pnl: -50, stop_loss: null }),

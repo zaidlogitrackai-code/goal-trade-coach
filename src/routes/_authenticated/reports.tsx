@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { reportSummary } from "@/lib/ai.functions";
 import { fmtDate, fmtMoney, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { disciplineReport, groupPnl, tradeStats } from "@/lib/stats";
+import { REVENGE_WINDOW_MIN } from "@/lib/emotions";
 import { addDays, dayKey, dayStart, zonedMidnight } from "@/lib/trading-day";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -44,7 +45,7 @@ function ReportsPage() {
   const trades = (t.data ?? []).filter((x) => inRange(x.opened_at));
   const viol = (v.data ?? []).filter((x) => inRange(x.occurred_at));
   const k = tradeStats(trades);
-  const d = disciplineReport(trades, viol, Number(s.data?.max_risk_per_trade) || 0);
+  const d = disciplineReport(trades, viol, Number(s.data?.max_risk_per_trade) || 0, REVENGE_WINDOW_MIN(s.data));
   const bySym = groupPnl(trades, (x) => x.symbol);
 
   async function runAi() {
