@@ -14,8 +14,12 @@ import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries"
 import { isBlocked, useJourney } from "@/lib/use-journey";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export const NAV_GROUPS = [
   {
@@ -61,14 +65,15 @@ export const NAV_GROUPS = [
 type NavItem = (typeof NAV_GROUPS)[number]["items"][number];
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => [...g.items] as NavItem[]);
 
-const ITEM = Object.fromEntries(NAV.map((n) => [n.to, n])) as Record<NavPath, NavItem>;
+// Partial: NavPath also names pages that are not in the menu (/training, /knowledge).
+const ITEM: Partial<Record<NavPath, NavItem>> = Object.fromEntries(NAV.map((n) => [n.to, n]));
 
-const MOBILE_NAV: NavItem[] = [
-  ITEM["/dashboard"],
-  ITEM["/session"],
-  ITEM["/new-trade"],
-  ITEM["/coach"],
-];
+/** Menu items for these paths, skipping any page the menu does not carry. */
+function navItems(paths: readonly NavPath[]): NavItem[] {
+  return paths.flatMap((p) => ITEM[p] ?? []);
+}
+
+const MOBILE_NAV = navItems(["/dashboard", "/session", "/new-trade", "/coach"]);
 
 /** Reorders the menu around what the trader is doing and has set up (see nav-plan.ts). */
 function useNavPlan(): NavPlan {
@@ -114,6 +119,34 @@ function NavLink({ n, pinned }: { n: NavItem; pinned?: boolean }) {
       <n.icon className={`size-4 ${pinned ? "text-primary" : ""}`} />
       {n.label}
     </Link>
+  );
+}
+
+/**
+ * Asks first: on the Home Screen app a stray tap on logout means typing the email and password
+ * again on the phone.
+ */
+function SignOutButton({ onConfirm, className }: { onConfirm: () => void; className: string }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" className={className}>
+          <LogOut className="size-4" /> تسجيل الخروج
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="sm:max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>متأكد بدك تطلع؟</AlertDialogTitle>
+          <AlertDialogDescription>بتحتاج تدخل إيميلك وكلمة السر من جديد عشان ترجع.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>لا، خليني</AlertDialogCancel>
+          <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={onConfirm}>
+            سجّل خروج
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -167,8 +200,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="space-y-1 rounded-lg bg-primary/5 py-2">
               <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-primary/80">لك الآن</p>
               <div className="space-y-0.5">
-                {plan.pinned.filter((p) => ITEM[p]).map((p) => (
-                  <NavLink key={p} n={ITEM[p]} pinned />
+                {navItems(plan.pinned).map((n) => (
+                  <NavLink key={n.to} n={n} pinned />
                 ))}
               </div>
             </div>
@@ -196,17 +229,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
               </summary>
               <div className="space-y-0.5">
-                {plan.more.filter((p) => ITEM[p]).map((p) => (
-                  <NavLink key={p} n={ITEM[p]} />
+                {navItems(plan.more).map((n) => (
+                  <NavLink key={n.to} n={n} />
                 ))}
               </div>
             </details>
           )}
         </nav>
 
-        <Button onClick={signOut} variant="ghost" className="mt-2 w-full justify-start gap-3 px-3 text-muted-foreground">
-          <LogOut className="size-4" /> تسجيل الخروج
-        </Button>
+        <SignOutButton onConfirm={signOut} className="mt-2 w-full justify-start gap-3 px-3 text-muted-foreground" />
         <p className="mt-2 text-center text-[10px] tracking-[0.2em] text-muted-foreground">انضباط. استراتيجية. حرية.</p>
       </aside>
 
@@ -237,7 +268,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>المزيد</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="ios-ease max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card px-5 pt-5 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350 [&>button]:left-4 [&>button]:right-auto" dir="rtl">
+          <SheetContent side="bottom" className="ios-ease max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card px-5 pt-5 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350" dir="rtl">
             <SheetHeader className="mb-5 text-right">
               <SheetTitle>كل الأقسام</SheetTitle>
             </SheetHeader>
@@ -256,9 +287,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SheetClose>
               ))}
             </div>
-            <Button onClick={signOut} variant="ghost" className="mt-6 h-11 w-full justify-center gap-2 text-muted-foreground">
-              <LogOut className="size-4" /> تسجيل الخروج
-            </Button>
+            <SignOutButton onConfirm={signOut} className="mt-6 h-11 w-full justify-center gap-2 text-muted-foreground" />
           </SheetContent>
         </Sheet>
       </nav>

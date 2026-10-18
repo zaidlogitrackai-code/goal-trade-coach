@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Download, Trash2, Shield, Bell, GraduationCap, BookOpen, LocateFixed } from "lucide-react";
+import { Moon, Sun, SunMoon, Download, Trash2, Shield, Bell, GraduationCap, BookOpen, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loading, PageHeader } from "@/components/app-shell";
@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { settingsQuery } from "@/lib/queries";
 import { TRAINING_OFF_CATEGORY, KNOWLEDGE_OFF_CATEGORY } from "@/lib/hidden-notes";
 import { safeTz, zoneList } from "@/lib/trading-day";
+import { readThemeChoice, setThemeChoice, type ThemeChoice } from "@/lib/theme";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -23,41 +24,43 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
+const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "فاتح", icon: Sun },
+  { value: "dark", label: "داكن", icon: Moon },
+  { value: "system", label: "تلقائي", icon: SunMoon },
+];
+
 function ThemeToggle() {
-  const [light, setLight] = useState(false);
+  // Read after mount: the stored choice lives in this browser only, the server can't know it.
+  const [choice, setChoice] = useState<ThemeChoice>("dark");
   useEffect(() => {
-    setLight(document.documentElement.classList.contains("light"));
+    setChoice(readThemeChoice());
   }, []);
 
-  function set(next: boolean) {
-    setLight(next);
-    document.documentElement.classList.toggle("light", next);
-    try {
-      localStorage.setItem("hadi-theme", next ? "light" : "dark");
-    } catch {
-      /* ignore */
-    }
+  function pick(next: ThemeChoice) {
+    setChoice(next);
+    setThemeChoice(next);
   }
 
   return (
     <div className="space-y-2">
-      <Label>المظهر العام</Label>
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          type="button"
-          variant={light ? "outline" : "default"}
-          onClick={() => set(false)}
-        >
-          <Moon className="size-4" /> داكن (موصى به)
-        </Button>
-        <Button
-          type="button"
-          variant={light ? "default" : "outline"}
-          onClick={() => set(true)}
-        >
-          <Sun className="size-4" /> فاتح
-        </Button>
+      <Label id="theme-label">المظهر العام</Label>
+      <div role="radiogroup" aria-labelledby="theme-label" className="grid grid-cols-3 gap-2">
+        {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+          <Button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={choice === value}
+            variant={choice === value ? "default" : "outline"}
+            className="h-11"
+            onClick={() => pick(value)}
+          >
+            <Icon className="size-4" /> {label}
+          </Button>
+        ))}
       </div>
+      <p className="text-xs text-muted-foreground">تلقائي يمشي مع مظهر الآيفون ويتبدّل معه لحاله.</p>
     </div>
   );
 }

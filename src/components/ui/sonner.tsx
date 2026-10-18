@@ -1,10 +1,22 @@
+import { useSyncExternalStore } from "react";
 import { Toaster as Sonner } from "sonner";
+import { currentTheme, subscribeTheme } from "@/lib/theme";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
+// Just under the 4rem mobile header, so a toast never covers the clock, the island or the bell.
+const BELOW_HEADER = { top: "calc(env(safe-area-inset-top) + 4.5rem)" };
+
 const Toaster = ({ ...props }: ToasterProps) => {
+  // Follows the html class (settings or the iPhone's automatic switch), not Sonner's own guess.
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme, () => "dark" as const);
   return (
     <Sonner
+      theme={theme}
+      dir="rtl"
+      visibleToasts={2}
+      offset={BELOW_HEADER}
+      mobileOffset={BELOW_HEADER}
       className="toaster group"
       toastOptions={{
         classNames: {

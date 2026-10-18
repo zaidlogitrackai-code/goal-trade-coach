@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { THEME_BOOT_SCRIPT, THEME_COLOR } from "@/lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -70,7 +71,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       // viewport-fit=cover turns on env(safe-area-inset-*) so the shell can clear the notch,
       // Dynamic Island and home indicator; the apple-* tags make "Add to Home Screen" a real app.
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "theme-color", content: "#0a0a0a" },
+      // Dark until the boot script below repaints it for the chosen theme (theme.ts).
+      { name: "theme-color", content: THEME_COLOR.dark },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -84,22 +86,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    scripts: [
-      {
-        children: `try{if(localStorage.getItem("hadi-theme")==="light")document.documentElement.classList.add("light")}catch(e){}`,
-      },
-    ],
+    scripts: [{ children: THEME_BOOT_SCRIPT }],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
       { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap",
-      },
     ],
   }),
   shellComponent: RootShell,
@@ -140,12 +132,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <Toaster
-        position="top-center"
-        richColors
-        offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
-        mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)" }}
-      />
+      <Toaster position="top-center" richColors />
     </QueryClientProvider>
   );
 }
