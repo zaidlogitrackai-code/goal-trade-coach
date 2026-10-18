@@ -78,3 +78,15 @@ export function pastedImage(data: ClipboardLike | null | undefined): File | null
   }
   return null;
 }
+
+/**
+ * Rows fetched "from the newest one on" (created_at >= the last row, so a row saved in the
+ * same millisecond is never skipped) appended to what is on screen. The overlap is dropped by
+ * id and existing rows keep their identity, so memoized messages don't re-render. The same
+ * array comes back when nothing is new.
+ */
+export function appendNewer<T extends { id: string }>(rows: readonly T[], newer: readonly T[]): T[] {
+  const known = new Set(rows.map((r) => r.id));
+  const add = newer.filter((r) => !known.has(r.id));
+  return add.length ? [...rows, ...add] : (rows as T[]);
+}

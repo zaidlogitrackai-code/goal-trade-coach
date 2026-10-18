@@ -13,7 +13,7 @@ vi.mock("@/integrations/supabase/client", () => {
     get: (_, k) => (k === "then" ? (ok: (v: unknown) => void) => ok({ data: { id: "t1" }, error: null }) : () => chain),
   });
   from.mockImplementation(() => chain);
-  return { supabase: { from, auth: { getUser: async () => ({ data: { user: { id: "u1" } } }) } } };
+  return { supabase: { from, auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) } } };
 });
 vi.mock("@tanstack/react-router", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-router")>()),

@@ -3,11 +3,12 @@ import { Check, Bot, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FLOW_LABELS, type FlowResult } from "@/lib/day-flow";
 import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
+import { safeSession } from "@/lib/safe-storage";
 
 export function DayFlow({ flow }: { flow: FlowResult }) {
   const nav = useNavigate();
   function interview() {
-    sessionStorage.setItem(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
+    safeSession.set(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
     void nav({ to: "/coach" });
   }
   return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enterSends, hasNewBelow, keyboardOpen, pastedImage, shouldAutoScroll } from "./chat-ui";
+import { appendNewer, enterSends, hasNewBelow, keyboardOpen, pastedImage, shouldAutoScroll } from "./chat-ui";
 
 describe("shouldAutoScroll", () => {
   it("follows when he is at the bottom or within the slack", () => {
@@ -75,5 +75,24 @@ describe("pastedImage", () => {
     const pdf = new File(["x"], "a.pdf", { type: "application/pdf" });
     expect(pastedImage({ files: [pdf], items: [{ kind: "string", type: "text/plain", getAsFile: () => null }] })).toBeNull();
     expect(pastedImage(null)).toBeNull();
+  });
+});
+
+describe("appendNewer", () => {
+  const a = { id: "a", content: "هلا" };
+  const b = { id: "b", content: "شو الوضع" };
+  it("appends only rows not on screen yet, keeping the old row objects", () => {
+    const rows = [a];
+    const out = appendNewer(rows, [{ ...a }, b]);
+    expect(out).toEqual([a, b]);
+    expect(out[0]).toBe(a);
+  });
+  it("returns the same array when the overlap is all that came back", () => {
+    const rows = [a, b];
+    expect(appendNewer(rows, [{ ...b }])).toBe(rows);
+    expect(appendNewer(rows, [])).toBe(rows);
+  });
+  it("fills an empty thread", () => {
+    expect(appendNewer([], [a, b])).toEqual([a, b]);
   });
 });

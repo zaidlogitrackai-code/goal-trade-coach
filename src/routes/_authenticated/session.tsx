@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { SessionAgent, GREETING_START } from "@/components/session-agent";
 import { currentUserId, fmtDate, fmtMoney, settingsQuery, tradesQuery } from "@/lib/queries";
 import { computeDayMetrics } from "@/lib/trading-status";
-import { dayStart } from "@/lib/trading-day";
 import { Activity, History, MessageSquare, PauseCircle, SquarePen, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ResponsiveSheet } from "@/components/responsive-sheet";
@@ -71,17 +70,25 @@ function Chats({ activeId, onOpen, onClose, onActiveDeleted }: { activeId: strin
   );
 }
 
+/**
+ * The open session's running clock. Its own leaf, so the second hand re-renders this span
+ * and not the whole page (chat included) every second; frozen while the app is hidden.
+ */
+function Elapsed({ since }: { since: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) setNow(Date.now()); };
+    const i = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(i); document.removeEventListener("visibilitychange", tick); };
+  }, []);
+  return <span dir="ltr" className="font-data">{new Date(Math.max(0, now - +new Date(since))).toISOString().slice(11, 19)}</span>;
+}
 
 function SessionPage() {
   const qc = useQueryClient();
   const t = useQuery(tradesQuery);
   const s = useQuery(settingsQuery);
-
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const i = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1000);
-    return () => clearInterval(i);
-  }, []);
 
   const ss = useQuery({
     queryKey: ["sessions"],
@@ -144,7 +151,6 @@ function SessionPage() {
   const cur = settings.currency ?? "USD";
   const active = ss.data?.find((x) => !x.ended_at);
 
-  const startOfDay = dayStart(new Date(), settings.timezone).getTime();
   const dayMetrics = computeDayMetrics(settings, t.data ?? [], 0);
 
   // Filter trades that belong to the active session
@@ -239,7 +245,7 @@ function SessionPage() {
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="size-1.5 rounded-full bg-success animate-pulse" />
               <span>شغالة</span>
-              <span dir="ltr" className="font-data">{new Date(now - +new Date(active.started_at)).toISOString().slice(11, 19)}</span>
+              <Elapsed since={active.started_at} />
               <span>·</span>
               <span dir="ltr" className={`font-data ${sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(sessionPnl, cur)}</span>
             </p>

@@ -5,6 +5,7 @@ import { Bot, ImagePlus, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { prepareImage } from "@/lib/image";
+import { safeSession } from "@/lib/safe-storage";
 
 export const COACH_DRAFT_KEY = "coach-draft";
 
@@ -21,14 +22,16 @@ export function QuickCoach({ needsGoals = false }: { needsGoals?: boolean }) {
   }
 
   function interview() {
-    sessionStorage.setItem(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
+    safeSession.set(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
     void nav({ to: "/coach" });
   }
 
   function go() {
     const msg = text.trim() || (image ? "سجّل الصفقات اللي بالصورة وحللها" : "");
     if (!msg) return;
-    sessionStorage.setItem(COACH_DRAFT_KEY, JSON.stringify({ text: msg, image }));
+    // A screenshot can be bigger than Safari's storage quota: safe storage keeps it in memory
+    // then, so the message still reaches the coach instead of the tap doing nothing.
+    safeSession.set(COACH_DRAFT_KEY, JSON.stringify({ text: msg, image }));
     void nav({ to: "/coach" });
   }
 

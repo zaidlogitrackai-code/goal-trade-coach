@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { currentUserId } from "@/lib/queries";
 import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
+import { safeLocal, safeSession } from "@/lib/safe-storage";
 
 export const Route = createFileRoute("/_authenticated/coach")({
   head: () => ({ meta: [{ title: "سَنَد — شريكك ضد الطمع" }, { name: "description", content: "شريكك ضد الطمع ومساعدك في كل شيء، يدير نظامك كامل." }] }),
@@ -25,8 +26,8 @@ const EMPTY = { text: "شو بدك نشتغل عليه اليوم؟", starters: 
 type Draft = { threadId: string; text: string; image: string | null };
 
 function readDraft(): { text: string; image: string | null } | null {
-  const raw = sessionStorage.getItem(COACH_DRAFT_KEY);
-  sessionStorage.removeItem(COACH_DRAFT_KEY);
+  const raw = safeSession.get(COACH_DRAFT_KEY);
+  safeSession.remove(COACH_DRAFT_KEY);
   if (!raw) return null;
   try {
     const d = JSON.parse(raw) as { text?: unknown; image?: unknown };
@@ -43,11 +44,11 @@ function CoachPage() {
   const [opening, setOpening] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [auto, setAuto] = useState(true);
-  useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
+  useEffect(() => { if (safeLocal.get("coach-auto") === "off") setAuto(false); }, []);
   function toggleAuto() {
     const next = !auto;
     setAuto(next);
-    localStorage.setItem("coach-auto", next ? "on" : "off");
+    safeLocal.set("coach-auto", next ? "on" : "off");
   }
 
   const focus = useQuery(focusQuery);

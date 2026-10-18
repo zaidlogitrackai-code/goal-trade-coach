@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
+import { safeSession } from "@/lib/safe-storage";
 import { money } from "@/components/dashboard/core-metrics";
 import type { Trade } from "@/lib/queries";
 
@@ -11,7 +12,7 @@ export function OpenTrades({ trades, currency }: { trades: Trade[]; currency: st
   const open = trades.filter((x) => x.status === "open");
   if (!open.length) return null;
   function closeIt(t: Trade) {
-    sessionStorage.setItem(COACH_DRAFT_KEY, JSON.stringify({ text: `سكّرت صفقة ${t.symbol}، بكم؟ اسألني عن سعر الخروج والربح أو الخسارة وسجّل الإغلاق`, image: null }));
+    safeSession.set(COACH_DRAFT_KEY, JSON.stringify({ text: `سكّرت صفقة ${t.symbol}، بكم؟ اسألني عن سعر الخروج والربح أو الخسارة وسجّل الإغلاق`, image: null }));
     void nav({ to: "/coach" });
   }
   return (

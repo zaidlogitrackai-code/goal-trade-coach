@@ -15,6 +15,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { THEME_BOOT_SCRIPT, THEME_COLOR } from "@/lib/theme";
+import { safeLocal, safeSession } from "@/lib/safe-storage";
 
 function NotFoundComponent() {
   return (
@@ -114,13 +115,32 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+const CHUNK_RELOAD_KEY = "hadi-chunk-reload";
+
+/**
+ * A Lovable deploy deleted the code chunks this open app was built with, so the next screen
+ * can't load: reload once to get the new ones. Never twice within a minute (that is a real
+ * outage, and the error page shows), and only when the guard itself could be stored.
+ */
+function reloadForNewDeploy(e: Event) {
+  const last = Number(safeSession.get(CHUNK_RELOAD_KEY)) || 0;
+  if (Date.now() - last < 60_000) return;
+  if (!safeSession.set(CHUNK_RELOAD_KEY, String(Date.now()))) return;
+  e.preventDefault();
+  window.location.reload();
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   useEffect(() => {
+    window.addEventListener("vite:preloadError", reloadForNewDeploy);
+    return () => window.removeEventListener("vite:preloadError", reloadForNewDeploy);
+  }, []);
+  useEffect(() => {
     // "Remember me" off: end the session when a new browser session starts.
-    if (localStorage.getItem("hadi-ephemeral") === "1" && !sessionStorage.getItem("hadi-session-only")) {
-      localStorage.removeItem("hadi-ephemeral");
+    if (safeLocal.get("hadi-ephemeral") === "1" && !safeSession.get("hadi-session-only")) {
+      safeLocal.remove("hadi-ephemeral");
       void supabase.auth.signOut();
     }
     const { data } = supabase.auth.onAuthStateChange((event) => {

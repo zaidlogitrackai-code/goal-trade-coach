@@ -26,7 +26,7 @@ vi.mock("@/integrations/supabase/client", () => {
     );
     return q;
   };
-  return { supabase: { from, auth: { getUser: async () => ({ data: { user: { id: "u1" } } }) } } };
+  return { supabase: { from, auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) } } };
 });
 import {
   actionIssue,

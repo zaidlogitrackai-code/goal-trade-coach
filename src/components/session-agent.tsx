@@ -14,9 +14,11 @@ import { coachReply, transcribeAudio } from "@/lib/ai.functions";
 import { currentUserId, settingsQuery } from "@/lib/queries";
 import { dayKey } from "@/lib/trading-day";
 import { makeThumbnail } from "@/lib/image";
-import { hasNewBelow, shouldAutoScroll } from "@/lib/chat-ui";
+import { appendNewer, hasNewBelow, shouldAutoScroll } from "@/lib/chat-ui";
 import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
 import { threadState } from "@/lib/chat-check";
+import { safeLocal } from "@/lib/safe-storage";
+import { useBeat } from "@/hooks/use-resume";
 
 /** One session thread per trading day, named by the trader's own calendar day. */
 function todayTitle(tz: string | null | undefined) {
@@ -58,6 +60,8 @@ export interface AgentChatProps {
   /** After every send settles: the thread's title and order may have changed. */
   onSent?: () => void;
 }
+
+const MESSAGE_COLUMNS = "id,role,content,actions,image,created_at";
 
 const CHIP = "min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent";
 
@@ -106,7 +110,7 @@ export function SessionAgent({ hasActive = false, onChanged, title, greeting, qu
   const seen = useRef(0);
   const [newBelow, setNewBelow] = useState(false);
 
-  useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setSavedAuto(false); }, []);
+  useEffect(() => { if (safeLocal.get("coach-auto") === "off") setSavedAuto(false); }, []);
 
   // Find (or create once) today's session thread, opened by the agent's question.
   const thread = useQuery({
@@ -137,13 +141,28 @@ export function SessionAgent({ hasActive = false, onChanged, title, greeting, qu
   const msgs = useQuery({
     queryKey: ["messages", id],
     enabled: !!id,
-    // Agent messages written elsewhere (morning note, watcher alerts) appear without a reload.
-    refetchInterval: busy ? false : 15_000,
     queryFn: async (): Promise<ChatMessage[]> => {
-      const { data, error } = await supabase.from("coach_messages").select("id,role,content,actions,image,created_at").eq("thread_id", id!).order("created_at");
+      const { data, error } = await supabase.from("coach_messages").select(MESSAGE_COLUMNS).eq("thread_id", id!).order("created_at");
       if (error) throw error;
       return data;
     },
+  });
+
+  // Messages written elsewhere (morning note, a reply that finished on the server) arrive with
+  // the heartbeat's minute: only the rows from the newest one on, not the whole thread with its
+  // images again. A resume re-reads the whole thread (use-resume.ts); a send re-reads it itself.
+  useBeat((beat) => {
+    if (beat !== "tick" || !id || sending.current) return;
+    const key = ["messages", id];
+    const rows = qc.getQueryData<ChatMessage[]>(key);
+    if (!rows || qc.getQueryState(key)?.fetchStatus !== "idle") return;
+    const last = rows.at(-1)?.created_at;
+    let q = supabase.from("coach_messages").select(MESSAGE_COLUMNS).eq("thread_id", id);
+    if (last) q = q.gte("created_at", last);
+    void q.order("created_at").then(({ data, error }) => {
+      if (error || !data?.length) return;
+      qc.setQueryData<ChatMessage[]>(key, (cur) => (cur ? appendNewer(cur, data) : cur));
+    });
   });
 
   async function submit(opts: { text?: string; image?: string | null; again?: boolean } = {}) {

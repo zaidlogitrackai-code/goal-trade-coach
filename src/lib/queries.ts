@@ -12,10 +12,12 @@ export type Strategy = Database["public"]["Tables"]["strategies"]["Row"];
 export type Rule = Database["public"]["Tables"]["trading_rules"]["Row"];
 export type Violation = Database["public"]["Tables"]["rule_violations"]["Row"];
 
+/** The signed-in user's id from the stored session: getUser() was a network round trip on every call. */
 async function uid() {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error("غير مسجل الدخول");
-  return data.user.id;
+  const { data } = await supabase.auth.getSession();
+  const id = data.session?.user.id;
+  if (!id) throw new Error("غير مسجل الدخول");
+  return id;
 }
 
 export const settingsQuery = queryOptions({
@@ -64,7 +66,7 @@ export const tradesQuery = queryOptions({
     fetchAll((from, to) =>
       supabase.from("trades").select("*").order("opened_at", { ascending: false }).order("id").range(from, to),
     ),
-  refetchInterval: 60_000,
+  // Re-read every visible minute and on resume by the heartbeat (src/hooks/use-resume.ts).
 });
 
 export const strategiesQuery = queryOptions({
@@ -116,7 +118,7 @@ export function fmtDate(s: string | null) {
   return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "medium", timeStyle: "short" }).format(new Date(s));
 }
 
-/** Today's plan by the trader's calendar day; the minute refetch rolls it over at his midnight. */
+/** Today's plan by the trader's calendar day; the heartbeat's resume re-reads it at his midnight. */
 export const todayPlanQuery = (tz: string | null | undefined) => ({
   queryKey: ["daily_plan", "today", safeTz(tz)] as const,
   queryFn: async () => {
@@ -125,5 +127,4 @@ export const todayPlanQuery = (tz: string | null | undefined) => ({
     if (error) throw error;
     return data;
   },
-  refetchInterval: 60_000,
 });

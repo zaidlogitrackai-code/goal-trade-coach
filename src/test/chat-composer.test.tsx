@@ -7,7 +7,7 @@ vi.mock("@/integrations/supabase/client", () => {
   const chain: Record<string, unknown> = new Proxy({}, {
     get: (_, k) => (k === "then" ? (ok: (v: unknown) => void) => ok({ data: [], error: null }) : () => chain),
   });
-  return { supabase: { from: () => chain, auth: { getUser: async () => ({ data: { user: { id: "u1" } } }) } } };
+  return { supabase: { from: () => chain, auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) } } };
 });
 vi.mock("@tanstack/react-start", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-start")>()),

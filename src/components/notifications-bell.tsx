@@ -13,6 +13,7 @@ import { morningGreeting } from "@/lib/ai.functions";
 import { notificationTarget, type NotificationTarget } from "@/lib/notification-target";
 import { fmtDate, settingsQuery } from "@/lib/queries";
 import { dayStart } from "@/lib/trading-day";
+import { safeLocal } from "@/lib/safe-storage";
 
 // Once per page load however often the bell remounts (an iPad turning past the sidebar width).
 let greeted = false;
@@ -39,7 +40,7 @@ export function NotificationsBell() {
   function toggleSound() {
     const next = !sound;
     setSound(next);
-    window.localStorage.setItem(SOUND_KEY, next ? "on" : "off");
+    safeLocal.set(SOUND_KEY, next ? "on" : "off");
   }
   const q = useQuery({
     queryKey: ["notifications"],
