@@ -1,23 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { focusQuery } from "@/lib/focus-store";
-import { buildJourney, type Journey } from "@/lib/journey";
+import { fetchAll } from "@/lib/fetch-all";
+import { dayPipeline, isBlocked, pipelineState, type DayPipeline, type PipelineState } from "@/lib/day-pipeline";
+import { journeyFromPipeline, type Journey } from "@/lib/journey";
 import {
+  activeSessionQuery,
   rulesQuery,
   settingsQuery,
   strategiesQuery,
+  todayPlanQuery,
   tradesQuery,
-  violationsQuery,
 } from "@/lib/queries";
-import {
-  computeDayMetrics,
-  computeStatus,
-  type TradingStatus,
-} from "@/lib/trading-status";
-import { dayStart } from "@/lib/trading-day";
+
+export { isBlocked };
 
 /**
- * Sessions of the last two days, newest first; useJourney narrows them to the trader's
+ * Sessions of the last two days, newest first; the pipeline narrows them to the trader's
  * today (his zone lives in settings, which this query can't see). Invalidated with ["sessions"].
  */
 export const todaySessionsQuery = {
@@ -33,31 +32,55 @@ export const todaySessionsQuery = {
   },
 } as const;
 
-export const isBlocked = (s: TradingStatus) =>
-  s === "stopped" || s === "loss_limit" || s === "target_hit";
+/** Trades reviewed since the cutoff; read only while the review rule is on (reviews_since set). */
+export const reviewedTradesQuery = (since: string | null | undefined) =>
+  queryOptions({
+    queryKey: ["trade_reviews", "reviewed", since ?? null],
+    enabled: !!since,
+    queryFn: async () => {
+      const rows = await fetchAll((from, to) =>
+        supabase.from("trade_reviews").select("trade_id").not("trade_id", "is", null).gte("created_at", since!).order("id").range(from, to),
+      );
+      return rows.flatMap((x) => (x.trade_id ? [x.trade_id] : []));
+    },
+  });
 
-/** The client's steps from cached queries; null while anything is still loading. */
-export function useJourney(): { journey: Journey; status: TradingStatus } | null {
+/**
+ * The day pipeline from cached queries; null while anything is still loading. The breaker
+ * runs on these rows (partial trims and latched halts come with T21/T23); weekly reviews
+ * stay untracked until T30 can write them, so a due week can't become a dead end.
+ */
+export function usePipeline(): { state: PipelineState; pipeline: DayPipeline } | null {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const st = useQuery(strategiesQuery);
   const r = useQuery(rulesQuery);
-  const v = useQuery(violationsQuery);
   const f = useQuery(focusQuery);
   const today = useQuery(todaySessionsQuery);
-  if (!s.data || !t.data || !st.data || !r.data || !v.data || !f.data || !today.data) return null;
+  const open = useQuery(activeSessionQuery);
+  const plan = useQuery({ ...todayPlanQuery(s.data?.timezone), enabled: !!s.data });
+  const since = s.data?.reviews_since ?? null;
+  const reviewed = useQuery(reviewedTradesQuery(since));
+  if (!s.data || !t.data || !st.data || !r.data || !f.data || !today.data) return null;
+  if (open.data === undefined || plan.data === undefined || (since && !reviewed.data && !reviewed.isError)) return null;
 
-  const start = dayStart(new Date(), s.data.timezone).getTime();
-  const violationsToday = v.data.filter((x) => new Date(x.occurred_at).getTime() >= start).length;
-  const status = computeStatus(s.data, computeDayMetrics(s.data, t.data, violationsToday));
-  const latest = today.data.find((x) => new Date(x.started_at).getTime() >= start);
-  const journey = buildJourney({
-    focusReady: f.data.markets.length > 0 && !!(f.data.goal || f.data.weakness),
+  const state = pipelineState({
+    // A failed review read switches the review rule off rather than calling every close unreviewed.
+    settings: reviewed.isError ? { ...s.data, reviews_since: null } : s.data,
+    trades: t.data,
+    plan: plan.data,
+    sessions: open.data ? [open.data, ...today.data] : today.data,
+    focus: f.data,
     strategies: st.data.length,
-    rules: r.data.length,
-    sessionToday: latest ? { active: !latest.ended_at, ended: !!latest.ended_at } : null,
-    tradesToday: t.data.filter((x) => new Date(x.opened_at).getTime() >= start).length,
-    blocked: isBlocked(status),
+    rules: r.data.filter((x) => x.active).length,
+    reviewedTradeIds: reviewed.data ?? [],
+    weeklyReviewKeys: null,
   });
-  return { journey, status };
+  return { state, pipeline: dayPipeline(state) };
+}
+
+/** The client's steps (nav dot) from the same pipeline. */
+export function useJourney(): { journey: Journey; pipeline: DayPipeline } | null {
+  const p = usePipeline();
+  return p && { journey: journeyFromPipeline(p.pipeline), pipeline: p.pipeline };
 }

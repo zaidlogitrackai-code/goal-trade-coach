@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { settingsQuery, tradesQuery, violationsQuery, todayPlanQuery } from "@/lib/queries";
 import { effectiveDailyTarget } from "@/lib/daily-plan";
-import { computeDayMetrics, computeStatus } from "@/lib/trading-status";
+import { computeDayMetrics } from "@/lib/trading-status";
 import { dayStart, safeTz } from "@/lib/trading-day";
-import { supabase } from "@/integrations/supabase/client";
 import { CoreMetrics } from "@/components/dashboard/core-metrics";
 import { DayFlow } from "@/components/dashboard/day-flow";
-import { currentStep } from "@/lib/day-flow";
+import { flowFromPipeline } from "@/lib/day-flow";
+import { usePipeline } from "@/lib/use-journey";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { OpenTrades } from "@/components/dashboard/open-trades";
 import { QuickCoach } from "@/components/dashboard/quick-coach";
@@ -34,16 +34,10 @@ function Dashboard() {
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
   const plan = useQuery({ ...todayPlanQuery(s.data?.timezone), enabled: !!s.data });
-  const sessions = useQuery({
-    queryKey: ["sessions"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("trading_sessions").select("*").order("started_at", { ascending: false }).limit(10);
-      if (error) throw error;
-      return data;
-    },
-  });
+  // The step comes from the one day engine, the same one behind the nav dot and سَنَد's line.
+  const pipeline = usePipeline();
 
-  if (s.isLoading || t.isLoading || v.isLoading || sessions.isLoading) {
+  if (s.isLoading || t.isLoading || v.isLoading) {
     return (
       <div className="mx-auto max-w-5xl space-y-5">
         <Skeleton className="h-10 w-48" />
@@ -58,7 +52,7 @@ function Dashboard() {
       <div className="panel mx-auto mt-12 max-w-lg space-y-4 p-8 text-center">
         <AlertCircle className="mx-auto size-10 text-destructive" />
         <h2 className="text-xl font-bold">تعذر تحميل البيانات</h2>
-        <Button onClick={() => { s.refetch(); t.refetch(); v.refetch(); sessions.refetch(); }} className="gap-2">
+        <Button onClick={() => { s.refetch(); t.refetch(); v.refetch(); }} className="gap-2">
           <RefreshCw className="size-4" /> إعادة المحاولة
         </Button>
       </div>
@@ -70,19 +64,7 @@ function Dashboard() {
   const start = dayStart(new Date(), settings.timezone).getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const metrics = computeDayMetrics(settings, trades, violationsToday);
-  const status = computeStatus(settings, metrics);
-  const all = sessions.data ?? [];
-  const activeSession = all.find((x) => !x.ended_at) ?? null;
-  const sessionEndedToday = all.some((x) => x.ended_at && new Date(x.ended_at).getTime() >= start);
-  const hasGoals = [settings.daily_target, settings.max_daily_loss, settings.max_risk_per_trade].every((x) => Number(x) > 0);
-
-  const flow = currentStep({
-    hasGoals,
-    status,
-    hasActiveSession: !!activeSession,
-    sessionEndedToday,
-    openTradesWithoutStop: trades.filter((x) => x.status === "open" && x.stop_loss == null).length,
-  });
+  const flow = pipeline && flowFromPipeline(pipeline.pipeline);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 lg:space-y-6">
@@ -90,7 +72,7 @@ function Dashboard() {
         title="يومك"
         subtitle={new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "full", timeZone: safeTz(settings.timezone) }).format(new Date())}
       />
-      <DayFlow flow={flow} />
+      {flow ? <DayFlow flow={flow} /> : <Skeleton className="h-36 w-full rounded-2xl" />}
       <CoreMetrics
         todayPnl={metrics.todayPnl}
         dailyTarget={settings.daily_target}

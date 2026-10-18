@@ -6,14 +6,13 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
-import { buildJourney, journeyForPrompt } from "./journey";
+import { dayPipeline, pipelineForPrompt, pipelineState } from "./day-pipeline";
 import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
 import { fetchAll } from "./fetch-all";
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, KNOWLEDGE_OFF_CATEGORY, TRAINING_OFF_CATEGORY } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
-import { computeDayMetrics, computeStatus } from "./trading-status";
-import { dayKey, dayStart, safeTz, toWallInput } from "./trading-day";
+import { dayKey, dayStart, monthStart, safeTz, toWallInput } from "./trading-day";
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { HISTORY_LIMIT, toModelInput } from "./chat-history";
 import { MAX_THUMB_CHARS } from "./image";
@@ -38,18 +37,19 @@ async function buildContext(sb: Sb) {
     sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
     sb.from("strategy_examples").select("id,verdict,reason,symbol,timeframe,strategy_id").order("created_at", { ascending: false }).limit(40),
   ]);
-  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const tz = safeTz(s.data?.timezone);
+  // 30 days, and never less than the whole month: the day pipeline's breaker counts the month's losses.
+  const since = new Date(Math.min(Date.now() - 30 * 86_400_000, monthStart(new Date(), tz).getTime())).toISOString();
   const todayFrom = dayStart(new Date(), tz).toISOString();
   // Compare instants, not strings: Postgres writes "+00:00" where toISOString writes "Z".
   const isToday = (iso: string) => new Date(iso).getTime() >= Date.parse(todayFrom);
-  const [notes, session, focusRow, month, todaySessions, todayViolations, capitalRow, closedAll] = await Promise.all([
+  const [notes, session, focusRow, month, todaySessions, capitalRow, closedAll] = await Promise.all([
     sb.from("knowledge_notes").select("title,category").not("category", "in", HIDDEN_NOTES).order("created_at", { ascending: false }).limit(50),
-    sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
+    sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).order("started_at", { ascending: false }).limit(1),
     sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
-    sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at").gte("opened_at", since),
-    sb.from("trading_sessions").select("ended_at").gte("started_at", todayFrom).order("started_at", { ascending: false }).limit(1),
-    sb.from("rule_violations").select("id").gte("occurred_at", todayFrom),
+    // Paged and throwing: these rows now feed the breaker, and a capped or failed read would read as «allowed».
+    fetchAll((from, to) => sb.from("trades").select("id,symbol,direction,entry_price,exit_price,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at,created_at").gte("opened_at", since).order("opened_at").order("id").range(from, to)).then((data) => ({ data })),
+    sb.from("trading_sessions").select("started_at,ended_at").gte("started_at", todayFrom).order("started_at", { ascending: false }).limit(1),
     sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").order("id").limit(1),
     // Same paged read as the browser balance, so سَنَد never sees limits built on 1000 trades.
     fetchAll((from, to) => sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed").order("id").range(from, to)).then((data) => ({ data })),
@@ -67,7 +67,7 @@ async function buildContext(sb: Sb) {
   const { data: knowledgeOffRow } = await sb.from("knowledge_notes").select("id").eq("category", KNOWLEDGE_OFF_CATEGORY).limit(1).maybeSingle();
   const knowledgeOn = !knowledgeOffRow;
   const todayKey = dayKey(new Date(), tz);
-  const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
+  const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count,no_trading,start_balance").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
   {
     const ledger0 = parseLedger(capitalRow.data?.[0]?.content);
@@ -89,21 +89,31 @@ async function buildContext(sb: Sb) {
   const focus = parseFocus(focusRow.data?.[0]?.content);
   const cur = s.data?.currency ?? "USD";
   const monthTrades = month.data ?? [];
-  const status = s.data ? computeStatus(s.data, computeDayMetrics(s.data, monthTrades, todayViolations.data?.length ?? 0)) : "ready";
-  const latest = todaySessions.data?.[0];
-  const journey = buildJourney({
-    focusReady: focus.markets.length > 0 && !!(focus.goal || focus.weakness),
+  // The same day pipeline as the Today card and the nav dot. A failed review read switches the
+  // review rule off for this reply rather than claiming every close is unreviewed.
+  const reviewsSince = s.data?.reviews_since ?? null;
+  const reviewed = reviewsSince
+    ? await fetchAll((from, to) => sb.from("trade_reviews").select("trade_id").not("trade_id", "is", null).gte("created_at", reviewsSince).order("id").range(from, to)).catch(() => null)
+    : [];
+  const pipeline = dayPipeline(pipelineState({
+    settings: s.data && { ...s.data, reviews_since: reviewed ? reviewsSince : null },
+    balance: capital.balance,
+    trades: monthTrades,
+    plan: todayPlan,
+    sessions: [...(session.data ?? []).map((x) => ({ started_at: x.started_at, ended_at: null })), ...(todaySessions.data ?? [])],
+    focus,
     strategies: st.data?.length ?? 0,
-    rules: r.data?.length ?? 0,
-    sessionToday: latest ? { active: !latest.ended_at, ended: !!latest.ended_at } : null,
-    tradesToday: monthTrades.filter((x) => isToday(x.opened_at)).length,
-    blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
-  });
+    rules: (r.data ?? []).filter((x) => x.active).length,
+    reviewedTradeIds: (reviewed ?? []).flatMap((x) => (x.trade_id ? [x.trade_id] : [])),
+    // Weekly reviews stay untracked until T30 can write them (see usePipeline).
+    weeklyReviewKeys: null,
+  }));
   const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus, new Date(), REVENGE_WINDOW_MIN(s.data)), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
   return `الأصول التي يغطيها النظام وتحللها دائماً بدون أي رفض أو اعتذار: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30 (يسمّى أيضاً US30USD)، EURUSD، GBPUSD، USDJPY، USOIL (نفط WTI)، وأي زوج عملات. إذا الصورة لواحد منها لا تقل أبداً "خارج نطاق النظام" أو "ما أحلل". العملات الرقمية والأسهم فقط خارج النظام؛ إذا طلبها قله بلطف.
 اليوم عند هادي: ${todayKey} (منطقته ${tz}) — "اليوم" و"هالأسبوع" بتوقيته هو.
 ستريك الانضباط: ${streak.current} يوم سوق متتالي (أفضل ${streak.best}). يزيد لما يسكّر جلسته بمراجعة بدون مخالفة؛ السبت والأحد ما ينحسبون. لما يسكّر جلسة نظيفة هنّيه بالرقم الجديد، ولو قرّب يكسر قاعدة ذكّره إنه بيخسر الستريك.
-${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
+${pipelineForPrompt(pipeline)}
+إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
 
 ${capitalForPrompt(capital, ledger.entries, s.data?.currency ?? "USD")}
 

@@ -31,7 +31,7 @@ export function JourneySteps({ journey }: { journey: Journey }) {
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 sm:flex sm:flex-wrap sm:justify-between sm:p-4">
           <div className="min-w-0">
             <p className="text-xs text-primary">
-              الخطوة {current.n} من {steps.length}
+              الخطوة {current.n} من {steps.length - 1}
             </p>
             <p className="mt-0.5 font-semibold">{current.title}</p>
             <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{current.hint}</p>
