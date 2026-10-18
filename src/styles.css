@@ -109,6 +109,9 @@
   --glass-sheen: rgba(255,255,255,0.08);
   --glass-highlight: rgba(255,255,255,0.18);
   --glass-lowlight: rgba(0,0,0,0.14);
+  --glass-rim: rgba(255,255,255,0.12);
+  --glass-rim-soft: rgba(255,255,255,0.07);
+  --btn-glow: 0 0 12px rgba(255,255,255,0.08);
   --glass-shadow: 0 6px 16px -10px rgba(0,0,0,0.5);
   --glass-blur: 18px;
   --btn-bg: rgba(255,255,255,0.18);
@@ -169,6 +172,9 @@
   --glass-sheen: rgba(255,255,255,0.7);
   --glass-highlight: rgba(255,255,255,0.95);
   --glass-lowlight: rgba(0,0,0,0.06);
+  --glass-rim: rgba(0,0,0,0.08);
+  --glass-rim-soft: rgba(0,0,0,0.05);
+  --btn-glow: 0 3px 10px -4px rgba(70,50,30,0.35);
   --glass-shadow: 0 12px 32px -14px rgba(70,50,30,0.3);
   --btn-bg: rgba(255,255,255,0.55);
   --btn-bg-hover: rgba(255,255,255,0.78);
@@ -248,7 +254,15 @@
 @utility glass-btn {
   background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), 0 3px 8px -5px rgba(0, 0, 0, 0.4);
+  /* Liquid-glass body: top highlight, bottom lowlight, rim lights on both side edges
+     and a soft outer glow — the full-sheet look from the LiquidButton spec. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-lowlight),
+    inset 1px 0 0 var(--glass-rim-soft),
+    inset -1px 0 0 var(--glass-rim),
+    var(--btn-glow),
+    0 3px 8px -5px rgba(0, 0, 0, 0.4);
   /* Hover only where a pointer can hover: on iPhone a :hover sticks after the tap.
      The press shrink lives on Button (active:scale-[.97]) so it isn't applied twice. */
   @media (hover: hover) {
