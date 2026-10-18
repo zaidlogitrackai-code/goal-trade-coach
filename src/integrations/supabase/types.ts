@@ -68,6 +68,39 @@ export type Database = {
         }
         Relationships: []
       }
+      capital_movements: {
+        Row: {
+          amount: number
+          at: string
+          created_at: string
+          id: string
+          kind: string
+          legacy_id: string | null
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          at: string
+          created_at?: string
+          id?: string
+          kind: string
+          legacy_id?: string | null
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          at?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          legacy_id?: string | null
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       chart_analyses: {
         Row: {
           card: Json | null
@@ -630,6 +663,7 @@ export type Database = {
           note: string | null
           old_value: number | null
           planned: boolean | null
+          realized_pnl: number | null
           trade_id: string
           user_id: string
         }
@@ -641,6 +675,7 @@ export type Database = {
           note?: string | null
           old_value?: number | null
           planned?: boolean | null
+          realized_pnl?: number | null
           trade_id: string
           user_id: string
         }
@@ -652,6 +687,7 @@ export type Database = {
           note?: string | null
           old_value?: number | null
           planned?: boolean | null
+          realized_pnl?: number | null
           trade_id?: string
           user_id?: string
         }
@@ -957,6 +993,8 @@ export type Database = {
           monthly_target: number
           notification_sound: boolean
           onboarded: boolean
+          paused_until: string | null
+          reviews_since: string | null
           session_end: string | null
           session_start: string | null
           starting_balance: number
@@ -989,6 +1027,8 @@ export type Database = {
           monthly_target?: number
           notification_sound?: boolean
           onboarded?: boolean
+          paused_until?: string | null
+          reviews_since?: string | null
           session_end?: string | null
           session_start?: string | null
           starting_balance?: number
@@ -1021,6 +1061,8 @@ export type Database = {
           monthly_target?: number
           notification_sound?: boolean
           onboarded?: boolean
+          paused_until?: string | null
+          reviews_since?: string | null
           session_end?: string | null
           session_start?: string | null
           starting_balance?: number
