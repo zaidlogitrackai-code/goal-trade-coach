@@ -15,6 +15,7 @@ import { detectSymbols } from "./market-symbols";
 import { computeDayMetrics, computeStatus } from "./trading-status";
 import { dayKey, dayStart, safeTz, toWallInput } from "./trading-day";
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
+import { HISTORY_LIMIT, toModelInput } from "./chat-history";
 import { MAX_THUMB_CHARS } from "./image";
 
 import { applyPctLimits } from "./effective-limits";
@@ -224,6 +225,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 مقابلة الطمع والأهداف: إذا أي واحد من هذول صفر أو ناقص (الهدف اليومي daily_target، الأسبوعي weekly_target، الشهري monthly_target، حد الخسارة اليومي max_daily_loss، أقصى مخاطرة للصفقة max_risk_per_trade، سقف الربح اليومي max_daily_profit)، أو طلب "اسألني عن أهدافي": حقق معه مثل مدرب صارم ولطيف — اسأل سؤالين بالكثير بكل رد بالترتيب: كم رصيدك؟ كم تارقتك (هدفك) باليوم وبالأسبوع وبالشهر؟ كم أقصى خسارة تقبلها باليوم؟ كم تخاطر بالصفقة؟ وش تسوي لما توصل هدفك — توقف ولا تكمل؟ ومتى طمعت قبل وش صار؟ كل جواب يعطيه احفظه فوراً بـ update_settings (سقف الربح اليومي = هدفه اليومي إلا إذا قال غير كذا)، ونقطة ضعفه بـ update_focus. إذا الهدف مبالغ فيه مقارنة برصيده (أكثر من 3% باليوم) قل له بصراحة إنه طمع واقترح رقم أصغر. لما تكتمل قل له ملخص أهدافه وإن النظام بيوقفه عندها.
 قواعد مهمة جداً:
 1. التنفيذ يتم بعد ردك، فلا تقل "تم" أو "سجلتها". قل "جهزت التنفيذ" أو "بنفذها لك الحين"، والنتيجة تظهر تحت ردك.
+1.0. سطر [نتيجة: …] تحت ردودك السابقة يكتبه النظام عن اللي صار فعلاً لإجراءاتك. صدّقه: لو فشل أو ينتظر موافقته لا تقول إنه انحفظ، ولا تكتب هالسطر أنت بردك.
 1.1. لا تحذف شيئًا إلا إذا طلب المستخدم الحذف صراحة. لا تخفف حدود المخاطر لتسمح له بالتداول بعد ما وصل حده؛ ذكّره بالحد بدلًا من ذلك.
 1.2. إذا كان في تهدئة أو تجاوز حدًا، لا تجهز صفقة جديدة. بوابة التداول ترفض الصفقات المخالفة على أي حال.
 2. إذا طلب تسجيل صفقة (بنص أو صورة)، لازم تضيف create_trade في نفس الرد بالمعلومات المتوفرة حتى لو ناقص الرمز أو الاتجاه (حط null أو long). الصفقة المنتهية بربح أو خسارة: status "closed" مع pnl. لا تستبدل الصفقة بملاحظة add_note.
@@ -326,11 +328,10 @@ export const coachReply = createServerFn({ method: "POST" })
       // The reply is produced in a task that outlives the request: if the phone drops
       // the connection, it still gets saved and the chat picks it up.
       const work = (async () => {
-        // Newest 40, back in chronological order — long threads must still include the latest message.
-        const { data: newestFirst } = await sb.from("coach_messages").select("role,content").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(40);
+        // Newest rows, back in chronological order — long threads must still include the latest message.
+        const { data: newestFirst } = await sb.from("coach_messages").select("role,content,actions").eq("thread_id", data.threadId).order("created_at", { ascending: false }).limit(HISTORY_LIMIT);
         const hist = (newestFirst ?? []).reverse();
-        const input: Record<string, unknown>[] = (hist ?? []).map((m) => ({ role: m.role, content: m.content }));
-        if (data.image) input.push({ role: "user", content: [{ type: "input_text", text: data.message }, { type: "input_image", image_url: data.image, detail: "high" }] });
+        const input: Record<string, unknown>[] = toModelInput(hist, data.message, { image: data.image });
         let live = "";
         let chartThumb: string | null = null;
         if (data.mode === "analyst") {
@@ -338,7 +339,7 @@ export const coachReply = createServerFn({ method: "POST" })
           // With an uploaded image and no named symbol, his image decides — no guessed chart.
           let syms = detectSymbols(data.message);
           if (!syms.length && !data.image) {
-            const users = (hist ?? []).filter((m) => m.role === "user").slice(-4).reverse();
+            const users = hist.filter((m) => m.role === "user").slice(-4).reverse();
             for (const m of users) { const f = detectSymbols(m.content); if (f.length) { syms = f; break; } }
           }
           if (syms.length) {
@@ -356,7 +357,7 @@ export const coachReply = createServerFn({ method: "POST" })
         const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null, image: chartThumb }).select("id").single();
         if (e2) throw e2;
         const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
-        if ((hist ?? []).length <= 1) update.title = data.message.slice(0, 40);
+        if (hist.length <= 1) update.title = data.message.slice(0, 40);
         await sb.from("coach_threads").update(update).eq("id", data.threadId);
         return { reply, messageId: saved.id };
       })();
