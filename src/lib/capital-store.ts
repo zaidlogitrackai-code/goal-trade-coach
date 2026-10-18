@@ -12,23 +12,18 @@ import {
   type CapitalSummary,
   type Ledger,
 } from "@/lib/capital";
-import { currentUserId, settingsQuery, tradesQuery } from "@/lib/queries";
+import {
+  currentUserId,
+  fetchClosedTrades,
+  readCapitalRow,
+  settingsQuery,
+  tradesQuery,
+} from "@/lib/queries";
 
-/** Client-side read/write of the capital ledger (one hidden knowledge_notes row). */
-async function readRow() {
-  const { data, error } = await supabase
-    .from("knowledge_notes")
-    .select("id,content")
-    .eq("category", CAPITAL_CATEGORY)
-    .order("created_at", { ascending: true })
-    .limit(1);
-  if (error) throw new Error(error.message);
-  return data?.[0] ?? null;
-}
-
+/** Client-side read/write of the capital ledger (one hidden knowledge_notes row, read via readCapitalRow). */
 export const capitalQuery = queryOptions({
   queryKey: ["capital"],
-  queryFn: async (): Promise<Ledger> => parseLedger((await readRow())?.content),
+  queryFn: async (): Promise<Ledger> => parseLedger((await readCapitalRow())?.content),
 });
 
 async function writeLedger(rowId: string | null, ledger: Ledger) {
@@ -53,17 +48,16 @@ export async function loadCapital(): Promise<{
   summary: CapitalSummary;
 }> {
   const [row, settings, trades] = await Promise.all([
-    readRow(),
+    readCapitalRow(),
     supabase.from("trading_settings").select("starting_balance,created_at").maybeSingle(),
-    supabase.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
+    fetchClosedTrades(),
   ]);
   if (settings.error) throw new Error(settings.error.message);
-  if (trades.error) throw new Error(trades.error.message);
   const ledger = parseLedger(row?.content);
   const summary = computeCapital({
     starting: Number(settings.data?.starting_balance) || 0,
     since: settings.data?.created_at ?? null,
-    trades: trades.data ?? [],
+    trades,
     entries: ledger.entries,
   });
   return { rowId: row?.id ?? null, ledger, summary };

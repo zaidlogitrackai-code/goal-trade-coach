@@ -1,7 +1,43 @@
 import { DESTRUCTIVE } from "./agent-actions";
-import { describe, expect, it, vi } from "vitest";
-vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
-import { loosenedLimits, NeedsConfirmation, parseAction, runAction } from "./agent-actions";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// A chainable stand-in for the Supabase client: every read of a table resolves to
+// db.rows[table], and every write is recorded so a test can prove it never happened.
+const db = vi.hoisted(() => ({
+  rows: {} as Record<string, unknown[]>,
+  writes: [] as { table: string; op: string; payload: unknown }[],
+}));
+vi.mock("@/integrations/supabase/client", () => {
+  const from = (table: string) => {
+    const q: unknown = new Proxy(
+      {},
+      {
+        get(_t, prop) {
+          if (prop === "then")
+            return (ok: (v: unknown) => unknown, ko: (e: unknown) => unknown) =>
+              Promise.resolve({ data: db.rows[table] ?? [], error: null }).then(ok, ko);
+          return (payload?: unknown) => {
+            if (["insert", "update", "upsert", "delete"].includes(String(prop)))
+              db.writes.push({ table, op: String(prop), payload });
+            return q;
+          };
+        },
+      },
+    );
+    return q;
+  };
+  return { supabase: { from, auth: { getUser: async () => ({ data: { user: { id: "u1" } } }) } } };
+});
+import {
+  actionIssue,
+  AlreadySaved,
+  isClosedUpload,
+  loosenedLimits,
+  NeedsConfirmation,
+  parseAction,
+  runAction,
+  VERDICT_MSG,
+} from "./agent-actions";
 
 describe("agent actions", () => {
   it("accepts valid settings with weekly/monthly targets", () => {
@@ -84,5 +120,61 @@ describe("sanad deletions need approval", () => {
   it("new delete actions never auto-run", () => {
     for (const t of ["remove_trade_image", "delete_violation", "delete_daily_plan", "delete_session", "delete_notifications"] as const)
       expect(DESTRUCTIVE).toContain(t);
+  });
+});
+
+describe("MT5 screenshots never close an open trade by floating P&L", () => {
+  it("an open trade with pnl -35 and no exit_price stays open", () => {
+    expect(isClosedUpload({ pnl: -35 })).toBe(false);
+    expect(isClosedUpload({ status: "open", pnl: -35 })).toBe(false);
+    expect(isClosedUpload({ status: "open", exit_price: 1.0812 })).toBe(false);
+    expect(isClosedUpload({ status: "closed" })).toBe(true);
+    expect(isClosedUpload({ exit_price: 1.0812 })).toBe(true);
+    // A garbled status no longer turns into "open" and hides a real exit price.
+    expect(parseAction({ type: "create_trade", summary: "", data: '{"direction":"long","status":"مغلقة"}' })).toMatchObject({ status: undefined });
+  });
+
+  const openRow = { id: "11111111-1111-4111-8111-111111111111", symbol: "EURUSD", direction: "long", entry_price: 1.085, status: "open", opened_at: new Date().toISOString() };
+  beforeEach(() => {
+    db.rows = { trades: [openRow] };
+    db.writes = [];
+  });
+
+  it("a re-upload with floating P&L never closes the open duplicate", async () => {
+    const data = JSON.stringify({ symbol: "EURUSD", direction: "long", entry_price: 1.085, status: "open", pnl: -35 });
+    await expect(runAction({ type: "create_trade", summary: "", data }, { auto: true })).rejects.toBeInstanceOf(AlreadySaved);
+    const noStatus = JSON.stringify({ symbol: "EURUSD", direction: "long", entry_price: 1.085, pnl: -35 });
+    await expect(runAction({ type: "create_trade", summary: "", data: noStatus }, { auto: true })).rejects.toBeInstanceOf(AlreadySaved);
+    expect(db.writes).toEqual([]);
+  });
+
+  it("a History-tab re-upload with an exit price does close it", async () => {
+    const data = JSON.stringify({ symbol: "EURUSD", direction: "long", entry_price: 1.085, status: "closed", exit_price: 1.088, pnl: 30 });
+    await runAction({ type: "create_trade", summary: "", data }, { auto: true });
+    expect(db.writes).toHaveLength(1);
+    expect(db.writes[0]).toMatchObject({ table: "trades", op: "update", payload: { status: "closed", pnl: 30, exit_price: 1.088 } });
+  });
+});
+
+describe("training example verdicts are never guessed", () => {
+  const ex = (verdict: unknown) => ({ type: "add_strategy_example" as const, summary: "", data: JSON.stringify({ verdict, reason: "كسر الهيكل" }) });
+  it("maps Arabic and English words", () => {
+    expect(parseAction(ex("غلط"))).toMatchObject({ verdict: "bad" });
+    expect(parseAction(ex("خطأ"))).toMatchObject({ verdict: "bad" });
+    expect(parseAction(ex("صح"))).toMatchObject({ verdict: "good" });
+    expect(parseAction(ex("صحيح"))).toMatchObject({ verdict: "good" });
+    expect(parseAction(ex(" Good "))).toMatchObject({ verdict: "good" });
+    expect(parseAction(ex("bad"))).toMatchObject({ verdict: "bad" });
+  });
+  it("rejects anything else and asks which one", async () => {
+    for (const v of ["Wrong", "", null, undefined, 1]) {
+      expect(parseAction(ex(v))).toBeNull();
+      expect(actionIssue(ex(v))).toBe(VERDICT_MSG);
+    }
+    await expect(runAction(ex("Wrong"))).rejects.toThrow(VERDICT_MSG);
+  });
+  it("keeps the generic note for zod's own errors", () => {
+    expect(actionIssue({ type: "add_rule", summary: "", data: "{}" })).toBe("بيانات ناقصة");
+    expect(actionIssue({ type: "add_rule", summary: "", data: '{"title":"x"}' })).toBeNull();
   });
 });

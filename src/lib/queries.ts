@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { CAPITAL_CATEGORY, computeCapital, parseLedger } from "@/lib/capital";
 import { applyPctLimits } from "@/lib/effective-limits";
+import { fetchAll } from "@/lib/fetch-all";
 import { dayKey, safeTz } from "@/lib/trading-day";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -25,22 +26,44 @@ export const settingsQuery = queryOptions({
     if (error) throw error;
     if (!data) return data;
     // Limits follow the real current balance (deposits, corrections, closed P&L).
-    const [closed, cap] = await Promise.all([
-      supabase.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
-      supabase.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
-    ]);
-    const bal = computeCapital({ starting: Number(data.starting_balance) || 0, since: data.created_at, trades: closed.data ?? [], entries: parseLedger(cap.data?.[0]?.content).entries }).balance;
+    // A failed read must throw: a balance missing its losses would loosen every % limit.
+    const [closed, cap] = await Promise.all([fetchClosedTrades(), readCapitalRow()]);
+    const bal = computeCapital({ starting: Number(data.starting_balance) || 0, since: data.created_at, trades: closed, entries: parseLedger(cap?.content).entries }).balance;
     return applyPctLimits(data, bal);
   },
 });
 
+/** Every closed trade's P&L for the balance, paged past PostgREST's 1000-row cap. */
+export function fetchClosedTrades() {
+  return fetchAll((from, to) =>
+    supabase.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed").order("id").range(from, to),
+  );
+}
+
+let warnedDuplicateLedger = false;
+/** The hidden capital ledger: always the oldest row, the same one capital-store writes to. */
+export async function readCapitalRow() {
+  const { data, error } = await supabase
+    .from("knowledge_notes")
+    .select("id,content")
+    .eq("category", CAPITAL_CATEGORY)
+    .order("created_at", { ascending: true })
+    .order("id")
+    .limit(2);
+  if (error) throw new Error(error.message);
+  if ((data?.length ?? 0) > 1 && !warnedDuplicateLedger) {
+    warnedDuplicateLedger = true;
+    console.warn("[capital] more than one __capital row, using the oldest", data?.map((r) => r.id));
+  }
+  return data?.[0] ?? null;
+}
+
 export const tradesQuery = queryOptions({
   queryKey: ["trades"],
-  queryFn: async () => {
-    const { data, error } = await supabase.from("trades").select("*").order("opened_at", { ascending: false });
-    if (error) throw error;
-    return data;
-  },
+  queryFn: () =>
+    fetchAll((from, to) =>
+      supabase.from("trades").select("*").order("opened_at", { ascending: false }).order("id").range(from, to),
+    ),
   refetchInterval: 60_000,
 });
 

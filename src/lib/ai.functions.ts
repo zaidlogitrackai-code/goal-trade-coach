@@ -8,6 +8,7 @@ import { AiError, BASE_PERSONA, callAI } from "./ai.server";
 import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
 import { buildJourney, journeyForPrompt } from "./journey";
 import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
+import { fetchAll } from "./fetch-all";
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, KNOWLEDGE_OFF_CATEGORY, TRAINING_OFF_CATEGORY } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
@@ -48,8 +49,9 @@ async function buildContext(sb: Sb) {
     sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at").gte("opened_at", since),
     sb.from("trading_sessions").select("ended_at").gte("started_at", todayFrom).order("started_at", { ascending: false }).limit(1),
     sb.from("rule_violations").select("id").gte("occurred_at", todayFrom),
-    sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
-    sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
+    sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").order("id").limit(1),
+    // Same paged read as the browser balance, so سَنَد never sees limits built on 1000 trades.
+    fetchAll((from, to) => sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed").order("id").range(from, to)).then((data) => ({ data })),
   ]);
   const [{ data: alerts }, { data: reminders }, { data: stSess }, { data: stViol }] = await Promise.all([
     sb.from("notifications").select("title,body,created_at").in("kind", ["risk", "reminder"]).order("created_at", { ascending: false }).limit(8),
@@ -226,7 +228,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 1.2. إذا كان في تهدئة أو تجاوز حدًا، لا تجهز صفقة جديدة. بوابة التداول ترفض الصفقات المخالفة على أي حال.
 2. إذا طلب تسجيل صفقة (بنص أو صورة)، لازم تضيف create_trade في نفس الرد بالمعلومات المتوفرة حتى لو ناقص الرمز أو الاتجاه (حط null أو long). الصفقة المنتهية بربح أو خسارة: status "closed" مع pnl. لا تستبدل الصفقة بملاحظة add_note.
 3. إذا قال "سجلها" أو "نفذ" لشيء ذكرتموه قبل، جهّز الإجراء الآن من المحادثة السابقة بدون ما تعيد الأسئلة.
-4. لقطة MetaTrader 5 (تبويب التداول Trade أو السجل History، جوال أو كمبيوتر): كل سطر صفقة = create_trade منفصل. buy=long، sell=short. الحجم lots في position_size، سعر الفتح entry_price، S/L وT/P، السعر الحالي/الإغلاق exit_price، الربح Profit في pnl. تبويب Trade = صفقات مفتوحة (status open، بدون pnl)؛ History = منتهية (status closed مع pnl). لا تسأل "تبيني أسجلها؟" — سجلها مباشرة، ونبهه إذا تجاوزت حدوده أو هدفه (لا تطمع).
+4. لقطة MetaTrader 5 (تبويب التداول Trade أو السجل History، جوال أو كمبيوتر): كل سطر صفقة = create_trade منفصل. buy=long، sell=short. الحجم lots في position_size، سعر الفتح entry_price، S/L وT/P، سعر الإغلاق exit_price، الربح Profit في pnl. تبويب Trade = صفقات مفتوحة (status open، بدون pnl وبدون exit_price: السعر الحالي والربح العائم مو إغلاق)؛ History = منتهية (status closed مع exit_price وpnl). لا تسأل "تبيني أسجلها؟" — سجلها مباشرة، ونبهه إذا تجاوزت حدوده أو هدفه (لا تطمع).
 4.1. صورة شارت بدون صفقات: حلله (الاتجاه، الدعوم والمقاومات، سيناريو دخول ووقف وهدف) وأضف save_analysis.
 4.2. اقرأ الصور المرفقة بعناية واستخرج منها كل الصفقات (الرمز، الاتجاه، الدخول، الخروج، الربح).
 5. جلسة التداول (أنت منظمها بالكامل، ما في نماذج يدوية): إذا ما في جلسة مفتوحة وقال إنه بيتداول اليوم، اسأله باختصار (سؤالين بالكثير بكل رد): وش تارقتك اليوم؟ أي أسواق بتراقب؟ كم صفقة بالكثير؟ شي واحد ممنوع اليوم؟ وكيف نفسيتك؟ أول ما يعطيك التارقت والسوق ابدأ الجلسة بـ start_session (plan فيه الأصول والتارقت وأقصى صفقات والممنوع والخطة، mood بكلمة وحدة) وحدّث daily_target بـ update_settings إذا تغيّر. إذا التارقت طمع قل له. إذا قال ما بيتداول اليوم احترم قراره وما تبدأ جلسة. إذا في جلسة مفتوحة وقال "خلصت" أو "سكّر الجلسة": اسأله بسؤال واحد عن التزامه بالخطة وهل طمع أو انتقم وأفضل وأسوأ قرار، وبعد جوابه أضف end_session مع review مرتب. لو قال سكّرها بدون مراجعة سكّرها بمراجعة مختصرة من صفقات الجلسة.

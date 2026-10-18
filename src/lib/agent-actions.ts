@@ -17,6 +17,7 @@ import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-n
 import { loadCapital, moveCapital, syncLimitsPct } from "@/lib/capital-store";
 import { applyPctLimits } from "@/lib/effective-limits";
 import { makeThumbnail } from "@/lib/image";
+import { fetchAll } from "@/lib/fetch-all";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
@@ -167,6 +168,35 @@ export function loosenedLimits(
 
 const num = z.coerce.number().finite();
 const opt = z.string().max(2000).nullish();
+
+// Every agent learns from these examples, so a guessed verdict would teach the
+// opposite rule. Anything that is not clearly right or wrong is refused.
+const VERDICTS: Record<string, "good" | "bad"> = {
+  صح: "good",
+  صحيح: "good",
+  good: "good",
+  غلط: "bad",
+  خطأ: "bad",
+  bad: "bad",
+};
+export const VERDICT_MSG = "حدد: صح أو غلط؟";
+
+/**
+ * A trade from the AI is finished only when it says closed or has an exit price.
+ * An MT5 Trade-tab screenshot shows floating P&L on open positions, and booking
+ * that as a close would record a fake result and drop the trade from the breaker.
+ * An explicit "open" wins, because that tab also shows a current price.
+ */
+export function isClosedUpload(t: {
+  status?: string | null | undefined;
+  exit_price?: number | null | undefined;
+  /** Read but never decisive: floating P&L looks exactly like a result. */
+  pnl?: number | null | undefined;
+}): boolean {
+  if (t.status === "open") return false;
+  return t.status === "closed" || t.exit_price != null;
+}
+
 const SETTINGS_KEYS = [
   "starting_balance",
   "daily_target",
@@ -212,7 +242,8 @@ export const SCHEMAS = {
     strategy: z.string().nullish(),
     emotion: z.string().max(20).nullish(),
     notes: opt,
-    status: z.enum(["open", "closed"]).catch("open").optional(),
+    // A garbled status counts as unknown, so the exit price decides (isClosedUpload).
+    status: z.enum(["open", "closed"]).optional().catch(undefined),
     pnl: num.nullish(),
     exit_price: num.nullish(),
     opened_at: z.string().max(40).nullish(),
@@ -263,7 +294,10 @@ export const SCHEMAS = {
   }),
   delete_strategy: z.object({ name: z.string().min(1).max(80) }),
   add_strategy_example: z.object({
-    verdict: z.enum(["good", "bad"]).catch("good"),
+    verdict: z.preprocess(
+      (v) => (typeof v === "string" ? (VERDICTS[v.trim().toLowerCase()] ?? v) : v),
+      z.enum(["good", "bad"], { message: VERDICT_MSG }),
+    ),
     reason: z.string().min(1).max(1000),
     strategy: z.string().max(80).nullish(),
     symbol: z.string().max(20).nullish(),
@@ -331,16 +365,26 @@ export const SCHEMAS = {
   }),
 };
 
-export function parseAction(a: AgentAction) {
+function validate(a: AgentAction) {
   if (!(ACTION_TYPES as readonly string[]).includes(a.type)) return null;
-  let raw: unknown;
   try {
-    raw = JSON.parse(a.data);
+    return SCHEMAS[a.type].safeParse(JSON.parse(a.data));
   } catch {
     return null;
   }
-  const r = SCHEMAS[a.type].safeParse(raw);
-  return r.success ? r.data : null;
+}
+
+export function parseAction(a: AgentAction) {
+  const r = validate(a);
+  return r?.success ? r.data : null;
+}
+
+/** Why an action cannot run, or null when its data is valid. */
+export function actionIssue(a: AgentAction): string | null {
+  const r = validate(a);
+  if (r?.success) return null;
+  // Our own refinements speak Arabic; zod's English defaults stay generic.
+  return r?.error.issues.find((i) => /[\u0600-\u06FF]/.test(i.message))?.message ?? "بيانات ناقصة";
 }
 
 const sym = (s?: string | null) =>
@@ -409,7 +453,7 @@ async function findTrade(ref: { trade_id?: string | null; symbol?: string | null
 /** In auto mode, actions that need a click throw NeedsConfirmation instead of running. */
 export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): Promise<void> {
   const d = parseAction(a) as Record<string, unknown> | null;
-  if (!d) throw new Error("بيانات الإجراء غير صالحة");
+  if (!d) throw new Error(actionIssue(a) ?? "بيانات الإجراء غير صالحة");
   if (opts.auto && DESTRUCTIVE.includes(a.type)) throw new NeedsConfirmation("الحذف يحتاج موافقتك");
   const user_id = await currentUserId();
   const check = (e: { message: string } | null) => {
@@ -506,7 +550,8 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         strategy_id = data?.find((s) => s.name.trim() === strategy.trim())?.id ?? null;
       }
       requireForex(t.symbol);
-      const closed = status === "closed" || (pnl != null && Number.isFinite(pnl));
+      // Floating P&L on an open trade is ignored (it never reaches the insert below).
+      const closed = isClosedUpload({ status, exit_price, pnl });
       const now = new Date().toISOString();
       const openedAt = opened_at && Number.isFinite(new Date(opened_at).getTime()) ? new Date(opened_at).toISOString() : null;
       // Same trade uploaded again (e.g. a second MT5 screenshot): update instead of duplicating.
@@ -897,7 +942,10 @@ async function gateForAiTrade(input: TradeInput) {
   const now = new Date();
   const [settings, trades, violations, session, strategies] = await Promise.all([
     supabase.from("trading_settings").select("*").maybeSingle(),
-    supabase.from("trades").select("status,pnl,risk_amount,opened_at,closed_at"),
+    // Unordered and capped at 1000 rows, today's trades could be the ones left out.
+    fetchAll((from, to) =>
+      supabase.from("trades").select("status,pnl,risk_amount,opened_at,closed_at").order("id").range(from, to),
+    ),
     // Two days always cover the trader's "today" in any zone; narrowed to his midnight below.
     supabase.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(now.getTime() - 2 * 86_400_000).toISOString()),
     supabase
@@ -907,11 +955,10 @@ async function gateForAiTrade(input: TradeInput) {
       .limit(1),
     supabase.from("strategies").select("id").eq("allowed", true),
   ]);
-  const err =
-    settings.error ?? trades.error ?? violations.error ?? session.error ?? strategies.error;
+  const err = settings.error ?? violations.error ?? session.error ?? strategies.error;
   if (err) throw new Error(err.message);
   if (!settings.data) throw new Error("أكمل إعداد حدود المخاطر قبل تسجيل الصفقات.");
-  const all = trades.data ?? [];
+  const all = trades;
   const bal = (await loadCapital()).summary.balance;
   settings.data = applyPctLimits(settings.data, bal);
   const start = dayStart(now, settings.data.timezone).getTime();

@@ -5,6 +5,7 @@ import { AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ACTION_LABEL,
+  actionIssue,
   DESTRUCTIVE,
   NeedsConfirmation,
   AlreadySaved,
@@ -109,7 +110,7 @@ export function AgentActions({
               ) : a.status === "rejected" ? (
                 <span className="text-xs text-muted-foreground">مرفوض</span>
               ) : !valid ? (
-                <span className="text-xs text-destructive">بيانات ناقصة</span>
+                <span className="text-xs text-destructive">{actionIssue(a) ?? "بيانات ناقصة"}</span>
               ) : (
                 <div className="flex shrink-0 gap-1">
                   <Button
