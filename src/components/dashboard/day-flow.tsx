@@ -5,7 +5,7 @@ import { FLOW_LABELS, type FlowResult } from "@/lib/day-flow";
 import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
 import { safeSession } from "@/lib/safe-storage";
 
-export function DayFlow({ flow }: { flow: FlowResult }) {
+export function DayFlow({ flow, onPlan }: { flow: FlowResult; onPlan?: () => void }) {
   const nav = useNavigate();
   function interview() {
     safeSession.set(COACH_DRAFT_KEY, JSON.stringify({ text: "أنا أبدأ الحين. اسألني عن أهدافي وحدودي والطمع وحطها بالنظام", image: null }));
@@ -40,7 +40,9 @@ export function DayFlow({ flow }: { flow: FlowResult }) {
             <p className="font-display text-lg font-semibold leading-7 lg:text-xl">{flow.message}</p>
           </div>
         </div>
-        {flow.interview ? (
+        {flow.plan && onPlan ? (
+          <Button className="w-full shrink-0 md:w-auto md:px-6" onClick={onPlan}>{flow.action}</Button>
+        ) : flow.interview ? (
           <Button className="w-full shrink-0 md:w-auto md:px-6" onClick={interview}>{flow.action}</Button>
         ) : (
           <Button asChild className="w-full shrink-0 md:w-auto md:px-6"><Link to={flow.to}>{flow.action}</Link></Button>

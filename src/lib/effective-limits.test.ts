@@ -28,8 +28,8 @@ describe("anchorBalance", () => {
   });
 });
 
-import { effectiveDailyTarget } from "./daily-plan";
-describe("effectiveDailyTarget", () => {
-  it("uses the plan target Hadi chose today", () => { expect(effectiveDailyTarget(500, 1800)).toBe(500); });
-  it("falls back to settings when no plan target", () => { expect(effectiveDailyTarget(null, 1800)).toBe(1800); });
+import { effectivePlanLimits } from "./daily-plan";
+describe("effectivePlanLimits target", () => {
+  it("uses the plan target Hadi chose today", () => { expect(effectivePlanLimits({ target: 500 }, { daily_target: 1800 }).daily_target).toBe(500); });
+  it("falls back to settings when no plan target", () => { expect(effectivePlanLimits({ target: null }, { daily_target: 1800 }).daily_target).toBe(1800); });
 });

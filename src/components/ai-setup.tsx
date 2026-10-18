@@ -35,7 +35,10 @@ export function AiSetup({ onFinished }: { onFinished?: () => void }) {
       {res && (
         <div className="space-y-2 rounded-xl bg-muted p-4 text-sm leading-7">
           <Md>{res.reply}</Md>
-          <AgentActions key={res.reply} actions={res.actions} onChange={(next) => { if (next.every((a) => a.status)) onFinished?.(); }} />
+          <AgentActions key={res.reply} actions={res.actions} onChange={(next) => {
+            // Every card answered and at least one accepted; rejecting all is not a finished setup.
+            if (next.every((a) => a.status) && next.some((a) => a.status === "done")) onFinished?.();
+          }} />
         </div>
       )}
     </section>

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { settingsQuery, tradesQuery, violationsQuery, todayPlanQuery } from "@/lib/queries";
-import { effectiveDailyTarget } from "@/lib/daily-plan";
+import { effectivePlanLimits } from "@/lib/daily-plan";
 import { computeDayMetrics } from "@/lib/trading-status";
 import { dayStart, safeTz } from "@/lib/trading-day";
 import { CoreMetrics } from "@/components/dashboard/core-metrics";
@@ -14,6 +14,8 @@ import { usePipeline } from "@/lib/use-journey";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { OpenTrades } from "@/components/dashboard/open-trades";
 import { QuickCoach } from "@/components/dashboard/quick-coach";
+import { PlanSheet } from "@/components/today/plan-sheet";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -36,6 +38,7 @@ function Dashboard() {
   const plan = useQuery({ ...todayPlanQuery(s.data?.timezone), enabled: !!s.data });
   // The step comes from the one day engine, the same one behind the nav dot and سَنَد's line.
   const pipeline = usePipeline();
+  const [planOpen, setPlanOpen] = useState(false);
 
   if (s.isLoading || t.isLoading || v.isLoading) {
     return (
@@ -59,7 +62,7 @@ function Dashboard() {
     );
   }
 
-  const settings = { ...s.data, daily_target: effectiveDailyTarget(plan.data?.target, s.data.daily_target) };
+  const settings = effectivePlanLimits(plan.data, s.data);
   const trades = t.data ?? [];
   const start = dayStart(new Date(), settings.timezone).getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
@@ -72,7 +75,11 @@ function Dashboard() {
         title="يومك"
         subtitle={new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "full", timeZone: safeTz(settings.timezone) }).format(new Date())}
       />
-      {flow ? <DayFlow flow={flow} /> : <Skeleton className="h-36 w-full rounded-2xl" />}
+      {flow ? <DayFlow flow={flow} onPlan={() => setPlanOpen(true)} /> : <Skeleton className="h-36 w-full rounded-2xl" />}
+      {flow && !flow.plan && (
+        <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={() => setPlanOpen(true)}>{plan.data ? "عدّل خطة اليوم" : "اكتب خطة اليوم"}</Button>
+      )}
+      <PlanSheet open={planOpen} onOpenChange={setPlanOpen} />
       <CoreMetrics
         todayPnl={metrics.todayPnl}
         dailyTarget={settings.daily_target}

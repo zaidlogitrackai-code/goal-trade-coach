@@ -7,6 +7,7 @@ import { currentUserId } from "@/lib/queries";
 import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import type { TradeInput } from "@/lib/trade-gate";
 import { dayKey, dayStart } from "@/lib/trading-day";
+import { isPlanRevision } from "@/lib/daily-plan";
 import type { FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
@@ -209,8 +210,12 @@ async function execute(type: ActionType, d: Record<string, unknown>, user_id: st
       const p = d as { target?: number | null; max_trades?: number | null; risk_per_trade?: number | null; max_loss?: number | null; note?: string | null };
       const { data: cur } = await supabase.from("daily_plans").select("*").eq("day", day).maybeSingle();
       const clean = Object.fromEntries(Object.entries(p).filter(([, v]) => v != null));
+      const { data: traded } = cur
+        ? await supabase.from("trades").select("id").gte("opened_at", dayStart(new Date(), st?.timezone).toISOString()).limit(1)
+        : { data: null };
+      const bump = isPlanRevision(cur, clean, traded?.length ?? 0) ? 1 : 0;
       const { error } = cur
-        ? await supabase.from("daily_plans").update({ ...clean, revised_count: cur.revised_count + 1 }).eq("id", cur.id)
+        ? await supabase.from("daily_plans").update({ ...clean, revised_count: cur.revised_count + bump }).eq("id", cur.id)
         : await supabase.from("daily_plans").insert({ user_id, day, ...clean });
       return check(error);
     }

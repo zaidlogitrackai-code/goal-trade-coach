@@ -14,6 +14,8 @@ export interface FlowResult {
   action: string;
   to: NavPath;
   interview?: boolean;
+  /** Step 2 opens the PlanSheet in place instead of navigating. */
+  plan?: boolean;
   danger?: boolean;
 }
 
@@ -27,6 +29,7 @@ export function flowFromPipeline(p: DayPipeline): FlowResult {
     action: p.cta.label,
     to: p.cta.to,
     ...(p.current.key === "setup" && p.cta.to === "/coach" ? { interview: true } : {}),
+    ...(p.current.key === "plan" ? { plan: true } : {}),
     ...(p.current.tone === "danger" ? { danger: true } : {}),
   };
 }

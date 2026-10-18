@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { currentUserId, settingsQuery, todayPlanQuery, tradesQuery } from "@/lib/queries";
 import { collapseToasts, deliveryOf, nextDaily, riskAlerts, type ToastLevel, type WatchTrade } from "@/lib/risk-watch";
 import { eveningReview } from "@/lib/ai.functions";
-import { effectiveDailyTarget } from "@/lib/daily-plan";
+import { effectivePlanLimits } from "@/lib/daily-plan";
 import { dayKey, wallClock } from "@/lib/trading-day";
 import { useBeat } from "@/hooks/use-resume";
 
@@ -65,7 +65,7 @@ export function RiskWatcher() {
     };
     if (s) {
       const plan = await qc.fetchQuery({ ...todayPlanQuery(tz), ...FROM_CACHE });
-      const alerts = riskAlerts({ ...s, daily_target: effectiveDailyTarget(plan?.target, s.daily_target) }, trades as WatchTrade[]);
+      const alerts = riskAlerts(effectivePlanLimits(plan, s), trades as WatchTrade[]);
       const open = alerts.filter((a) => !delivered.current.has(a.key));
       if (open.length) {
         const { data: seen } = await supabase.from("notifications").select("dedupe_key").in("dedupe_key", open.map((a) => a.key));
