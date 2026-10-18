@@ -3,16 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  ACTION_LABEL,
-  actionIssue,
-  DESTRUCTIVE,
-  NeedsConfirmation,
-  AlreadySaved,
-  parseAction,
-  runAction,
-  type AgentAction,
-} from "@/lib/agent-actions";
+import { ACTION_LABEL, actionIssue, isDestructive, parseAction, type AgentAction } from "@/lib/agent-action-spec";
+import { AlreadySaved, NeedsConfirmation, runAction } from "@/lib/agent-actions";
 
 export type StoredAction = AgentAction & {
   status?: "done" | "rejected" | "failed" | undefined;
@@ -24,8 +16,9 @@ export type StoredAction = AgentAction & {
 const autoRan = new Set<string>();
 
 /**
- * Cards for AI actions. With `autoRunKey`, safe actions run immediately; deletions
- * and anything that loosens a risk limit stay as approve/reject buttons.
+ * Cards for AI actions. With `autoRunKey`, actions run at once unless action-policy.ts
+ * holds them back (deletions, anything that loosens his protection), which stay as
+ * approve/reject buttons with the reason underneath.
  */
 export function AgentActions({
   actions,
@@ -54,8 +47,8 @@ export function AgentActions({
     for (const i of idxs) {
       const a = next[i]!;
       try {
-        await runAction(a, { auto });
-        next[i] = { ...a, status: "done", note: undefined };
+        const { note } = await runAction(a, { auto });
+        next[i] = { ...a, status: "done", note: note ?? undefined };
         ok++;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "فشل";
@@ -77,7 +70,7 @@ export function AgentActions({
     if (!autoRunKey || autoRan.has(autoRunKey)) return;
     autoRan.add(autoRunKey);
     const idxs = listRef.current
-      .map((a, i) => (!a.status && parseAction(a) && !DESTRUCTIVE.includes(a.type) ? i : -1))
+      .map((a, i) => (!a.status && parseAction(a) && !isDestructive(a.type) ? i : -1))
       .filter((i) => i >= 0);
     if (idxs.length) void run(idxs, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,7 +78,7 @@ export function AgentActions({
 
   const pending = list.map((a, i) => (!a.status && parseAction(a) ? i : -1)).filter((i) => i >= 0);
   // A delete always needs its own tap (owner decision 3), so «وافق على الكل» never includes one.
-  const bulk = pending.filter((i) => !DESTRUCTIVE.includes(list[i]!.type));
+  const bulk = pending.filter((i) => !isDestructive(list[i]!.type));
   if (list.length === 0) return null;
   const allDone = list.every((a) => a.status === "done");
   return (
@@ -95,7 +88,7 @@ export function AgentActions({
       </p>
       {list.map((a, i) => {
         const valid = !!parseAction(a);
-        const danger = DESTRUCTIVE.includes(a.type);
+        const danger = isDestructive(a.type);
         return (
           <div key={i} className="space-y-1 rounded-lg bg-card p-2.5 text-sm">
             <div className="flex flex-wrap items-center gap-2">

@@ -16,6 +16,7 @@ import { dayKey, dayStart, monthStart, safeTz, toWallInput } from "./trading-day
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { HISTORY_LIMIT, toModelInput } from "./chat-history";
 import { MAX_THUMB_CHARS } from "./image";
+import { ACTION_LABEL, agentModeFor, allowedActions, screenActions, type AgentMode } from "./agent-action-spec";
 
 import { applyPctLimits } from "./effective-limits";
 import { EMOTIONS, REVENGE_WINDOW_MIN } from "./emotions";
@@ -166,32 +167,35 @@ ${data.question ? `سؤال المتداول: ${data.question}` : ""}
     } catch (e) { fail(e); }
   });
 
-const AGENT_SCHEMA = {
-  type: "json_schema", name: "agent", strict: true,
-  schema: {
-    type: "object", additionalProperties: false, required: ["reply", "actions"],
-    properties: {
-      reply: { type: "string" },
-      actions: {
-        type: "array",
-        items: {
-          type: "object", additionalProperties: false, required: ["type", "summary", "data"],
-          properties: {
-            type: { type: "string", enum: ["update_settings", "add_strategy", "update_strategy", "delete_strategy", "add_rule", "update_rule", "delete_rule", "create_trade", "close_trade", "update_trade", "delete_trade", "add_note", "delete_note", "start_session", "end_session", "start_cooldown", "mark_notifications_read", "update_focus", "set_guard_style", "capital_move", "save_analysis", "delete_analysis", "delete_thread", "add_reminder", "delete_reminder", "set_daily_plan", "attach_trade_image", "remove_trade_image", "add_violation", "delete_violation", "delete_daily_plan", "update_session", "delete_session", "rename_thread", "delete_notifications", "add_strategy_example", "delete_strategy_example"] },
-            summary: { type: "string" },
-            data: { type: "string" },
+/** The model may only name the actions its mode allows (agent-action-spec.ts). */
+function agentSchema(mode: AgentMode) {
+  return {
+    type: "json_schema", name: "agent", strict: true,
+    schema: {
+      type: "object", additionalProperties: false, required: ["reply", "actions"],
+      properties: {
+        reply: { type: "string" },
+        actions: {
+          type: "array",
+          items: {
+            type: "object", additionalProperties: false, required: ["type", "summary", "data"],
+            properties: {
+              type: { type: "string", enum: allowedActions(mode) },
+              summary: { type: "string" },
+              data: { type: "string" },
+            },
           },
         },
       },
     },
-  },
-};
+  };
+}
 
 const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع ومساعده في كل شيء. تتكلم كشريك صادق مو كمدرب بعيد، وعبرك يُدار النظام كامل، وتقدر تنفّذ أي شيء في النظام نيابة عنه: المستخدم يقول، وأنت تجهّز الإجراءات، والنظام ينفّذها مباشرة.
 مهمتك: تحلل صفقاته معه، تفكر معه، تنصحه، تمنعه من الطمع، وتلزمه بالهدف اليومي والأسبوعي والشهري وحدود الخسارة. إذا وصل لهدفه أو حد خسارته قل له يوقف بوضوح.
 إذا ناقصك معلومة (استراتيجيته، حدوده، أهدافه) اسأله سؤال أو سؤالين واضحين.
-عندما يطلب منك أو يذكر شيء يحتاج حفظ أو تعديل أو حذف، أضف إجراء في actions. النظام ينفّذ الإجراءات تلقائيًا، ما عدا الحذف وتخفيف حدود المخاطر وتحريك وقف الخسارة فتحتاج ضغطة موافقة. data نص JSON بهذه الأشكال:
-- update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency" (رمز ISO مثل USD أو SAR؛ USDT ينحفظ USD),"display_name","timezone" (منطقة IANA مثل Asia/Riyadh),"session_start","session_end" (ساعات جلسته HH:MM بتوقيته، الاثنين مع بعض)} (أرسل فقط الحقول المذكورة، أرقام موجبة)
+عندما يطلب منك أو يذكر شيء يحتاج حفظ أو تعديل أو حذف، أضف إجراء في actions. النظام ينفّذ الإجراءات تلقائيًا، ما عدا الحذف وأي شي يخفف حمايته فيحتاج ضغطة موافقة: رفع حد أو هدف أو سقف الربح أو إلغاؤه، تقصير التهدئة، رفع خطة اليوم بعد ما تداول، توسيع الوقف أو شيله، تعديل نتيجة صفقة مسكّرة، تعديل الرصيد أو تسجيل سحب، إيقاف قاعدة، وإرجاع استراتيجية ممنوعة. data نص JSON بهذه الأشكال:
+- update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","streak_cooldown_hours" (ساعات التهدئة بعد الخسائر المتتالية),"currency" (رمز ISO مثل USD أو SAR؛ USDT ينحفظ USD),"display_name","timezone" (منطقة IANA مثل Asia/Riyadh),"session_start","session_end" (ساعات جلسته HH:MM بتوقيته، الاثنين مع بعض)} (أرسل فقط الحقول المذكورة، أرقام موجبة)
 - add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
 - add_rule: {"title","description"}
 - set_daily_plan: {"target","max_trades","risk_per_trade","max_loss","note"} — خطة هادي لليوم بأرقامه هو (أرسل المذكور فقط)
@@ -230,7 +234,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 ملف التركيز هو اللي يبني النظام حوله: الداشبورد والقائمة وصفحة الصفقة كلها تقرأ منه.
 - لما يحكي شيء ثابت عن نفسه (سوقه، أسلوبه، هدفه، نقطة ضعفه، شيء بيتكرر معه)، أضف update_focus بنفس الرد. لا تحفظ مزاج اللحظة أو تفاصيل صفقة وحدة.
 - إذا الملف فاضي أو ناقص (ما في سوق أو هدف أو نقطة ضعف)، اسأله سؤال واحد عنها بآخر ردك.
-- ارجع لنقطة ضعفه وقاعدته لما يكون الكلام متعلق فيها، ونبهه إذا طلب صفقة برّا أسواقه (صفقة برّا سوقه تحتاج موافقته).
+- ارجع لنقطة ضعفه وقاعدته لما يكون الكلام متعلق فيها، ونبهه إذا سجّل صفقة برّا أسواقه (الصفقة الداخلة تنسجل، بس قله).
 - إذا الأنماط تكشف ضعف مش مكتوب بالملف (مثل خسارة بعد الخسارة)، قله واقترح تحديث الملف.
 مقابلة الطمع والأهداف: إذا أي واحد من هذول صفر أو ناقص (الهدف اليومي daily_target، الأسبوعي weekly_target، الشهري monthly_target، حد الخسارة اليومي max_daily_loss، أقصى مخاطرة للصفقة max_risk_per_trade، سقف الربح اليومي max_daily_profit)، أو طلب "اسألني عن أهدافي": حقق معه مثل مدرب صارم ولطيف — اسأل سؤالين بالكثير بكل رد بالترتيب: كم رصيدك؟ كم تارقتك (هدفك) باليوم وبالأسبوع وبالشهر؟ كم أقصى خسارة تقبلها باليوم؟ كم تخاطر بالصفقة؟ وش تسوي لما توصل هدفك — توقف ولا تكمل؟ ومتى طمعت قبل وش صار؟ كل جواب يعطيه احفظه فوراً بـ update_settings (سقف الربح اليومي = هدفه اليومي إلا إذا قال غير كذا)، ونقطة ضعفه بـ update_focus. إذا الهدف مبالغ فيه مقارنة برصيده (أكثر من 3% باليوم) قل له بصراحة إنه طمع واقترح رقم أصغر. لما تكتمل قل له ملخص أهدافه وإن النظام بيوقفه عندها.
 قواعد مهمة جداً:
@@ -307,12 +311,17 @@ ${ANALYST_SKILLS ? `\nخبرات المحلل:\n${ANALYST_SKILLS}` : ""}`;
 
 const SHORT_RULE = `- أسلوب الرد إلزامي: مختصر وواضح ومباشر. بدون مقدمات ولا مجاملات ولا كلام زايد ولا تكرار. جمل قصيرة أو نقاط قليلة، وأقصى سؤال واحد بالآخر.`;
 
-async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
+async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[], mode: AgentMode) {
   const [ctx, tz] = await Promise.all([buildContext(sb), userTz(sb)]);
+  // The guide describes every action; a narrower mode is told which ones are its own.
+  const tools = mode === "day" ? "" : `\nالإجراءات المتاحة لك هنا فقط: ${allowedActions(mode).map((t) => `${t} (${ACTION_LABEL[t]})`).join("، ")}. وغيرها قل له إنه ينسوّى من محادثة يومه مع سَنَد.`;
   // His wall clock, not the server's UTC: "الحين" and "الليلة" must mean his time.
-  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالوقت الآن عند هادي: ${toWallInput(new Date(), tz).replace("T", " ")} (${tz})`, input, AGENT_SCHEMA);
-  const parsed = JSON.parse(out) as { reply: string; actions: { type: string; summary: string; data: string }[] };
-  return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 30) };
+  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}${tools}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالوقت الآن عند هادي: ${toWallInput(new Date(), tz).replace("T", " ")} (${tz})`, input, agentSchema(mode));
+  const parsed = JSON.parse(out) as { reply?: string; actions?: unknown };
+  // Checked here too: the schema is only the model's promise, the server keeps what this mode may run.
+  const { actions, dropped } = screenActions(parsed.actions, mode);
+  if (dropped.length) console.warn("[agent] dropped actions outside", mode, dropped);
+  return { reply: parsed.reply || "تم.", actions };
 }
 
 export const coachReply = createServerFn({ method: "POST" })
@@ -363,7 +372,7 @@ export const coachReply = createServerFn({ method: "POST" })
             }
           }
         }
-        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input);
+        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input, agentModeFor(data.mode));
         const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null, image: chartThumb }).select("id").single();
         if (e2) throw e2;
         const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
@@ -382,7 +391,7 @@ export const setupPlan = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ text: z.string().min(1).max(8000) }).parse(d))
   .handler(async ({ data, context }) => {
     try {
-      return await runAgent(context.supabase, `المتداول جديد ويكتب لك وصف كامل لنظامه. حوّل كل ما ذكره إلى إجراءات: update_settings واحد يجمع كل الحدود والأهداف والرصيد والعملة، ثم add_strategy لكل استراتيجية، add_rule لكل قاعدة، وأي صفقات مذكورة. في reply لخّص ما فهمته واسأله عن أهم شيء ناقص (مثل حد الخسارة اليومي) إن لم يذكره.`, [{ role: "user", content: data.text }]);
+      return await runAgent(context.supabase, `المتداول جديد ويكتب لك وصف كامل لنظامه. حوّل كل ما ذكره إلى إجراءات: update_settings واحد يجمع كل الحدود والأهداف والرصيد والعملة، ثم add_strategy لكل استراتيجية، add_rule لكل قاعدة، وupdate_focus لأسواقه وهدفه ونقطة ضعفه. في reply لخّص ما فهمته واسأله عن أهم شيء ناقص (مثل حد الخسارة اليومي) إن لم يذكره.`, [{ role: "user", content: data.text }], "setup");
     } catch (e) { fail(e); }
   });
 
@@ -558,7 +567,7 @@ export const riskMorning = createServerFn({ method: "POST" })
       if (seen?.length) return { skipped: true };
       const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true, dismissed: true });
       if (lock) return { skipped: true };
-      const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة جدًا (٣ أسطر كحد أقصى): حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه). ابدأ بـ صباح الخير هادي. ممنوع فقرات طويلة." }]);
+      const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة جدًا (٣ أسطر كحد أقصى): حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه). ابدأ بـ صباح الخير هادي. ممنوع فقرات طويلة." }], "day");
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
       return { skipped: false };
     } catch (e) { fail(e); }
@@ -575,7 +584,7 @@ export const disciplineMorning = createServerFn({ method: "POST" })
       if (seen?.length) return { skipped: true };
       const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "reminder", day: data.day, title: "حارس الانضباط", body: "حدد خطتك اليوم في صفحة الانضباط", dedupe_key: key, read: true, dismissed: true });
       if (lock) return { skipped: true };
-      const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين كحد أقصى. ممنوع فقرات طويلة." }]);
+      const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين كحد أقصى. ممنوع فقرات طويلة." }], "day");
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
       return { skipped: false };
     } catch (e) { fail(e); }

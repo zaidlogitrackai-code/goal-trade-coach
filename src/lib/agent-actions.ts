@@ -1,108 +1,29 @@
 import { nextDaily } from "./risk-watch";
 import { checkLevels, riskUsd } from "./trade-idea";
 import { findDuplicate } from "./trade-dedupe";
-import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
-import { normalizeCurrency, parseClock, SUPPORTED_CURRENCIES, validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
+import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import type { TradeInput } from "@/lib/trade-gate";
-import { dayKey, safeTz } from "@/lib/trading-day";
-import { inMarkets, type FocusPatch } from "@/lib/focus";
+import { dayKey, dayStart } from "@/lib/trading-day";
+import type { FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
 import type { CapitalMove } from "@/lib/capital";
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-notes";
 import { loadCapital, moveCapital, syncLimitsPct } from "@/lib/capital-store";
-import { applyPctLimits } from "@/lib/effective-limits";
+import { anchorBalance, applyPctLimits } from "@/lib/effective-limits";
 import { makeThumbnail } from "@/lib/image";
+import { actionIssue, isClosedUpload, parseAction, type ActionType, type AgentAction } from "@/lib/agent-action-spec";
+import { needsApproval, type PolicyContext } from "@/lib/action-policy";
 
 /**
- * Actions the AI coach can run. In the coach they run automatically, except
- * deletions and anything that loosens a risk limit, which wait for a click.
- * A trade with contradicting levels is refused and the AI can never end a cooldown early.
+ * Runs the AI's actions in the browser. What an action is and whether it may run by
+ * itself live in agent-action-spec.ts and action-policy.ts; this file only loads the
+ * facts the policy needs and writes the rows. A trade with contradicting levels is
+ * refused and the AI can never end a cooldown early.
  */
-export type AgentAction = { type: ActionType; summary: string; data: string };
-export const ACTION_TYPES = [
-  "update_settings",
-  "add_strategy",
-  "update_strategy",
-  "delete_strategy",
-  "add_rule",
-  "update_rule",
-  "delete_rule",
-  "create_trade",
-  "close_trade",
-  "update_trade",
-  "delete_trade",
-  "add_note",
-  "delete_note",
-  "start_session",
-  "end_session",
-  "start_cooldown",
-  "mark_notifications_read",
-  "update_focus",
-  "set_guard_style",
-  "capital_move",
-  "save_analysis",
-  "delete_analysis",
-  "delete_thread",
-  "add_reminder",
-  "delete_reminder",
-  "set_daily_plan",
-  "attach_trade_image",
-  "remove_trade_image",
-  "add_violation",
-  "delete_violation",
-  "delete_daily_plan",
-  "update_session",
-  "delete_session",
-  "rename_thread",
-  "add_strategy_example",
-  "delete_strategy_example",
-  "delete_notifications",
-] as const;
-export type ActionType = (typeof ACTION_TYPES)[number];
-
-export const ACTION_LABEL: Record<ActionType, string> = {
-  update_settings: "تعديل الحدود والأهداف",
-  add_strategy: "إضافة استراتيجية",
-  update_strategy: "تعديل استراتيجية",
-  delete_strategy: "حذف استراتيجية",
-  add_rule: "إضافة قاعدة",
-  update_rule: "تعديل قاعدة",
-  delete_rule: "حذف قاعدة",
-  create_trade: "تسجيل صفقة",
-  close_trade: "إغلاق صفقة",
-  update_trade: "تعديل صفقة",
-  delete_trade: "حذف صفقة",
-  add_note: "إضافة ملاحظة للمعرفة",
-  delete_note: "حذف ملاحظة",
-  start_session: "بدء جلسة تداول",
-  end_session: "إنهاء الجلسة",
-  start_cooldown: "بدء فترة تهدئة",
-  mark_notifications_read: "تعليم الإشعارات كمقروءة",
-  update_focus: "تحديث ملف التركيز",
-  set_guard_style: "تحديث طريقة حارس الانضباط",
-  capital_move: "حركة على رأس المال",
-  save_analysis: "حفظ تحليل شارت",
-  delete_analysis: "حذف تحليل",
-  delete_thread: "حذف محادثة",
-  add_reminder: "إضافة تذكير",
-  delete_reminder: "حذف تذكير",
-  set_daily_plan: "خطة اليوم",
-  attach_trade_image: "إرفاق صورة بالصفقة",
-  remove_trade_image: "حذف صورة الصفقة",
-  add_violation: "تسجيل مخالفة",
-  delete_violation: "حذف مخالفة",
-  delete_daily_plan: "مسح خطة اليوم",
-  update_session: "تعديل جلسة",
-  delete_session: "حذف جلسة",
-  rename_thread: "تغيير اسم محادثة",
-  add_strategy_example: "حفظ مثال تدريب",
-  delete_strategy_example: "حذف مثال تدريب",
-  delete_notifications: "إخفاء التنبيهات",
-};
 
 /** The last image the user sent in chat, so the agent can attach it to a trade. */
 let lastImage: string | null = null;
@@ -110,304 +31,10 @@ export function rememberChatImage(img: string | null) {
   if (img) lastImage = img;
 }
 
-/** Always wait for an explicit click, even in auto mode. */
-export const DESTRUCTIVE: readonly ActionType[] = [
-  "delete_trade",
-  "delete_strategy",
-  "delete_rule",
-  "delete_note",
-  "delete_analysis",
-  "delete_thread",
-  "delete_reminder",
-  "remove_trade_image",
-  "delete_violation",
-  "delete_daily_plan",
-  "delete_session",
-  "delete_notifications",
-  "delete_strategy_example",
-];
-
 /** Thrown in auto mode when an action needs the user's click first. */
 export class NeedsConfirmation extends Error {}
 /** The action had nothing to do because the data is already saved. */
 export class AlreadySaved extends Error {}
-
-/** Limits where a bigger number (or 0 = disabled) means less protection. */
-const LIMIT_KEYS = [
-  "max_daily_loss",
-  // The anti-greed stop: reaching it stops the day (computeStatus "stopped").
-  "max_daily_profit",
-  "max_trades_per_day",
-  "max_risk_per_trade",
-  "max_daily_risk",
-  "max_consecutive_losses",
-  "weekly_max_loss",
-  "monthly_max_loss",
-] as const;
-
-/** Which keys in a settings patch weaken protection compared to the current settings. */
-export function loosenedLimits(
-  current: Record<string, unknown> | null,
-  patch: Record<string, unknown>,
-): string[] {
-  const out: string[] = [];
-  const cur = (k: string) => Number(current?.[k] ?? 0) || 0;
-  for (const k of LIMIT_KEYS) {
-    if (!(k in patch)) continue;
-    const next = Number(patch[k]) || 0;
-    const now = cur(k);
-    if (now > 0 && (next === 0 || next > now)) out.push(k);
-  }
-  if (
-    "cooldown_minutes" in patch &&
-    (Number(patch["cooldown_minutes"]) || 0) < cur("cooldown_minutes")
-  )
-    out.push("cooldown_minutes");
-  // A new zone moves "today": losses already booked can drop out of the daily limit.
-  if (current && "timezone" in patch && patch["timezone"] !== safeTz(current["timezone"] as string | null | undefined))
-    out.push("timezone");
-  return out;
-}
-
-const num = z.coerce.number().finite();
-const opt = z.string().max(2000).nullish();
-
-// Every agent learns from these examples, so a guessed verdict would teach the
-// opposite rule. Anything that is not clearly right or wrong is refused.
-const VERDICTS: Record<string, "good" | "bad"> = {
-  صح: "good",
-  صحيح: "good",
-  good: "good",
-  غلط: "bad",
-  خطأ: "bad",
-  bad: "bad",
-};
-export const VERDICT_MSG = "حدد: صح أو غلط؟";
-
-/**
- * A trade from the AI is finished only when it says closed or has an exit price.
- * An MT5 Trade-tab screenshot shows floating P&L on open positions, and booking
- * that as a close would record a fake result and drop the trade from the breaker.
- * An explicit "open" wins, because that tab also shows a current price.
- */
-export function isClosedUpload(t: {
-  status?: string | null | undefined;
-  exit_price?: number | null | undefined;
-  /** Read but never decisive: floating P&L looks exactly like a result. */
-  pnl?: number | null | undefined;
-}): boolean {
-  if (t.status === "open") return false;
-  return t.status === "closed" || t.exit_price != null;
-}
-
-const SETTINGS_KEYS = [
-  "starting_balance",
-  "daily_target",
-  "max_daily_profit",
-  "max_daily_loss",
-  "max_trades_per_day",
-  "max_risk_per_trade",
-  "max_daily_risk",
-  "max_consecutive_losses",
-  "weekly_target",
-  "weekly_max_loss",
-  "monthly_target",
-  "monthly_max_loss",
-  "cooldown_minutes",
-] as const;
-
-/** سَنَد sends null or "" for "not mentioned"; coerced, both became 0 = that limit switched off. */
-const dropBlank = (v: unknown) =>
-  v && typeof v === "object" && !Array.isArray(v)
-    ? Object.fromEntries(Object.entries(v).filter(([, x]) => x != null && !(typeof x === "string" && x.trim() === "")))
-    : v;
-const clock = (msg: string) =>
-  z.preprocess((v) => (typeof v === "string" ? (parseClock(v) ?? v) : v), z.string().refine((t) => parseClock(t) === t, msg));
-
-export const SCHEMAS = {
-  update_settings: z.preprocess(
-    dropBlank,
-    z
-      .object({
-        ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, num.min(0).optional()])),
-        // USDT and friends are booked as USD; anything else must be a real ISO code.
-        currency: z
-          .preprocess(
-            (v) => (typeof v === "string" ? (normalizeCurrency(v).code ?? v) : v),
-            z.enum(SUPPORTED_CURRENCIES, { message: "العملة لازم تكون رمز ISO مثل USD أو SAR" }),
-          )
-          .optional(),
-        display_name: z.string().max(60).optional(),
-        timezone: z.string().max(64).refine((tz) => safeTz(tz) === tz, "منطقة زمنية غير معروفة").optional(),
-        session_start: clock("وقت بداية الجلسة لازم يكون مثل 09:00").optional(),
-        session_end: clock("وقت نهاية الجلسة لازم يكون مثل 17:00").optional(),
-      })
-      .partial(),
-  ),
-  add_strategy: z.object({
-    name: z.string().min(1).max(80),
-    description: opt,
-    entry_conditions: opt,
-    exit_conditions: opt,
-    markets: opt,
-    timeframes: opt,
-  }),
-  add_rule: z.object({ title: z.string().min(1).max(200), description: opt }),
-  create_trade: z.object({
-    symbol: z.string().max(20).nullish(),
-    direction: z.enum(["long", "short"]).catch("long"),
-    entry_price: num.nullish(),
-    stop_loss: num.nullish(),
-    take_profit: num.nullish(),
-    position_size: num.nullish(),
-    risk_amount: num.min(0).nullish(),
-    strategy: z.string().nullish(),
-    emotion: z.string().max(20).nullish(),
-    notes: opt,
-    // A garbled status counts as unknown, so the exit price decides (isClosedUpload).
-    status: z.enum(["open", "closed"]).optional().catch(undefined),
-    pnl: num.nullish(),
-    exit_price: num.nullish(),
-    opened_at: z.string().max(40).nullish(),
-  }),
-  save_analysis: z.object({
-    symbol: z.string().max(20).nullish(),
-    timeframe: z.string().max(20).nullish(),
-    question: opt,
-    result: z.string().min(1).max(8000),
-  }),
-  delete_analysis: z.object({ id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }),
-  delete_thread: z.object({ title: z.string().min(1).max(200) }),
-  add_reminder: z.object({
-    title: z.string().min(1).max(120),
-    body: z.string().max(500).nullish(),
-    repeat: z.enum(["once", "daily"]).nullish(),
-    at: z.string().regex(/^\d{1,2}:\d{2}$/).nullish(),
-    in_minutes: z.coerce.number().int().min(1).max(10080).nullish(),
-  }),
-  delete_reminder: z.object({ title: z.string().min(1).max(120) }),
-  set_daily_plan: z.object({
-    target: num.min(0).nullish(),
-    max_trades: z.coerce.number().int().min(0).max(100).nullish(),
-    risk_per_trade: num.min(0).nullish(),
-    max_loss: num.min(0).nullish(),
-    note: z.string().max(500).nullish(),
-  }),
-  close_trade: z.object({
-    symbol: z.string().max(20).nullish(),
-    pnl: num,
-    exit_price: num.nullish(),
-    notes: opt,
-  }),
-  add_note: z.object({
-    title: z.string().min(1).max(200),
-    content: z.string().max(5000).default(""),
-    category: z.string().max(40).default("عام"),
-  }),
-  update_strategy: z.object({
-    name: z.string().min(1).max(80),
-    new_name: z.string().min(1).max(80).nullish(),
-    description: opt,
-    entry_conditions: opt,
-    exit_conditions: opt,
-    markets: opt,
-    timeframes: opt,
-    allowed: z.boolean().nullish(),
-  }),
-  delete_strategy: z.object({ name: z.string().min(1).max(80) }),
-  add_strategy_example: z.object({
-    verdict: z.preprocess(
-      (v) => (typeof v === "string" ? (VERDICTS[v.trim().toLowerCase()] ?? v) : v),
-      z.enum(["good", "bad"], { message: VERDICT_MSG }),
-    ),
-    reason: z.string().min(1).max(1000),
-    strategy: z.string().max(80).nullish(),
-    symbol: z.string().max(20).nullish(),
-    timeframe: z.string().max(10).nullish(),
-    with_image: z.boolean().nullish(),
-  }),
-  delete_strategy_example: z.object({ id: z.string().uuid() }),
-  update_rule: z.object({
-    title: z.string().min(1).max(200),
-    new_title: z.string().min(1).max(200).nullish(),
-    description: opt,
-    active: z.boolean().nullish(),
-  }),
-  delete_rule: z.object({ title: z.string().min(1).max(200) }),
-  update_trade: z
-    .object({
-      trade_id: z.string().uuid().nullish(),
-      symbol: z.string().max(20).nullish(),
-      entry_price: num.nullish(),
-      stop_loss: num.nullish(),
-      take_profit: num.nullish(),
-      position_size: num.nullish(),
-      emotion: z.string().max(20).nullish(),
-      notes: opt,
-      close_notes: opt,
-      strategy: z.string().nullish(),
-      pnl: num.nullish(),
-      exit_price: num.nullish(),
-    })
-    .refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
-  delete_trade: z
-    .object({ trade_id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() })
-    .refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
-  delete_note: z.object({ title: z.string().min(1).max(200) }),
-  start_session: z.object({
-    plan: z.string().min(1).max(2000),
-    mood: z.string().max(40).nullish(),
-  }),
-  end_session: z.object({ review: z.string().max(4000).default("") }),
-  start_cooldown: z.object({ minutes: z.coerce.number().int().min(1).max(1440).nullish() }),
-  mark_notifications_read: z.object({}).passthrough(),
-  capital_move: z.object({
-    kind: z.enum(["deposit", "withdrawal", "set_balance"]),
-    amount: num.min(0),
-    note: z.string().max(300).nullish(),
-  }),
-  attach_trade_image: z.object({ trade_id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }).refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
-  remove_trade_image: z.object({ trade_id: z.string().uuid().nullish(), symbol: z.string().max(20).nullish() }).refine((d) => d.trade_id || d.symbol, "حدد الصفقة"),
-  add_violation: z.object({ note: z.string().min(1).max(500), rule: z.string().max(200).nullish(), symbol: z.string().max(20).nullish() }),
-  delete_violation: z.object({ id: z.string().uuid().nullish() }),
-  delete_daily_plan: z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish() }),
-  update_session: z.object({ id: z.string().uuid().nullish(), plan: opt, review: opt, mood: z.string().max(40).nullish() }),
-  delete_session: z.object({ id: z.string().uuid().nullish() }),
-  rename_thread: z.object({ title: z.string().min(1).max(200), new_title: z.string().min(1).max(200) }),
-  delete_notifications: z.object({}).passthrough(),
-  set_guard_style: z.object({ style: z.string().min(1).max(2000) }),
-  update_focus: z.object({
-    markets: z.union([z.string().max(200), z.array(z.string().max(30)).max(10)]).nullish(),
-    goal: opt,
-    weakness: opt,
-    focus_rule: opt,
-    style: opt,
-    add_note: opt,
-    remove_note: opt,
-  }),
-};
-
-function validate(a: AgentAction) {
-  if (!(ACTION_TYPES as readonly string[]).includes(a.type)) return null;
-  try {
-    return SCHEMAS[a.type].safeParse(JSON.parse(a.data));
-  } catch {
-    return null;
-  }
-}
-
-export function parseAction(a: AgentAction) {
-  const r = validate(a);
-  return r?.success ? r.data : null;
-}
-
-/** Why an action cannot run, or null when its data is valid. */
-export function actionIssue(a: AgentAction): string | null {
-  const r = validate(a);
-  if (r?.success) return null;
-  // Our own refinements speak Arabic; zod's English defaults stay generic.
-  return r?.error.issues.find((i) => /[\u0600-\u06FF]/.test(i.message))?.message ?? "بيانات ناقصة";
-}
 
 const sym = (s?: string | null) =>
   forexSymbol(s) ?? ((s ?? "").toUpperCase().replace(/[\s/]/g, "") || "غير محدد");
@@ -451,11 +78,14 @@ async function findByName(
   return row.id;
 }
 
-async function findTrade(ref: { trade_id?: string | null; symbol?: string | null }) {
+const TRADE_COLUMNS = "id,status,stop_loss,direction,pnl,exit_price";
+type TradeRef = { trade_id?: string | null; symbol?: string | null };
+
+async function findTrade(ref: TradeRef) {
   if (ref.trade_id) {
     const { data } = await supabase
       .from("trades")
-      .select("id,status,stop_loss")
+      .select(TRADE_COLUMNS)
       .eq("id", ref.trade_id)
       .maybeSingle();
     if (data) return data;
@@ -463,7 +93,7 @@ async function findTrade(ref: { trade_id?: string | null; symbol?: string | null
   if (!ref.symbol) throw new Error("ما لقيت الصفقة");
   const { data } = await supabase
     .from("trades")
-    .select("id,status,stop_loss")
+    .select(TRADE_COLUMNS)
     .eq("symbol", sym(ref.symbol))
     .order("opened_at", { ascending: false })
     .limit(5);
@@ -472,16 +102,85 @@ async function findTrade(ref: { trade_id?: string | null; symbol?: string | null
   return row;
 }
 
-/** In auto mode, actions that need a click throw NeedsConfirmation instead of running. */
-export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): Promise<void> {
+/** A read the policy can't judge without: a failed one waits for his click instead of guessing «not looser». */
+const UNSURE = "ما قدرت أتأكد إن هذا ما يخفف حمايتك، فيحتاج موافقتك";
+function sure<T>(r: { data: T; error: { message: string } | null }): T {
+  if (r.error) throw new NeedsConfirmation(UNSURE);
+  return r.data;
+}
+
+/**
+ * Today's dollar limits as the breaker and the gate read them: limits_pct on the day's
+ * anchor balance. The dollars on file go stale after losses, so a raise below them can
+ * still loosen the limit in force.
+ */
+async function limitsInForce(user_id: string) {
+  const s = sure(await supabase.from("trading_settings").select("*").eq("user_id", user_id).maybeSingle());
+  if (!s) return null;
+  const [plan, capital] = await Promise.all([
+    supabase.from("daily_plans").select("start_balance").eq("day", dayKey(new Date(), s.timezone)).maybeSingle().then(sure),
+    loadCapital().catch(() => {
+      throw new NeedsConfirmation(UNSURE);
+    }),
+  ]);
+  return applyPctLimits(s, anchorBalance(plan, capital.summary.balance));
+}
+
+/** The facts needsApproval compares an action with; only the few actions that can loosen something read anything. */
+async function policyContext(type: ActionType, d: Record<string, unknown>, user_id: string): Promise<PolicyContext> {
+  switch (type) {
+    case "update_settings":
+      return { limits: await limitsInForce(user_id) };
+    case "set_daily_plan": {
+      const st = sure(await supabase.from("trading_settings").select("timezone").eq("user_id", user_id).maybeSingle());
+      const now = new Date();
+      const [plan, today] = await Promise.all([
+        supabase.from("daily_plans").select("target,max_trades,risk_per_trade,max_loss").eq("day", dayKey(now, st?.timezone)).maybeSingle().then(sure),
+        supabase.from("trades").select("id").gte("opened_at", dayStart(now, st?.timezone).toISOString()).limit(1).then(sure),
+      ]);
+      return { plan, tradesToday: today?.length ?? 0 };
+    }
+    case "update_trade":
+      return { target: await findTrade(d as TradeRef) };
+    case "update_rule": {
+      const rows = sure(await supabase.from("trading_rules").select("title,active"));
+      return { target: rows?.find((r) => same(r.title, String(d["title"]))) ?? null };
+    }
+    case "update_strategy": {
+      const rows = sure(await supabase.from("strategies").select("name,allowed"));
+      return { target: rows?.find((r) => same(r.name, String(d["name"]))) ?? null };
+    }
+    case "create_trade":
+      // Staying on the trader's own markets is the point of the focus profile.
+      return isClosedUpload(d) ? {} : { focusMarkets: (await readFocus()).markets };
+    default:
+      return {};
+  }
+}
+
+/**
+ * In auto mode an action the policy holds back throws NeedsConfirmation instead of running;
+ * with auto off his click is the approval. `note` is what the policy wants said after a run.
+ */
+export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): Promise<{ note: string | null }> {
   const d = parseAction(a) as Record<string, unknown> | null;
   if (!d) throw new Error(actionIssue(a) ?? "بيانات الإجراء غير صالحة");
-  if (opts.auto && DESTRUCTIVE.includes(a.type)) throw new NeedsConfirmation("الحذف يحتاج موافقتك");
   const user_id = await currentUserId();
+  let note: string | null = null;
+  if (opts.auto) {
+    const v = needsApproval({ type: a.type, data: d }, await policyContext(a.type, d, user_id));
+    if (v.click) throw new NeedsConfirmation(v.reason ?? "يحتاج موافقتك");
+    note = v.note;
+  }
+  await execute(a.type, d, user_id);
+  return { note };
+}
+
+async function execute(type: ActionType, d: Record<string, unknown>, user_id: string): Promise<void> {
   const check = (e: { message: string } | null) => {
     if (e) throw new Error(e.message);
   };
-  switch (a.type) {
+  switch (type) {
     case "update_settings": {
       // AI-proposed limits pass the same validation as the settings form.
       const { data: current } = await supabase
@@ -489,13 +188,6 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         .select("*")
         .eq("user_id", user_id)
         .maybeSingle();
-      if (opts.auto) {
-        // Judge against the limits in force: % limits follow the live balance, so the dollars
-        // on file go stale after losses and a raise below them would still loosen the limit.
-        const inForce = current && applyPctLimits(current, (await loadCapital()).summary.balance);
-        if (loosenedLimits(inForce as Record<string, unknown> | null, d).length)
-          throw new NeedsConfirmation("تخفيف حدود المخاطر يحتاج موافقتك");
-      }
       const merged = { currency: "USD", ...(current ?? {}), ...d } as unknown as RiskSettingsInput;
       const v = validateRiskSettings(merged);
       // Only block on problems this change creates; an old conflict in saved settings
@@ -607,12 +299,6 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         }
       }
       let gatedRisk: number | null = null;
-      if (!closed && opts.auto) {
-        // Staying on the trader's own markets is the point of the focus profile.
-        const focus = await readFocus();
-        if (inMarkets(t.symbol, focus.markets) === false)
-          throw new NeedsConfirmation(`${sym(t.symbol)} برّا سوقك (${focus.markets.join("، ")}). بدها موافقتك.`);
-      }
       if (!closed) {
         // A new open trade from the AI: contradicting levels are refused and the risk is
         // computed, never taken as 0. T23 journals it through pre-trade-gate (already_placed).
@@ -710,13 +396,6 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         "close_notes",
       ]);
       if (trade.status === "closed") Object.assign(patch, pick(d, ["pnl", "exit_price"]));
-      if (
-        opts.auto &&
-        trade.status === "open" &&
-        "stop_loss" in patch &&
-        patch["stop_loss"] !== trade.stop_loss
-      )
-        throw new NeedsConfirmation("تحريك وقف الخسارة يحتاج موافقتك");
       if (typeof d["strategy"] === "string")
         patch["strategy_id"] = await findByName("strategies", d["strategy"]);
       if (Object.keys(patch).length === 0) throw new Error("ما فيه تعديل");
@@ -926,7 +605,7 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       if (d["id"]) q = q.eq("id", String(d["id"]));
       const id = (await q).data?.[0]?.id;
       if (!id) throw new Error("ما لقيت الجلسة");
-      if (a.type === "delete_session") {
+      if (type === "delete_session") {
         const { error } = await supabase.from("trading_sessions").delete().eq("id", id);
         return check(error);
       }

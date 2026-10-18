@@ -1,4 +1,3 @@
-import { DESTRUCTIVE } from "./agent-actions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A chainable stand-in for the Supabase client: every read of a table resolves to
@@ -28,16 +27,8 @@ vi.mock("@/integrations/supabase/client", () => {
   };
   return { supabase: { from, auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) } } };
 });
-import {
-  actionIssue,
-  AlreadySaved,
-  isClosedUpload,
-  loosenedLimits,
-  NeedsConfirmation,
-  parseAction,
-  runAction,
-  VERDICT_MSG,
-} from "./agent-actions";
+import { actionIssue, DESTRUCTIVE, isClosedUpload, parseAction, screenActions, VERDICT_MSG } from "./agent-action-spec";
+import { AlreadySaved, NeedsConfirmation, runAction } from "./agent-actions";
 
 describe("agent actions", () => {
   it("accepts valid settings with weekly/monthly targets", () => {
@@ -115,30 +106,26 @@ describe("agent actions", () => {
   });
 });
 
-describe("loosenedLimits", () => {
-  const current = {
-    max_daily_loss: 100,
-    max_trades_per_day: 3,
-    max_risk_per_trade: 0,
-    cooldown_minutes: 30,
-  };
-  it("flags raised or disabled limits and shorter cooldowns", () => {
-    expect(loosenedLimits(current, { max_daily_loss: 200 })).toEqual(["max_daily_loss"]);
-    expect(loosenedLimits(current, { max_trades_per_day: 0 })).toEqual(["max_trades_per_day"]);
-    expect(loosenedLimits(current, { cooldown_minutes: 10 })).toEqual(["cooldown_minutes"]);
+describe("an unknown action type is rejected", () => {
+  beforeEach(() => {
+    db.rows = {};
+    db.writes = [];
   });
-  it("lets tightening and targets through", () => {
-    expect(
-      loosenedLimits(current, {
-        max_daily_loss: 50,
-        max_risk_per_trade: 20,
-        daily_target: 300,
-        cooldown_minutes: 60,
-      }),
-    ).toEqual([]);
-    expect(loosenedLimits(null, { max_daily_loss: 100 })).toEqual([]);
+  const unknown = { type: "drop_tables" as never, summary: "", data: "{}" };
+  it("is never parsed, says why, and never writes", async () => {
+    expect(parseAction(unknown)).toBeNull();
+    expect(actionIssue(unknown)).toBe("إجراء غير معروف");
+    // A plain failure, not a card waiting for a click.
+    const run = runAction(unknown, { auto: true });
+    await expect(run).rejects.toThrow("إجراء غير معروف");
+    await expect(run).rejects.not.toBeInstanceOf(NeedsConfirmation);
+    expect(db.writes).toEqual([]);
+  });
+  it("is dropped on the server before it is saved", () => {
+    expect(screenActions([unknown], "day").actions).toEqual([]);
   });
 });
+
 describe("sanad deletions need approval", () => {
   it("new delete actions never auto-run", () => {
     for (const t of ["remove_trade_image", "delete_violation", "delete_daily_plan", "delete_session", "delete_notifications"] as const)
@@ -185,6 +172,15 @@ describe("MT5 screenshots never close an open trade by floating P&L", () => {
     const noStatus = JSON.stringify({ symbol: "EURUSD", direction: "long", entry_price: 1.085, pnl: -35 });
     await expect(runAction({ type: "create_trade", summary: "", data: noStatus }, { auto: true })).rejects.toBeInstanceOf(AlreadySaved);
     expect(db.writes).toEqual([]);
+  });
+
+  it("an open trade outside his markets is still journaled, with a note (owner decision 4)", async () => {
+    db.rows["knowledge_notes"] = [{ id: "f1", content: JSON.stringify({ markets: ["XAUUSD"] }) }];
+    const data = JSON.stringify({ symbol: "GBPUSD", direction: "short", entry_price: 1.27, stop_loss: 1.275, position_size: 0.1, status: "open" });
+    const r = await runAction({ type: "create_trade", summary: "", data }, { auto: true });
+    expect(r.note).toContain("برّا سوقك");
+    expect(db.writes).toHaveLength(1);
+    expect(db.writes[0]).toMatchObject({ table: "trades", op: "insert", payload: { symbol: "GBPUSD", risk_amount: 50 } });
   });
 
   it("a History-tab re-upload with an exit price does close it", async () => {
@@ -251,12 +247,18 @@ describe("auto mode never loosens a limit without a click", () => {
     ).rejects.toBeInstanceOf(NeedsConfirmation);
     expect(db.writes).toEqual([]);
   });
-  it("raising the daily profit cap is a loosening (it is the anti-greed stop)", () => {
-    expect(loosenedLimits({ max_daily_profit: 300 }, { max_daily_profit: 600 })).toEqual(["max_daily_profit"]);
-    expect(loosenedLimits({ max_daily_profit: 300 }, { max_daily_profit: 0 })).toEqual(["max_daily_profit"]);
+  it("the same zone again, or tightening against the live limit, still runs by itself", async () => {
+    db.rows["trading_settings"] = settings as never;
+    await runAction({ type: "update_settings", summary: "", data: '{"timezone":"Asia/Riyadh","max_daily_loss":150}' }, { auto: true });
+    expect(db.writes.some((w) => w.table === "trading_settings" && w.op === "upsert")).toBe(true);
   });
-  it("the same zone again, or tightening against the live limit, still runs by itself", () => {
-    expect(loosenedLimits({ ...settings, max_daily_loss: 200 }, { timezone: "Asia/Riyadh", max_daily_loss: 150 })).toEqual([]);
+  it("today's start balance anchors the limit, so a loss today can't make a raise look like tightening", async () => {
+    // Start of day 10,000 → 200 in force; the live balance has fallen to 8,000 (→ 160).
+    db.rows["trading_settings"] = settings as never;
+    db.rows["daily_plans"] = { start_balance: 10_000 } as never;
+    db.rows["trades"] = [{ status: "closed", pnl: -2000, opened_at: "2026-02-01T09:00:00Z", closed_at: "2026-02-01T10:00:00Z" }];
+    await runAction({ type: "update_settings", summary: "", data: '{"max_daily_loss":180}' }, { auto: true });
+    expect(db.writes.some((w) => w.table === "trading_settings" && w.op === "upsert")).toBe(true);
   });
 });
 
