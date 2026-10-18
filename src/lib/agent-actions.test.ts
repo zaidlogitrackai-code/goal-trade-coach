@@ -194,3 +194,45 @@ describe("training example verdicts are never guessed", () => {
     expect(actionIssue({ type: "add_rule", summary: "", data: '{"title":"x"}' })).toBeNull();
   });
 });
+
+describe("auto mode never loosens a limit without a click", () => {
+  beforeEach(() => {
+    db.rows = {};
+    db.writes = [];
+  });
+  // Stored dollars are stale after losses: 2% of today's 10,000 balance is 200, not the 300 on file.
+  const settings = {
+    user_id: "u1",
+    starting_balance: 10_000,
+    created_at: "2026-01-01T00:00:00Z",
+    max_daily_loss: 300,
+    limits_pct: { max_daily_loss: 2 },
+    timezone: "Asia/Riyadh",
+  };
+  it("judges a raise against the limit in force (pct of the live balance), not the stale dollars", async () => {
+    db.rows["trading_settings"] = settings as never;
+    await expect(
+      runAction({ type: "update_settings", summary: "", data: '{"max_daily_loss":250}' }, { auto: true }),
+    ).rejects.toBeInstanceOf(NeedsConfirmation);
+    expect(db.writes).toEqual([]);
+  });
+  it("tightening below the limit in force still runs by itself", async () => {
+    db.rows["trading_settings"] = settings as never;
+    await runAction({ type: "update_settings", summary: "", data: '{"max_daily_loss":150}' }, { auto: true });
+    expect(db.writes.some((w) => w.table === "trading_settings" && w.op === "upsert")).toBe(true);
+  });
+  it("a new time zone moves today's start, so it waits for a click too", async () => {
+    db.rows["trading_settings"] = settings as never;
+    await expect(
+      runAction({ type: "update_settings", summary: "", data: '{"timezone":"Pacific/Kiritimati"}' }, { auto: true }),
+    ).rejects.toBeInstanceOf(NeedsConfirmation);
+    expect(db.writes).toEqual([]);
+  });
+  it("raising the daily profit cap is a loosening (it is the anti-greed stop)", () => {
+    expect(loosenedLimits({ max_daily_profit: 300 }, { max_daily_profit: 600 })).toEqual(["max_daily_profit"]);
+    expect(loosenedLimits({ max_daily_profit: 300 }, { max_daily_profit: 0 })).toEqual(["max_daily_profit"]);
+  });
+  it("the same zone again, or tightening against the live limit, still runs by itself", () => {
+    expect(loosenedLimits({ ...settings, max_daily_loss: 200 }, { timezone: "Asia/Riyadh", max_daily_loss: 150 })).toEqual([]);
+  });
+});

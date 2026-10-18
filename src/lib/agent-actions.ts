@@ -137,6 +137,8 @@ export class AlreadySaved extends Error {}
 /** Limits where a bigger number (or 0 = disabled) means less protection. */
 const LIMIT_KEYS = [
   "max_daily_loss",
+  // The anti-greed stop: reaching it stops the day (computeStatus "stopped").
+  "max_daily_profit",
   "max_trades_per_day",
   "max_risk_per_trade",
   "max_daily_risk",
@@ -163,6 +165,9 @@ export function loosenedLimits(
     (Number(patch["cooldown_minutes"]) || 0) < cur("cooldown_minutes")
   )
     out.push("cooldown_minutes");
+  // A new zone moves "today": losses already booked can drop out of the daily limit.
+  if (current && "timezone" in patch && patch["timezone"] !== safeTz(current["timezone"] as string | null | undefined))
+    out.push("timezone");
   return out;
 }
 
@@ -467,8 +472,13 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
         .select("*")
         .eq("user_id", user_id)
         .maybeSingle();
-      if (opts.auto && loosenedLimits(current as Record<string, unknown> | null, d).length)
-        throw new NeedsConfirmation("تخفيف حدود المخاطر يحتاج موافقتك");
+      if (opts.auto) {
+        // Judge against the limits in force: % limits follow the live balance, so the dollars
+        // on file go stale after losses and a raise below them would still loosen the limit.
+        const inForce = current && applyPctLimits(current, (await loadCapital()).summary.balance);
+        if (loosenedLimits(inForce as Record<string, unknown> | null, d).length)
+          throw new NeedsConfirmation("تخفيف حدود المخاطر يحتاج موافقتك");
+      }
       const merged = { currency: "USD", ...(current ?? {}), ...d } as unknown as RiskSettingsInput;
       const v = validateRiskSettings(merged);
       // Only block on problems this change creates; an old conflict in saved settings

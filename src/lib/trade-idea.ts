@@ -49,12 +49,16 @@ export function contractSize(symbol: string): number {
   return 100_000; // currency pairs
 }
 
-/** USD risk of a position: price distance × lots × contract size (JPY-quoted pairs converted at entry). */
+/**
+ * USD risk of a position: price distance × lots × contract size. A pair pays out in its quote
+ * currency, so USD-based pairs (USDJPY, USDCHF, USDCAD) are converted exactly at the entry rate;
+ * JPY crosses have no USD leg here and keep the entry as an approximation.
+ */
 export function riskUsd(symbol: string, entry: number, stop: number, lots: number): number {
   const s = symbol.toUpperCase();
   const dist = Math.abs(entry - stop);
   let usd = dist * lots * contractSize(s);
-  if (/^[A-Z]{3}JPY$/.test(s) && entry > 0) usd /= entry;
+  if ((/^USD[A-Z]{3}$/.test(s) || /^[A-Z]{3}JPY$/.test(s)) && entry > 0) usd /= entry;
   return round2(usd);
 }
 

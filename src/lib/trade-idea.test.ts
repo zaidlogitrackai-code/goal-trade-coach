@@ -34,6 +34,13 @@ describe("riskUsd", () => {
   it("lot sizing keeps gold within a 30 USD limit", () => {
     expect(lotForRisk("XAUUSD", 2385.4, 2380.4, 30)).toBe(0.06);
   });
+  it("USD-based pairs pay out in the quote currency: converted to dollars at the entry rate", () => {
+    // 1 lot, 50 pips on USDJPY = 50,000 JPY ≈ 333 USD; on USDCHF 1,000 CHF = 1,250 USD.
+    expect(riskUsd("USDJPY", 150, 149.5, 1)).toBe(333.33);
+    expect(riskUsd("USDCHF", 0.8, 0.79, 1)).toBe(1250);
+    expect(riskUsd("USDCAD", 1.4, 1.39, 1)).toBe(714.29);
+    expect(lotForRisk("USDCHF", 0.8, 0.79, 100)).toBe(0.08);
+  });
 });
 
 describe("withinRiskLimit", () => {
