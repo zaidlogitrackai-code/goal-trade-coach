@@ -123,7 +123,8 @@ export const todayPlanQuery = (tz: string | null | undefined) => ({
   queryKey: ["daily_plan", "today", safeTz(tz)] as const,
   queryFn: async () => {
     const { supabase } = await import("@/integrations/supabase/client");
-    const { data, error } = await supabase.from("daily_plans").select("target").eq("day", dayKey(new Date(), tz)).maybeSingle();
+    // The whole row: the gate also reads the rest day, the planned risk and the start balance.
+    const { data, error } = await supabase.from("daily_plans").select("*").eq("day", dayKey(new Date(), tz)).maybeSingle();
     if (error) throw error;
     return data;
   },

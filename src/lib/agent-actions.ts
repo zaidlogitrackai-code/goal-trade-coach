@@ -6,9 +6,8 @@ import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
 import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
-import { evaluateTradeGate, type TradeInput } from "@/lib/trade-gate";
-import { computeDayMetrics } from "@/lib/trading-status";
-import { dayKey, dayStart, safeTz } from "@/lib/trading-day";
+import type { TradeInput } from "@/lib/trade-gate";
+import { dayKey, safeTz } from "@/lib/trading-day";
 import { inMarkets, type FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
@@ -17,12 +16,11 @@ import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, isHiddenNote } from "@/lib/hidden-n
 import { loadCapital, moveCapital, syncLimitsPct } from "@/lib/capital-store";
 import { applyPctLimits } from "@/lib/effective-limits";
 import { makeThumbnail } from "@/lib/image";
-import { fetchAll } from "@/lib/fetch-all";
 
 /**
  * Actions the AI coach can run. In the coach they run automatically, except
  * deletions and anything that loosens a risk limit, which wait for a click.
- * The trade gate still applies and the AI can never end a cooldown early.
+ * A trade with contradicting levels is refused and the AI can never end a cooldown early.
  */
 export type AgentAction = { type: ActionType; summary: string; data: string };
 export const ACTION_TYPES = [
@@ -597,8 +595,8 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
           throw new NeedsConfirmation(`${sym(t.symbol)} برّا سوقك (${focus.markets.join("، ")}). بدها موافقتك.`);
       }
       if (!closed) {
-        // A new open trade from the AI goes through the trade gate. The AI path
-        // cannot override: soft reasons must be justified in the trade form.
+        // A new open trade from the AI: contradicting levels are refused and the risk is
+        // computed, never taken as 0. T23 journals it through pre-trade-gate (already_placed).
         const tt = t as Omit<TradeInput, "symbol" | "risk_amount" | "strategy_id"> & {
           symbol?: string | null;
         };
@@ -616,18 +614,7 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
           (tt.entry_price != null && tt.stop_loss != null && tt.position_size != null
             ? riskUsd(sym(tt.symbol), tt.entry_price, tt.stop_loss, tt.position_size)
             : null);
-        const gate = await gateForAiTrade({
-          ...tt,
-          symbol: sym(tt.symbol),
-          risk_amount: risk,
-          strategy_id,
-          checklist_passed: false,
-        });
-        if (!gate.allowed)
-          throw new Error(
-            `بوابة التداول رفضت الصفقة: ${gate.reasons.join(" ")} ${gate.nextAction}`,
-          );
-        gatedRisk = gate.metrics.tradeRisk;
+        gatedRisk = risk != null && Number.isFinite(risk) ? Math.max(0, risk) : null;
       }
       const { error } = await supabase.from("trades").insert({
         user_id,
@@ -951,41 +938,4 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       return check(error);
     }
   }
-}
-
-async function gateForAiTrade(input: TradeInput) {
-  const now = new Date();
-  const [settings, trades, violations, session, strategies] = await Promise.all([
-    supabase.from("trading_settings").select("*").maybeSingle(),
-    // Unordered and capped at 1000 rows, today's trades could be the ones left out.
-    fetchAll((from, to) =>
-      supabase.from("trades").select("status,pnl,risk_amount,opened_at,closed_at").order("id").range(from, to),
-    ),
-    // Two days always cover the trader's "today" in any zone; narrowed to his midnight below.
-    supabase.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(now.getTime() - 2 * 86_400_000).toISOString()),
-    supabase
-      .from("trading_sessions")
-      .select("id,started_at,plan,mood")
-      .is("ended_at", null)
-      .limit(1),
-    supabase.from("strategies").select("id").eq("allowed", true),
-  ]);
-  const err = settings.error ?? violations.error ?? session.error ?? strategies.error;
-  if (err) throw new Error(err.message);
-  if (!settings.data) throw new Error("أكمل إعداد حدود المخاطر قبل تسجيل الصفقات.");
-  const all = trades;
-  const bal = (await loadCapital()).summary.balance;
-  settings.data = applyPctLimits(settings.data, bal);
-  const start = dayStart(now, settings.data.timezone).getTime();
-  const violationsToday = (violations.data ?? []).filter((v) => new Date(v.occurred_at).getTime() >= start).length;
-  // Same gate as the new-trade form. The AI path never overrides a blocked trade.
-  return evaluateTradeGate({
-    settings: settings.data,
-    metrics: computeDayMetrics(settings.data, all, violationsToday, now),
-    input,
-    activeSession: session.data?.[0] ?? null,
-    allowedStrategyIds: (strategies.data ?? []).map((x) => x.id),
-    openTrades: all.filter((x) => x.status === "open"),
-    currentBalance: bal,
-  });
 }

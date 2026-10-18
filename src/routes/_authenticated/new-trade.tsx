@@ -17,10 +17,12 @@ import { riskAdvice } from "@/lib/ai.functions";
 import { Md } from "@/components/md";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
 import { EMOTIONS, isSensitive, revengeLine } from "@/lib/emotions";
-import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
-import { computeDayMetrics } from "@/lib/trading-status";
+import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, todayPlanQuery, tradesQuery, violationsQuery } from "@/lib/queries";
+import { computeDayMetrics, protectProfit } from "@/lib/trading-status";
 import { dayStart } from "@/lib/trading-day";
-import { evaluateTradeGate } from "@/lib/trade-gate";
+import { tradeGateMetrics } from "@/lib/trade-gate";
+import { DECISION_META, evaluatePreTrade } from "@/lib/pre-trade-gate";
+import { evaluateBreaker } from "@/lib/circuit-breaker";
 import { inMarkets, splitMarkets } from "@/lib/focus";
 import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
 import { parseDecimal } from "@/lib/num";
@@ -60,14 +62,7 @@ function NewTrade() {
   const st = useQuery(strategiesQuery);
   const focus = useQuery(focusQuery);
   const capital = useCapital();
-  const sessions = useQuery({
-    queryKey: ["sessions"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("trading_sessions").select("*").order("started_at", { ascending: false }).limit(5);
-      if (error) throw error;
-      return data;
-    },
-  });
+  const plan = useQuery({ ...todayPlanQuery(s.data?.timezone), enabled: !!s.data });
 
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -107,9 +102,7 @@ function NewTrade() {
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const metrics = computeDayMetrics(settings, t.data ?? [], violationsToday);
 
-  const activeSession = (sessions.data ?? []).find((x) => !x.ended_at) ?? null;
   const strategies = (st.data ?? []).filter((x) => x.allowed);
-  const allowedStrategyIds = strategies.map((x) => x.id);
 
   // Keep the trade on the trader's own markets (focus profile) and the strategy's markets.
   const focusMarkets = focus.data?.markets ?? [];
@@ -149,34 +142,57 @@ function NewTrade() {
 
   const allChecked = checks.every(Boolean);
 
-  // Evaluate Trade Gate
-  // Plain call, not useMemo: hooks can't run after the loading early-return above.
-  const gateResult = evaluateTradeGate({
+  // R:R, share of the balance and today's room.
+  // Plain calls, not useMemo: hooks can't run after the loading early-return above.
+  const openTrades = (t.data ?? []).filter((x) => x.status === "open").map((x) => ({
+    status: x.status,
+    pnl: x.pnl,
+    risk_amount: x.risk_amount,
+    opened_at: x.opened_at,
+    closed_at: x.closed_at,
+  }));
+  const tradeMetrics = tradeGateMetrics({
     settings,
     metrics,
-    input: {
-      symbol: f.symbol,
-      direction: f.direction,
-      entry_price: entryNum,
-      stop_loss: slNum,
-      take_profit: tpNum,
-      position_size: sizeNum,
-      risk_amount: riskNum,
-      strategy_id: f.strategy_id || null,
-      emotion: f.emotion || null,
-      checklist_passed: allChecked,
-    },
-    activeSession,
-    allowedStrategyIds,
-    openTrades: (t.data ?? []).filter((x) => x.status === "open").map((x) => ({
-      status: x.status,
-      pnl: x.pnl,
-      risk_amount: x.risk_amount,
-      opened_at: x.opened_at,
-      closed_at: x.closed_at,
-    })),
+    input: { direction: f.direction, entry_price: entryNum, stop_loss: slNum, take_profit: tpNum, risk_amount: riskNum },
+    openTrades,
     currentBalance: capital?.summary.balance ?? settings.starting_balance,
   });
+
+  // The pre-trade gate on what this form knows, advisory until the T24 stepper journals it.
+  // The breaker runs on the page's own rows (partial trims and latched halts aren't loaded here).
+  const todayPlan = plan.data ?? null;
+  const breaker = evaluateBreaker({
+    settings,
+    startBalance: todayPlan?.start_balance ?? null,
+    balance: capital?.summary.balance ?? settings.current_balance,
+    trades: t.data ?? [],
+    planMaxLoss: todayPlan?.max_loss ?? null,
+    limitsAcceptedAt: settings.limits_accepted_at,
+    breakerSince: settings.breaker_since,
+    pausedUntil: settings.paused_until,
+    tz: settings.timezone,
+  });
+  const ticked = (id: string) => (checks[CHECKLIST_ITEMS.findIndex((x) => x.id === id)] ? true : null);
+  const gate = evaluatePreTrade({
+    intent: "pre_entry",
+    ticket: { symbol: symNow, direction: f.direction, entry: entryNum, stop: slNum, targets: [tpNum], lots: sizeNum, typedRisk: num(f.risk), emotion: f.emotion || null },
+    answers: {
+      in_written_plan: ticked("strategy"),
+      stop_predefined: ticked("sl"),
+      size_within_plan: ticked("risk"),
+      not_revenge: isCompensating === true ? false : (ticked("not_revenge") ?? (isCompensating === false ? true : null)),
+    },
+    breaker,
+    // Reviews aren't loaded on this form, so the unreviewed-close rule stays off here.
+    settings: { ...settings, reviews_since: null },
+    plan: todayPlan,
+    protect: protectProfit(metrics, settings),
+    trades: t.data ?? [],
+    openRisk: tradeMetrics.totalOpenRisk,
+    currency: settings.currency,
+  });
+  const gateLines = [...gate.reasons, ...gate.warnings];
 
   const sensitive = isSensitive(f.emotion);
   const emotionCheckDone = !sensitive || (reflectionReason.trim().length >= MOTIVE_MIN && isCompensating !== null);
@@ -362,16 +378,16 @@ function NewTrade() {
         subtitle="اكتب الصفقة أو ارفع صورتها."
       />
 
-      {/* Gate advisory (never blocks) */}
-      {gateResult.warnings.length > 0 && entryNum != null && (
-        <div className="panel p-4 border border-warning/40 bg-warning/5 text-warning space-y-1">
+      {/* The gate's call on this trade (advisory here: saving is never blocked) */}
+      {gateLines.length > 0 && entryNum != null && (
+        <div className={`panel p-4 border space-y-1 ${gate.decision === "NO_GO" ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-warning/40 bg-warning/5 text-warning"}`}>
           <div className="flex items-center gap-2 font-semibold text-sm">
             <AlertTriangle className="size-4 shrink-0" />
-            <span>تنبيه (للعلم فقط)</span>
+            <span>{gate.decision === "GO" ? "تنبيه" : DECISION_META[gate.decision].label} (للعلم فقط)</span>
           </div>
           <ul className="list-disc list-inside space-y-1 text-xs pr-1">
-            {gateResult.warnings.map((r, i) => (
-              <li key={i}>{r}</li>
+            {gateLines.map((r, i) => (
+              <li key={`${r.code}-${i}`}>{r.text}</li>
             ))}
           </ul>
         </div>
@@ -647,8 +663,8 @@ function NewTrade() {
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">نسبة العائد للمخاطرة (R:R)</span>
               <p dir="ltr" className="font-data text-lg font-bold text-foreground">
-                {gateResult.metrics.rewardToRiskRatio != null
-                  ? `1 : ${gateResult.metrics.rewardToRiskRatio}`
+                {tradeMetrics.rewardToRiskRatio != null
+                  ? `1 : ${tradeMetrics.rewardToRiskRatio}`
                   : "غير متوفر"}
               </p>
             </div>
@@ -656,7 +672,7 @@ function NewTrade() {
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">نسبة المخاطرة من الرصيد</span>
               <p dir="ltr" className="font-data text-lg font-bold text-foreground">
-                {gateResult.metrics.riskPercentOfBalance != null ? `${gateResult.metrics.riskPercentOfBalance}%` : "—"}
+                {tradeMetrics.riskPercentOfBalance != null ? `${tradeMetrics.riskPercentOfBalance}%` : "—"}
               </p>
             </div>
           </div>

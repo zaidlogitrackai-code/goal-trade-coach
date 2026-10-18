@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateRewardToRisk, evaluateTradeGate } from "./trade-gate";
+import { calculateRewardToRisk, tradeGateMetrics } from "./trade-gate";
 import type { StatusSettings, DayMetrics } from "./trading-status";
 
 const baseSettings: StatusSettings & { starting_balance: number; max_risk_per_trade: number } = {
@@ -44,94 +44,47 @@ describe("calculateRewardToRisk", () => {
   });
 });
 
-describe("evaluateTradeGate", () => {
-  it("allows trade within all limits with valid stop loss", () => {
-    const res = evaluateTradeGate({
+describe("tradeGateMetrics", () => {
+  it("measures the trade and the room left today", () => {
+    const m = tradeGateMetrics({
       settings: baseSettings,
-      metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", entry_price: 1.08, stop_loss: 1.075, take_profit: 1.095, risk_amount: 50, strategy_id: "s1" },
-      activeSession: { id: "sess-1", started_at: new Date().toISOString() },
-      allowedStrategyIds: ["s1"],
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.reasons.length).toBe(0);
-    expect(res.canOverride).toBe(true);
-    expect(res.metrics.tradeRisk).toBe(50);
-  });
-
-  it("never blocks: no stop loss is only a warning", () => {
-    const res = evaluateTradeGate({
-      settings: baseSettings,
-      metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", entry_price: 1.08, stop_loss: null, risk_amount: 50 },
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.reasons).toHaveLength(0);
-    expect(res.warnings.some((r) => r.includes("وقف الخسارة"))).toBe(true);
-  });
-
-  it("never blocks when trading is manually paused", () => {
-    const res = evaluateTradeGate({
-      settings: { ...baseSettings, trading_paused: true },
-      metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.canOverride).toBe(true);
-  });
-
-  it("never blocks after daily loss limit, only warns", () => {
-    const res = evaluateTradeGate({
-      settings: baseSettings,
-      metrics: { ...baseMetrics, todayPnl: -350 },
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.warnings.some((r) => r.includes("الحد الأقصى للخسارة"))).toBe(true);
-  });
-
-  it("never blocks after max consecutive losses or cooldown", () => {
-    const future = new Date(Date.now() + 20 * 60000).toISOString();
-    const res = evaluateTradeGate({
-      settings: { ...baseSettings, cooldown_until: future },
-      metrics: { ...baseMetrics, consecutiveLosses: 3 },
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.canOverride).toBe(true);
-    expect(res.warnings.some((r) => r.includes("تهدئة"))).toBe(true);
-  });
-
-  it("warns (does not block) when single trade risk exceeds limit", () => {
-    const res = evaluateTradeGate({
-      settings: baseSettings,
-      metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 150 }, // limit is 100
-    });
-    expect(res.allowed).toBe(true);
-    expect(res.warnings.some((r) => r.includes("الحد الأقصى لكل صفقة"))).toBe(true);
-  });
-
-  it("an unknown risk stays null and is flagged, never counted as a safe 0", () => {
-    const res = evaluateTradeGate({
-      settings: baseSettings,
-      metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", entry_price: 1.08, stop_loss: 1.07, risk_amount: null },
+      metrics: { ...baseMetrics, todayPnl: -100, tradesToday: 2, riskUsed: 150 },
+      input: { direction: "long", entry_price: 1.08, stop_loss: 1.075, take_profit: 1.095, risk_amount: 50 },
+      openTrades: [
+        { status: "open", pnl: null, risk_amount: 40, opened_at: "2026-10-14T09:00:00Z", closed_at: null },
+        { status: "closed", pnl: -100, risk_amount: 60, opened_at: "2026-10-14T08:00:00Z", closed_at: "2026-10-14T08:30:00Z" },
+      ],
       currentBalance: 10000,
     });
-    expect(res.metrics.tradeRisk).toBeNull();
-    expect(res.metrics.riskPercentOfBalance).toBeNull();
-    expect(res.warnings.some((r) => r.includes("ما قدرت أحسب مخاطرة"))).toBe(true);
+    expect(m).toEqual({
+      tradeRisk: 50,
+      riskPercentOfBalance: 0.5,
+      totalOpenRisk: 40,
+      remainingDailyRisk: 250,
+      remainingTrades: 3,
+      remainingLossBeforeStop: 200,
+      remainingProfitBeforeTarget: 200,
+      rewardToRiskRatio: 3,
+    });
   });
 
-  it("a known risk still gives its share of the balance", () => {
-    const res = evaluateTradeGate({
+  it("an unknown risk stays null, never counted as a safe 0", () => {
+    const m = tradeGateMetrics({
       settings: baseSettings,
       metrics: baseMetrics,
-      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
+      input: { direction: "long", entry_price: 1.08, stop_loss: 1.07, risk_amount: null },
       currentBalance: 10000,
     });
-    expect(res.metrics.riskPercentOfBalance).toBe(0.5);
-    expect(res.warnings.some((r) => r.includes("ما قدرت أحسب مخاطرة"))).toBe(false);
+    expect(m.tradeRisk).toBeNull();
+    expect(m.riskPercentOfBalance).toBeNull();
+  });
+
+  it("a limit left at 0 has no room to report", () => {
+    const m = tradeGateMetrics({
+      settings: { ...baseSettings, max_daily_risk: 0, max_trades_per_day: 0, max_daily_loss: 0, daily_target: 0 },
+      metrics: baseMetrics,
+      input: { direction: "long", risk_amount: 50 },
+    });
+    expect(m).toMatchObject({ remainingDailyRisk: null, remainingTrades: null, remainingLossBeforeStop: null, remainingProfitBeforeTarget: null, riskPercentOfBalance: 0.5 });
   });
 });

@@ -386,7 +386,8 @@ export function releaseLabel(at: Date, tz: string | null | undefined): string {
   return `${WEEKDAYS[new Date(`${k}T12:00:00Z`).getUTCDay()]} ${w.day}/${w.month} ${pad(w.hour)}:${pad(w.minute)}`;
 }
 
-const money = (n: number, currency: string) => (currency === "USD" ? `${r2(n)}$` : `${r2(n)} ${currency}`);
+/** «120$» in copy and prompts (the gate's lines use it too, so the money reads the same). */
+export const money = (n: number, currency: string) => (currency === "USD" ? `${r2(n)}$` : `${r2(n)} ${currency}`);
 
 const STOP_LABEL: Record<LossRule, string> = {
   max_daily_loss: "إيقاف اليوم",
