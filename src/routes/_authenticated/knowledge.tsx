@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { currentUserId, fmtDate } from "@/lib/queries";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 
@@ -59,7 +60,7 @@ function KnowledgePage() {
         <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
           <div className="space-y-2"><Label>العنوان</Label><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
           <div className="space-y-2"><Label>التصنيف</Label>
-            <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select>
+            <select className="h-11 w-full rounded-xl border border-[var(--glass-border)] bg-foreground/5 px-3 text-base md:h-9 md:text-sm" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map((c) => <option key={c}>{c}</option>)}</select>
           </div>
         </div>
         <div className="space-y-2"><Label>المحتوى</Label><Textarea rows={5} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} /></div>
@@ -75,7 +76,17 @@ function KnowledgePage() {
             <div key={x.id} className="panel p-4">
               <div className="flex items-start justify-between gap-2">
                 <div><p className="font-semibold">{x.title}</p><p className="text-xs text-muted-foreground">{x.category} · {fmtDate(x.created_at)}</p></div>
-                <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setF({ id: x.id, title: x.title, category: x.category, content: x.content })}>تعديل</Button><Button size="sm" variant="ghost" onClick={() => del(x.id)}>حذف</Button></div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setF({ id: x.id, title: x.title, category: x.category, content: x.content })}>تعديل</Button>
+                  <ConfirmDialog
+                    trigger={<Button size="sm" variant="ghost" className="text-destructive">حذف</Button>}
+                    title="تحذف هذي الملاحظة؟"
+                    description={`«${x.title}» بتنحذف من مركز المعرفة.`}
+                    confirmLabel="احذف"
+                    destructive
+                    onConfirm={() => void del(x.id)}
+                  />
+                </div>
               </div>
               {x.content && <p className="mt-3 whitespace-pre-wrap text-sm text-secondary-foreground">{x.content}</p>}
             </div>

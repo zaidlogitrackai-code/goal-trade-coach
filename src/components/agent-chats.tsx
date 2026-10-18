@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { History, MessageSquare, SquarePen, Trash2 } from "lucide-react";
+import { History, MessageSquare, SquarePen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { isPendingDelete } from "@/lib/undo-delete";
 import { currentUserId, fmtDate } from "@/lib/queries";
 
 /**
@@ -67,17 +69,9 @@ export function useAgentChats(base: string, greeting: string): { c: string | nul
         const { data: msgs } = await supabase.from("coach_messages").select("thread_id,content").in("thread_id", ids).eq("role", "user").order("created_at").limit(400);
         for (const m of msgs ?? []) if (!first.has(m.thread_id)) first.set(m.thread_id, m.content.replace(/\n📎.*$/s, "").trim());
       }
-      return threads.map((t) => ({ ...t, preview: first.get(t.id) || "" }));
+      return threads.filter((t) => !isPendingDelete(t.id)).map((t) => ({ ...t, preview: first.get(t.id) || "" }));
     },
   });
-
-  async function del(id: string) {
-    await supabase.from("coach_messages").delete().eq("thread_id", id);
-    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
-    if (error) { toast.error("ما قدرت أحذف المحادثة"); return; }
-    await qc.invalidateQueries({ queryKey: key });
-    if (id === c) { setOpen(false); await startNew(); }
-  }
 
   const items = list.data ?? [];
   const controls = (
@@ -102,7 +96,7 @@ export function useAgentChats(base: string, greeting: string): { c: string | nul
                         <span className="block text-xs text-muted-foreground">{fmtDate(t.updated_at)}</span>
                       </span>
                     </button>
-                    <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="حذف المحادثة" onClick={() => void del(t.id)}><Trash2 className="size-3.5" /></Button>
+                    <DeleteThreadButton id={t.id} queryKey={key} {...(t.id === c ? { onRemoved: () => void startNew() } : {})} />
                   </li>
                 ))}
               </ul>

@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState, Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ResponsiveSheet } from "@/components/responsive-sheet";
 import { AiTradeInput } from "@/components/ai-trade-input";
 import { matchOpen, type AiTrade } from "@/lib/ai-trade";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,10 +18,13 @@ import { fmtDate, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, type Tr
 import { parseDecimal } from "@/lib/num";
 import { expectedPnlSign } from "@/lib/trade-idea";
 import { fromWallInput, toWallInput } from "@/lib/trading-day";
+import { enterMovesToNextField } from "@/lib/form-keys";
 import { AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/trades")({
   head: () => ({ meta: [{ title: "سجل الصفقات — نظام هادي" }, { name: "description", content: "كل صفقاتك المسجلة." }] }),
+  // ?trade=<id>: a bell alert about one trade (no stop, open too long) lands on that row.
+  validateSearch: z.object({ trade: z.string().uuid().optional().catch(undefined) }),
   component: TradesPage,
 });
 
@@ -35,6 +39,16 @@ function TradesPage() {
   const [closing, setClosing] = useState<Trade | null>(null);
   const [prefill, setPrefill] = useState<{ exit: string; pnl: string } | null>(null);
   const navigate = useNavigate();
+  const { trade: focusId } = Route.useSearch();
+  const shown = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusId || !t.data || shown.current === focusId) return;
+    shown.current = focusId;
+    if (!t.data.some((x) => x.id === focusId)) { toast.error("الصفقة هذي ما عادت موجودة"); return; }
+    // Clear any filter that would hide it, then bring it into view once it has rendered.
+    setFilter("all"); setQ("");
+    requestAnimationFrame(() => document.getElementById(`trade-${focusId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  }, [focusId, t.data]);
   function onAi(list: AiTrade[]) {
     const c = list.find((x) => x.action === "close");
     if (!c) { toast.message("هذي صفقة جديدة، بنقلك لصفحة الصفقة الجديدة"); navigate({ to: "/new-trade" }); return; }
@@ -74,10 +88,15 @@ function TradesPage() {
           ) : (
             <div className="space-y-3">
               {rows.map((x) => (
-                <div key={x.id} className="panel flex flex-wrap items-center gap-4 p-4">
+                <div key={x.id} id={`trade-${x.id}`} className={`panel flex scroll-mt-24 flex-wrap items-center gap-4 p-4 ${x.id === focusId ? "ring-2 ring-primary/60" : ""}`}>
                   <div className="min-w-28">
                     <p className="font-data font-semibold" dir="ltr">{x.symbol}</p>
                     <p className="text-xs text-muted-foreground">{x.direction === "long" ? "شراء" : "بيع"} · {fmtDate(x.opened_at)}</p>
+                    {x.status === "open" && x.stop_loss == null && (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
+                        <AlertTriangle className="size-3" aria-hidden="true" /> بدون وقف
+                      </p>
+                    )}
                   </div>
                   <div className="flex-1 text-xs text-muted-foreground">
                     {x.strategy_id && names.get(x.strategy_id) && <span className="ml-3">الاستراتيجية: {names.get(x.strategy_id)}</span>}
@@ -143,48 +162,50 @@ function CloseDialog({ trade, prefill, onClose }: { trade: Trade | null; prefill
     onClose();
   }
   return (
-    <Dialog open={!!trade} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl">
-        <DialogHeader><DialogTitle>إغلاق صفقة {trade?.symbol}</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>النتيجة</Label>
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label="ربح أو خسارة">
-              <Button type="button" size="lg" variant={side === "win" ? "default" : "secondary"} aria-pressed={side === "win"} onClick={() => setSide("win")}>ربح</Button>
-              <Button type="button" size="lg" variant={side === "loss" ? "destructive" : "secondary"} aria-pressed={side === "loss"} onClick={() => setSide("loss")}>خسارة</Button>
-            </div>
-          </div>
-          <div className="space-y-2"><Label htmlFor="close-amount">المبلغ</Label><NumberField id="close-amount" value={amount} onValueChange={setAmount} placeholder="120" /></div>
-          <div className="space-y-2">
-            <Label htmlFor="close-exit">سعر الخروج</Label>
-            <NumberField id="close-exit" value={exit} onValueChange={setExit} aria-describedby={disagree ? "close-disagree" : undefined} />
-            {disagree && (
-              <p id="close-disagree" role="status" className="flex items-start gap-1.5 text-xs text-warning">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                {implied === 1
-                  ? `سعر الخروج يقول إنها ربح (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار خسارة. متأكد؟`
-                  : `سعر الخروج يقول إنها خسارة (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار ربح. متأكد؟`}
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="close-at">وقت الإغلاق</Label>
-            <Input
-              id="close-at"
-              type="datetime-local"
-              dir="ltr"
-              className="h-11 text-base md:text-base"
-              value={closeAt ?? toWallInput(new Date(), tz)}
-              min={trade ? toWallInput(trade.opened_at, tz) : undefined}
-              max={toWallInput(new Date(), tz)}
-              onChange={(e) => setCloseAt(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">الحين تلقائياً. لو سكّرتها قبل، غيّر الوقت.</p>
-          </div>
-          <div className="space-y-2"><Label>ماذا تعلمت؟</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-          <Button className="w-full" onClick={save}>حفظ النتيجة</Button>
+    <ResponsiveSheet
+      open={!!trade}
+      onOpenChange={(o) => !o && onClose()}
+      title={<>إغلاق صفقة <span dir="ltr">{trade?.symbol}</span></>}
+      onSubmit={() => void save()}
+      onKeyDown={enterMovesToNextField}
+      className="space-y-4"
+    >
+      <div className="space-y-2">
+        <Label>النتيجة</Label>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="ربح أو خسارة">
+          <Button type="button" size="lg" variant={side === "win" ? "default" : "secondary"} aria-pressed={side === "win"} onClick={() => setSide("win")}>ربح</Button>
+          <Button type="button" size="lg" variant={side === "loss" ? "destructive" : "secondary"} aria-pressed={side === "loss"} onClick={() => setSide("loss")}>خسارة</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+      <div className="space-y-2"><Label htmlFor="close-amount">المبلغ</Label><NumberField id="close-amount" value={amount} onValueChange={setAmount} placeholder="120" /></div>
+      <div className="space-y-2">
+        <Label htmlFor="close-exit">سعر الخروج</Label>
+        <NumberField id="close-exit" value={exit} onValueChange={setExit} aria-describedby={disagree ? "close-disagree" : undefined} />
+        {disagree && (
+          <p id="close-disagree" role="status" className="flex items-start gap-1.5 text-xs text-warning">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            {implied === 1
+              ? `سعر الخروج يقول إنها ربح (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار خسارة. متأكد؟`
+              : `سعر الخروج يقول إنها خسارة (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار ربح. متأكد؟`}
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="close-at">وقت الإغلاق</Label>
+        <Input
+          id="close-at"
+          type="datetime-local"
+          dir="ltr"
+          className="h-11 text-base md:text-base"
+          value={closeAt ?? toWallInput(new Date(), tz)}
+          min={trade ? toWallInput(trade.opened_at, tz) : undefined}
+          max={toWallInput(new Date(), tz)}
+          onChange={(e) => setCloseAt(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">الحين تلقائياً. لو سكّرتها قبل، غيّر الوقت.</p>
+      </div>
+      <div className="space-y-2"><Label htmlFor="close-notes">ماذا تعلمت؟</Label><Textarea id="close-notes" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+      <Button type="submit" size="lg" className="w-full">حفظ النتيجة</Button>
+    </ResponsiveSheet>
   );
 }

@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Camera, Crosshair, ImagePlus, Menu, Plus, RotateCw, SendHorizontal, Trash2, X } from "lucide-react";
+import { Camera, Crosshair, ImagePlus, Menu, Plus, RotateCw, SendHorizontal, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AgentActions, type StoredAction } from "@/components/agent-actions";
+import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { isPendingDelete } from "@/lib/undo-delete";
 import { supabase } from "@/integrations/supabase/client";
 import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,7 @@ function CoachPage() {
       const { data, error } = await supabase.from("coach_threads").select("*").order("updated_at", { ascending: false });
       if (error) throw error;
       // Session and risk-guardian chats live on their own pages.
-      return data.filter((t) => !["حارس المخاطر", "مدرّب الاستراتيجية", "تدريب الذكاء", "حارس الانضباط"].some((b) => t.title === b || t.title.startsWith(`${b} · `)) && !t.title.startsWith("المحلل الذكي") && !/^جلسة( \d{4}-\d{2}-\d{2}| · .*)$/.test(t.title));
+      return data.filter((t) => !isPendingDelete(t.id) && !["حارس المخاطر", "مدرّب الاستراتيجية", "تدريب الذكاء", "حارس الانضباط"].some((b) => t.title === b || t.title.startsWith(`${b} · `)) && !t.title.startsWith("المحلل الذكي") && !/^جلسة( \d{4}-\d{2}-\d{2}| · .*)$/.test(t.title));
     },
   });
   const msgs = useQuery({
@@ -85,13 +87,6 @@ function CoachPage() {
     await qc.invalidateQueries({ queryKey: ["threads"] });
     setActive(data.id);
     return data.id;
-  }
-
-  async function del(id: string) {
-    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
-    if (error) { toast.error("ما قدرت أحذف"); return; }
-    if (active === id) setActive(null);
-    qc.invalidateQueries({ queryKey: ["threads"] });
   }
 
   async function submit(draft?: { text: string; image: string | null }, again = false) {
@@ -172,9 +167,9 @@ function CoachPage() {
     <div className="space-y-1">
       {(threads.data ?? []).length === 0 && <p className="p-3 text-sm text-muted-foreground">لا توجد محادثات بعد.</p>}
       {threads.data?.map((t) => (
-        <div key={t.id} className={`flex items-center gap-1 rounded-xl px-3 py-2.5 text-sm ${active === t.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-          <button className="min-w-0 flex-1 truncate text-right" onClick={() => { setActive(t.id); onPick?.(); }}>{t.title}</button>
-          <button aria-label="حذف" onClick={() => del(t.id)} className="shrink-0 p-1 opacity-60 hover:opacity-100"><Trash2 className="size-3.5" /></button>
+        <div key={t.id} className={`flex items-center gap-1 rounded-xl ps-3 text-sm ${active === t.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}>
+          <button className="min-h-11 min-w-0 flex-1 truncate text-start" onClick={() => { setActive(t.id); onPick?.(); }}>{t.title}</button>
+          <DeleteThreadButton id={t.id} queryKey={["threads"]} {...(active === t.id ? { onRemoved: () => setActive(null) } : {})} />
         </div>
       ))}
     </div>
@@ -182,8 +177,8 @@ function CoachPage() {
 
   const autoToggle = (
     <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-      <label className="flex cursor-pointer items-center gap-2">
-        <input type="checkbox" checked={auto} onChange={toggleAuto} className="accent-primary" />
+      <label className="flex min-h-11 cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={auto} onChange={toggleAuto} className="size-5 accent-primary" />
         تنفيذ تلقائي
       </label>
       <span>{auto ? "بوابة التداول والتهدئة تبقى مفعّلة" : "كل إجراء يحتاج ضغطة موافقة"}</span>
@@ -208,7 +203,7 @@ function CoachPage() {
             </Sheet>
             <div className="min-w-0 text-center">
               <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
-              <p className="text-[11px] text-muted-foreground">{busy ? "يكتب…" : "سَنَد · شريكك ضد الطمع"}</p>
+              <p className="text-xs text-muted-foreground">{busy ? "يكتب…" : "سَنَد · شريكك ضد الطمع"}</p>
             </div>
             <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
           </div>
@@ -219,15 +214,15 @@ function CoachPage() {
                 <p className="text-sm text-muted-foreground">شو بدك نشتغل عليه اليوم؟</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {suggestions.map((s) => (
-                    <button key={s} onClick={() => setText(s)} className="rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-accent">{s}</button>
+                    <button key={s} onClick={() => setText(s)} className="min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent">{s}</button>
                   ))}
                 </div>
               </div>
             )}
             {list.map((m) => (
               <div key={m.id} className={m.role === "user"
-                ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
-                : "w-full break-words px-0.5 text-sm leading-6 lg:leading-7"}>
+                ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6"
+                : "w-full break-words px-0.5 text-base leading-[1.75] md:text-sm md:leading-6 lg:leading-7"}>
                 {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
                 {m.role === "user" && "image" in m && typeof m.image === "string" && (
                   <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
@@ -239,12 +234,12 @@ function CoachPage() {
                 )}
               </div>
             ))}
-            {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">{pending}</div>}
+            {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6">{pending}</div>}
             {busy && <div className="mr-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
             {stuck && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>ما وصل الرد على رسالتك.</span>
-                <button onClick={() => submit({ text: retryText(stuck.content), image: null }, true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
+                <button onClick={() => submit({ text: retryText(stuck.content), image: null }, true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-4 text-sm text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
               </div>
             )}
             <div ref={endRef} />

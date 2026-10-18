@@ -211,6 +211,13 @@
       font-size: 16px;
     }
   }
+  /* Native pickers open a wheel on iPhone; the closed control still needs a 44pt target. */
+  @media (pointer: coarse) {
+    select {
+      min-height: 2.75rem;
+      font-size: 16px;
+    }
+  }
   h1, h2, h3 {
     font-family: var(--font-display);
     font-weight: 600;
@@ -242,11 +249,12 @@
   background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 var(--glass-lowlight), 0 3px 8px -5px rgba(0, 0, 0, 0.4);
-  &:hover {
-    background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg-hover);
-  }
-  &:active {
-    transform: scale(0.97);
+  /* Hover only where a pointer can hover: on iPhone a :hover sticks after the tap.
+     The press shrink lives on Button (active:scale-[.97]) so it isn't applied twice. */
+  @media (hover: hover) {
+    &:hover {
+      background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--btn-bg-hover);
+    }
   }
 }
 

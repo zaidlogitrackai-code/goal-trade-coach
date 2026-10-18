@@ -14,6 +14,7 @@ import { Layers, Sparkles, Plus, AlertOctagon, GraduationCap } from "lucide-reac
 import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/_authenticated/strategies")({
   head: () => ({
@@ -147,7 +148,6 @@ function StrategyManager() {
   }
 
   async function remove(id: string) {
-    if (!confirm("هل أنت متأكد من حذف هذه الاستراتيجية؟")) return;
     const { error } = await supabase.from("strategies").delete().eq("id", id);
     if (error) {
       toast.error("تعذر الحذف");
@@ -280,12 +280,14 @@ function StrategyManager() {
               )}
 
               <div className="flex justify-end pt-2 border-t border-border/40">
-                <button
-                  onClick={() => remove(x.id)}
-                  className="text-xs text-destructive hover:underline"
-                >
-                  حذف الاستراتيجية
-                </button>
+                <ConfirmDialog
+                  trigger={<Button size="sm" variant="ghost" className="text-destructive">حذف الاستراتيجية</Button>}
+                  title="تحذف هذي الاستراتيجية؟"
+                  description={`«${x.name}» بتنحذف من استراتيجياتك. لو بدك توقفها بس، طفّي «مسموحة».`}
+                  confirmLabel="احذف الاستراتيجية"
+                  destructive
+                  onConfirm={() => void remove(x.id)}
+                />
               </div>
             </div>
           ))}

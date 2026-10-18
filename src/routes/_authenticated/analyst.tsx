@@ -3,7 +3,7 @@ import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FlaskConical, History, MessageSquare, ScanSearch, SquarePen, Trash2 } from "lucide-react";
+import { FlaskConical, History, MessageSquare, ScanSearch, SquarePen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
@@ -11,6 +11,9 @@ import { SessionAgent } from "@/components/session-agent";
 import { PaperTestPanel } from "@/components/paper-test-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { isPendingDelete } from "@/lib/undo-delete";
 import { currentUserId, fmtDate } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/analyst")({
@@ -46,6 +49,8 @@ const historyQuery = {
 function PastAnalyses() {
   const qc = useQueryClient();
   const h = useQuery(historyQuery);
+  // One dialog for the list: its trigger sits inside <summary>, which would also fold the row.
+  const [asking, setAsking] = useState<string | null>(null);
   async function del(id: string) {
     const { error } = await supabase.from("chart_analyses").delete().eq("id", id);
     if (error) { toast.error("ما قدرت أحذف"); return; }
@@ -54,11 +59,20 @@ function PastAnalyses() {
   if ((h.data ?? []).length === 0) return <EmptyState text="أول تحليل لك بيظهر هنا." />;
   return (
     <div className="space-y-3">
+      <ConfirmDialog
+        open={asking != null}
+        onOpenChange={(o) => { if (!o) setAsking(null); }}
+        title="تحذف هذا التحليل؟"
+        description="ما ينحذف من محادثاتك، بس من التحليلات المحفوظة."
+        confirmLabel="احذف"
+        destructive
+        onConfirm={() => { if (asking) void del(asking); }}
+      />
       {h.data!.map((a) => (
         <details key={a.id} className="panel p-4">
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
             <span><span className="font-data font-semibold" dir="ltr">{a.symbol || "—"}</span> <span className="text-xs text-muted-foreground">{a.timeframe} · {fmtDate(a.created_at)}</span></span>
-            <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); void del(a.id); }}>حذف</Button>
+            <Button size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); setAsking(a.id); }}>حذف</Button>
           </summary>
           {a.question && <p className="mt-3 text-sm text-muted-foreground">سؤالك: {a.question}</p>}
           <div className="mt-3"><Md>{a.result}</Md></div>
@@ -82,21 +96,12 @@ const threadsQuery = {
       const { data: msgs } = await supabase.from("coach_messages").select("thread_id,content").in("thread_id", ids).eq("role", "user").order("created_at").limit(400);
       for (const m of msgs ?? []) if (!first.has(m.thread_id)) first.set(m.thread_id, m.content.replace(/\n📎.*$/s, "").trim());
     }
-    return threads.map((t) => ({ ...t, preview: first.get(t.id) || "" }));
+    return threads.filter((t) => !isPendingDelete(t.id)).map((t) => ({ ...t, preview: first.get(t.id) || "" }));
   },
 };
 
-function Conversations({ activeId, onOpen, onClose }: { activeId: string | undefined; onOpen: (id: string | undefined) => void; onClose: () => void }) {
-  const qc = useQueryClient();
+function Conversations({ activeId, onOpen, onClose, onActiveDeleted }: { activeId: string | undefined; onOpen: (id: string | undefined) => void; onClose: () => void; onActiveDeleted: () => void }) {
   const q = useQuery(threadsQuery);
-  async function del(id: string) {
-    await supabase.from("coach_messages").delete().eq("thread_id", id);
-    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
-    if (error) { toast.error("ما قدرت أحذف المحادثة"); return; }
-    if (id === activeId) onOpen(undefined);
-    qc.invalidateQueries({ queryKey: ["analyst-threads"] });
-    qc.invalidateQueries({ queryKey: ["session-thread"] });
-  }
   const list = q.data ?? [];
   if (list.length === 0) return <EmptyState text="محادثاتك مع المحلل بتظهر هنا." />;
   return (
@@ -113,7 +118,7 @@ function Conversations({ activeId, onOpen, onClose }: { activeId: string | undef
                 <span className="block text-xs text-muted-foreground">{fmtDate(t.updated_at)}</span>
               </span>
             </button>
-            <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="حذف المحادثة" onClick={() => void del(t.id)}><Trash2 className="size-3.5" /></Button>
+            <DeleteThreadButton id={t.id} queryKey={threadsQuery.queryKey} {...(active ? { onRemoved: onActiveDeleted } : {})} />
           </li>
         );
       })}
@@ -186,7 +191,7 @@ function AnalystPage() {
             <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-md">
               <SheetHeader><SheetTitle>سجل المحادثات</SheetTitle></SheetHeader>
               <Button className="mt-4 w-full gap-2" disabled={creating} onClick={() => { setOpen(false); void startNew(); }}><SquarePen className="size-4" /> محادثة جديدة</Button>
-              <div className="mt-4"><Conversations activeId={c} onOpen={openThread} onClose={() => setOpen(false)} /></div>
+              <div className="mt-4"><Conversations activeId={c} onOpen={openThread} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew(true)} /></div>
               <h3 className="mb-3 mt-8 text-sm font-semibold text-muted-foreground">التحليلات المحفوظة</h3>
               <PastAnalyses />
             </SheetContent>

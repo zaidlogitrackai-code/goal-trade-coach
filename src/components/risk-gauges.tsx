@@ -10,12 +10,13 @@ function Gauge({ label, short, value, sub, used, max }: { label: string; short: 
   const tone = max <= 0 ? "bg-muted-foreground/40" : pct >= 100 ? "bg-destructive" : pct >= 70 ? "bg-warning" : "bg-success";
   return (
     <div className="panel min-w-0 p-2 sm:p-3" title={label}>
-      <p className="truncate text-[10px] text-muted-foreground sm:text-[11px]"><span className="sm:hidden">{short}</span><span className="hidden sm:inline">{label}</span></p>
+      {/* Wraps to two lines instead of cutting the Arabic word; never under 12px. */}
+      <p className="line-clamp-2 text-xs leading-normal text-muted-foreground"><span className="sm:hidden">{short}</span><span className="hidden sm:inline">{label}</span></p>
       <p className="mt-0.5 truncate font-display text-sm font-semibold tabular-nums sm:text-base">{value}</p>
       <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted sm:mt-2 sm:h-1.5">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-1 hidden truncate text-[11px] text-muted-foreground tabular-nums sm:block">{sub}</p>
+      <p className="mt-1 hidden text-xs leading-normal text-muted-foreground tabular-nums sm:line-clamp-2">{sub}</p>
     </div>
   );
 }

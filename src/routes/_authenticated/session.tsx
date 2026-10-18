@@ -12,6 +12,10 @@ import { computeDayMetrics } from "@/lib/trading-status";
 import { dayStart } from "@/lib/trading-day";
 import { Activity, History, MessageSquare, PauseCircle, SquarePen, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ResponsiveSheet } from "@/components/responsive-sheet";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { isPendingDelete } from "@/lib/undo-delete";
 
 export const Route = createFileRoute("/_authenticated/session")({
   head: () => ({
@@ -41,20 +45,12 @@ const chatsQuery = {
       const { data: msgs } = await supabase.from("coach_messages").select("thread_id,content").in("thread_id", ids).eq("role", "user").order("created_at").limit(400);
       for (const m of msgs ?? []) if (!first.has(m.thread_id)) first.set(m.thread_id, m.content.replace(/\n📎.*$/s, "").trim());
     }
-    return threads.map((t) => ({ ...t, preview: first.get(t.id) || "" }));
+    return threads.filter((t) => !isPendingDelete(t.id)).map((t) => ({ ...t, preview: first.get(t.id) || "" }));
   },
 };
 
-function Chats({ activeId, onOpen, onClose }: { activeId: string | undefined; onOpen: (id: string | undefined) => void; onClose: () => void }) {
-  const qc = useQueryClient();
+function Chats({ activeId, onOpen, onClose, onActiveDeleted }: { activeId: string | undefined; onOpen: (id: string | undefined) => void; onClose: () => void; onActiveDeleted: () => void }) {
   const q = useQuery(chatsQuery);
-  async function del(id: string) {
-    await supabase.from("coach_messages").delete().eq("thread_id", id);
-    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
-    if (error) { toast.error("ما قدرت أحذف المحادثة"); return; }
-    if (id === activeId) onOpen(undefined);
-    qc.invalidateQueries({ queryKey: ["session-chats"] });
-  }
   const list = q.data ?? [];
   if (list.length === 0) return <EmptyState text="محادثات الجلسة بتظهر هنا." />;
   return (
@@ -68,7 +64,7 @@ function Chats({ activeId, onOpen, onClose }: { activeId: string | undefined; on
               <span className="block text-xs text-muted-foreground">{fmtDate(t.updated_at)}</span>
             </span>
           </button>
-          <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="حذف المحادثة" onClick={() => void del(t.id)}><Trash2 className="size-3.5" /></Button>
+          <DeleteThreadButton id={t.id} queryKey={chatsQuery.queryKey} {...(t.id === activeId ? { onRemoved: onActiveDeleted } : {})} />
         </li>
       ))}
     </ul>
@@ -163,8 +159,8 @@ function SessionPage() {
   const sessionRiskUsed = sessionTrades.reduce((acc, x) => acc + (Number(x.risk_amount) || 0), 0);
 
   async function deleteSession(id: string) {
-    if (!confirm("حذف هذه الجلسة من السجل؟")) return;
-    await supabase.from("trading_sessions").delete().eq("id", id);
+    const { error } = await supabase.from("trading_sessions").delete().eq("id", id);
+    if (error) { toast.error("ما قدرت أحذف الجلسة"); return; }
     qc.invalidateQueries({ queryKey: ["sessions"] });
     toast.success("تم حذف الجلسة");
   }
@@ -206,7 +202,14 @@ function SessionPage() {
               </div>
               <div className="flex items-center gap-1">
                 <span dir="ltr" className={`font-data font-bold ${pnl > 0 ? "text-success" : pnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(pnl, cur)}</span>
-                <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" aria-label="حذف الجلسة" onClick={() => deleteSession(sess.id)}><Trash2 className="size-4" /></Button>
+                <ConfirmDialog
+                  trigger={<Button size="icon" variant="ghost" className="text-muted-foreground" aria-label="حذف الجلسة"><Trash2 className="size-4" /></Button>}
+                  title="تحذف هذي الجلسة من السجل؟"
+                  description="بتنحذف الجلسة وخطتها ومراجعتها. صفقاتها تبقى بسجل الصفقات."
+                  confirmLabel="احذف الجلسة"
+                  destructive
+                  onConfirm={() => void deleteSession(sess.id)}
+                />
               </div>
             </div>
             {(sess.plan || sess.review) && (
@@ -233,7 +236,7 @@ function SessionPage() {
         <div className="min-w-0">
           <p className="text-sm font-semibold lg:hidden">جلسة التداول</p>
           {active ? (
-            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="size-1.5 rounded-full bg-success animate-pulse" />
               <span>شغالة</span>
               <span dir="ltr" className="font-data">{new Date(now - +new Date(active.started_at)).toISOString().slice(11, 19)}</span>
@@ -241,37 +244,33 @@ function SessionPage() {
               <span dir="ltr" className={`font-data ${sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(sessionPnl, cur)}</span>
             </p>
           ) : (
-            <p className="text-[11px] text-muted-foreground">ما في جلسة مفتوحة</p>
+            <p className="text-xs text-muted-foreground">ما في جلسة مفتوحة</p>
           )}
         </div>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-5" /></Button>
           {active && (
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button size="icon" variant="ghost" aria-label="تفاصيل الجلسة"><Activity className="size-5" /></Button>
-              </SheetTrigger>
-              <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl">
-                <SheetHeader><SheetTitle className="text-right">الجلسة الحالية</SheetTitle></SheetHeader>
-                <div className="mt-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Stat label="صفقات الجلسة" value={sessionTrades.length} />
-                    <Stat label="مخاطرة الجلسة" value={fmtMoney(sessionRiskUsed, cur)} />
-                    <Stat label="المتبقي من المخاطرة" value={dayMetrics.riskRemaining != null ? fmtMoney(dayMetrics.riskRemaining, cur) : "غير محدد"} />
-                    <Stat label="خسائر متتالية" value={dayMetrics.consecutiveLosses} tone={dayMetrics.consecutiveLosses > 0 ? "warning" : undefined} />
-                  </div>
-                  {active.plan && (
-                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 text-xs">
-                      <p className="mb-1 font-semibold">خطة الجلسة</p>
-                      <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">{active.plan}</p>
-                    </div>
-                  )}
-                  <Button variant={settings.trading_paused ? "default" : "destructive"} className="w-full gap-1.5" onClick={togglePause}>
-                    <PauseCircle className="size-4" />{settings.trading_paused ? "استئناف التداول" : "إيقاف التداول"}
-                  </Button>
+            <ResponsiveSheet
+              title="الجلسة الحالية"
+              trigger={<Button size="icon" variant="ghost" aria-label="تفاصيل الجلسة"><Activity className="size-5" /></Button>}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <Stat label="صفقات الجلسة" value={sessionTrades.length} />
+                <Stat label="مخاطرة الجلسة" value={fmtMoney(sessionRiskUsed, cur)} />
+                <Stat label="المتبقي من المخاطرة" value={dayMetrics.riskRemaining != null ? fmtMoney(dayMetrics.riskRemaining, cur) : "غير محدد"} />
+                <Stat label="خسائر متتالية" value={dayMetrics.consecutiveLosses} tone={dayMetrics.consecutiveLosses > 0 ? "warning" : undefined} />
+              </div>
+              {active.plan && (
+                <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 text-sm">
+                  <p className="mb-1 font-semibold">خطة الجلسة</p>
+                  <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">{active.plan}</p>
                 </div>
-              </SheetContent>
-            </Sheet>
+              )}
+              <Button size="lg" variant={settings.trading_paused ? "default" : "destructive"} className="w-full gap-1.5" onClick={togglePause}>
+                <PauseCircle className="size-4" />{settings.trading_paused ? "استئناف التداول" : "إيقاف التداول"}
+              </Button>
+            </ResponsiveSheet>
           )}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -280,7 +279,7 @@ function SessionPage() {
             <SheetContent side="right" className="flex w-[88%] flex-col gap-4 overflow-y-auto sm:max-w-md">
               <SheetHeader><SheetTitle className="pr-8 text-right">سجل المحادثات</SheetTitle></SheetHeader>
               <Button className="w-full gap-2" disabled={creating} onClick={() => { setOpen(false); void startNew(); }}><SquarePen className="size-4" /> محادثة جديدة</Button>
-              <Chats activeId={c} onOpen={openChat} onClose={() => setOpen(false)} />
+              <Chats activeId={c} onOpen={openChat} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew(true)} />
               <h3 className="mt-4 text-sm font-semibold text-muted-foreground">الجلسات المنتهية</h3>
               {historyList}
             </SheetContent>

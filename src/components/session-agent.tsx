@@ -194,8 +194,8 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
       <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
         {list.map((m) => (
           <div key={m.id} className={m.role === "user"
-            ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm leading-6 text-primary-foreground"
-            : "w-full min-w-0 break-words text-sm leading-6"}>
+            ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6"
+            : "w-full min-w-0 break-words text-base leading-[1.75] md:text-sm md:leading-6"}>
             {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
             {m.role === "user" && "image" in m && typeof m.image === "string" && (
               <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
@@ -217,18 +217,18 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
             )}
           </div>
         ))}
-        {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">{pending}</div>}
+        {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6">{pending}</div>}
         {busy && <div className="w-fit rounded-2xl bg-muted px-4 py-2 text-sm text-muted-foreground">يكتب…</div>}
         {stuck && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>ما وصل الرد على رسالتك.</span>
-            <button onClick={() => submit(retryText(stuck.content), true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
+            <button onClick={() => submit(retryText(stuck.content), true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-4 text-sm text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
           </div>
         )}
         {!busy && list.length > 0 && quick.length > 0 && (quickProp ? true : list.length < 4) && (
           <div className="flex flex-wrap gap-2">
             {quick.map((q) => (
-              <button key={q} onClick={() => submit(q)} className="rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-accent">{q}</button>
+              <button key={q} onClick={() => submit(q)} className="min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent">{q}</button>
             ))}
           </div>
         )}

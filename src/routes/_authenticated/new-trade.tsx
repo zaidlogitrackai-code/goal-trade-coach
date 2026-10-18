@@ -477,7 +477,7 @@ function NewTrade() {
                   className="mt-0.5"
                 />
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium leading-none text-foreground">{item.label}</p>
+                  <p className="text-sm font-medium leading-normal text-foreground">{item.label}</p>
                   <p className="text-xs text-muted-foreground">{item.desc}</p>
                 </div>
               </label>

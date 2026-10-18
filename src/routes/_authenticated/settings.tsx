@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { settingsQuery } from "@/lib/queries";
 import { TRAINING_OFF_CATEGORY, KNOWLEDGE_OFF_CATEGORY } from "@/lib/hidden-notes";
 import { safeTz, zoneList } from "@/lib/trading-day";
@@ -140,6 +141,38 @@ function AiFeatureToggles() {
   );
 }
 
+const WIPE_WORD = "حذف";
+
+/**
+ * Wipes every trade, session and violation, so it still asks him to type the word: one tap
+ * on a sheet button is too easy for something with no undo.
+ */
+function ClearTradesButton({ onConfirm }: { onConfirm: () => void }) {
+  const [typed, setTyped] = useState("");
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button variant="destructive" className="gap-2 text-xs">
+          <Trash2 className="size-4" />
+          مسح سجل الصفقات
+        </Button>
+      }
+      onOpenChange={(o) => { if (o) setTyped(""); }}
+      title="تمسح كل سجل الصفقات؟"
+      description="بتنمسح كل صفقاتك وجلساتك ومخالفاتك، وما في تراجع. صدّر نسخة قبل لو تبيها."
+      confirmLabel="امسح كل شي"
+      destructive
+      confirmDisabled={typed.trim() !== WIPE_WORD}
+      onConfirm={onConfirm}
+    >
+      <div className="space-y-2">
+        <Label htmlFor="wipe-word">اكتب «{WIPE_WORD}» للتأكيد</Label>
+        <Input id="wipe-word" autoComplete="off" autoCorrect="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
 /** Native picker (a wheel on iPhone): a typo here would silently shift "today" for every limit. */
 function TimezoneField({ value, onChange }: { value: string | null; onChange: (tz: string) => void }) {
   const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -242,15 +275,15 @@ function SettingsPage() {
   }
 
   async function clearTradesData() {
-    const prompt = window.prompt("لحذف سجل الصفقات والجلسات، اكتب كلمة: حذف");
-    if (prompt !== "حذف") return;
-
     try {
-      await Promise.all([
+      const results = await Promise.all([
         supabase.from("trades").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
         supabase.from("trading_sessions").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
         supabase.from("rule_violations").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
       ]);
+      // Supabase reports failures in the result, not by throwing: never say "done" when it isn't.
+      const failed = results.find((r) => r.error);
+      if (failed?.error) throw failed.error;
       await qc.invalidateQueries();
       toast.success("تم مسح سجل الصفقات والجلسات بنجاح");
     } catch {
@@ -340,14 +373,7 @@ function SettingsPage() {
             {busyExport ? "جارٍ التصدير…" : "تصدير بياناتي (JSON)"}
           </Button>
 
-          <Button
-            variant="destructive"
-            onClick={clearTradesData}
-            className="gap-2 text-xs"
-          >
-            <Trash2 className="size-4" />
-            مسح سجل الصفقات
-          </Button>
+          <ClearTradesButton onConfirm={() => void clearTradesData()} />
         </div>
       </div>
     </div>

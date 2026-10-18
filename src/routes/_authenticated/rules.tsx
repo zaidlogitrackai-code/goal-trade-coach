@@ -6,13 +6,39 @@ import { supabase } from "@/integrations/supabase/client";
 import { EmptyState, Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { currentUserId, fmtDate, rulesQuery, violationsQuery } from "@/lib/queries";
+import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { currentUserId, fmtDate, rulesQuery, violationsQuery, type Rule } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/rules")({
   head: () => ({ meta: [{ title: "القواعد — نظام هادي" }, { name: "description", content: "قواعد التداول الشخصية وسجل المخالفات." }] }),
   component: Rules,
 });
+
+/**
+ * Logging a slip asks first, with an optional note. Cancel logs nothing: window.prompt
+ * used to record the violation even when he tapped Cancel.
+ */
+function ViolationButton({ rule, onLog }: { rule: Rule; onLog: (note: string) => void }) {
+  const [note, setNote] = useState("");
+  return (
+    <ConfirmDialog
+      trigger={<Button size="sm" variant="secondary" disabled={!rule.active}>سجّل مخالفة</Button>}
+      onOpenChange={(o) => { if (o) setNote(""); }}
+      title="تسجّل مخالفة؟"
+      description={`القاعدة: ${rule.title}`}
+      confirmLabel="سجّل المخالفة"
+      onConfirm={() => onLog(note.trim())}
+    >
+      <div className="space-y-2">
+        <Label htmlFor={`violation-note-${rule.id}`}>وش صار؟ (اختياري)</Label>
+        <Textarea id={`violation-note-${rule.id}`} rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+    </ConfirmDialog>
+  );
+}
 
 function Rules() {
   const r = useQuery(rulesQuery);
@@ -32,8 +58,7 @@ function Rules() {
     if (error) { toast.error("تعذر الحفظ"); return; }
     setTitle(""); setDescription(""); refresh();
   }
-  async function violate(rule_id: string) {
-    const note = prompt("ماذا حدث؟ (اختياري)") ?? "";
+  async function violate(rule_id: string, note: string) {
     const { error } = await supabase.from("rule_violations").insert({ rule_id, note: note || null, user_id: await currentUserId() });
     if (error) { toast.error("تعذر التسجيل"); return; }
     toast.warning("تم تسجيل المخالفة");
@@ -45,7 +70,6 @@ function Rules() {
     refresh();
   }
   async function remove(id: string) {
-    if (!confirm("حذف هذه القاعدة؟")) return;
     const { error } = await supabase.from("trading_rules").delete().eq("id", id);
     if (error) { toast.error("تعذر الحذف"); return; }
     refresh();
@@ -70,8 +94,15 @@ function Rules() {
                 {x.description && <p className="text-sm text-muted-foreground">{x.description}</p>}
               </div>
               <Switch checked={x.active} onCheckedChange={(val) => update(x.id, val)} aria-label="تفعيل" />
-              <Button size="sm" variant="secondary" onClick={() => violate(x.id)} disabled={!x.active}>سجّل مخالفة</Button>
-              <button onClick={() => remove(x.id)} className="text-xs text-destructive">حذف</button>
+              <ViolationButton rule={x} onLog={(note) => void violate(x.id, note)} />
+              <ConfirmDialog
+                trigger={<Button size="sm" variant="ghost" className="text-destructive">حذف</Button>}
+                title="تحذف هذي القاعدة؟"
+                description={`«${x.title}» بتنحذف مع كل مخالفاتها المسجلة. لو بدك توقفها بس، طفّي المفتاح جنبها.`}
+                confirmLabel="احذف القاعدة"
+                destructive
+                onConfirm={() => void remove(x.id)}
+              />
             </div>
           ))}
         </div>

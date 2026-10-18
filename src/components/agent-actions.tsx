@@ -84,6 +84,8 @@ export function AgentActions({
   }, [autoRunKey]);
 
   const pending = list.map((a, i) => (!a.status && parseAction(a) ? i : -1)).filter((i) => i >= 0);
+  // A delete always needs its own tap (owner decision 3), so «وافق على الكل» never includes one.
+  const bulk = pending.filter((i) => !DESTRUCTIVE.includes(list[i]!.type));
   if (list.length === 0) return null;
   const allDone = list.every((a) => a.status === "done");
   return (
@@ -112,7 +114,8 @@ export function AgentActions({
               ) : !valid ? (
                 <span className="text-xs text-destructive">{actionIssue(a) ?? "بيانات ناقصة"}</span>
               ) : (
-                <div className="flex shrink-0 gap-1">
+                // 8px apart: approve and reject sit under the same thumb.
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
                     size="sm"
                     variant={danger ? "destructive" : "default"}
@@ -122,15 +125,16 @@ export function AgentActions({
                     {a.status === "failed" ? "إعادة المحاولة" : danger ? "احذف" : "موافق"}
                   </Button>
                   <Button
-                    size="sm"
+                    size="icon"
                     variant="secondary"
+                    className="size-8"
                     disabled={busy}
                     aria-label="رفض"
                     onClick={() =>
                       set(list.map((x, j) => (j === i ? { ...x, status: "rejected" } : x)))
                     }
                   >
-                    <X className="size-3" />
+                    <X className="size-4" />
                   </Button>
                 </div>
               )}
@@ -145,9 +149,9 @@ export function AgentActions({
           </div>
         );
       })}
-      {pending.length > 1 && (
-        <Button size="sm" className="w-full" disabled={busy} onClick={() => run(pending, false)}>
-          {busy ? "جارٍ التنفيذ…" : `وافق على الكل (${pending.length})`}
+      {bulk.length > 1 && (
+        <Button size="sm" className="w-full" disabled={busy} onClick={() => run(bulk, false)}>
+          {busy ? "جارٍ التنفيذ…" : `وافق على الكل (${bulk.length})`}
         </Button>
       )}
     </div>

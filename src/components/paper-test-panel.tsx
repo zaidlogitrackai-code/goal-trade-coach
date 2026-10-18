@@ -86,10 +86,10 @@ export function PaperTestPanel({ threadId, onClose }: { threadId: string; onClos
       </div>
       {!running && trades.length === 0 && (
         <div className="mt-3 flex items-center gap-2">
-          <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="h-9 rounded-xl border border-border bg-background px-2" dir="ltr">
+          <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="h-11 rounded-xl border border-border bg-background px-2 text-base md:h-9 md:text-sm" dir="ltr">
             {MARKET_SYMBOLS.map((m) => <option key={m.key} value={m.key}>{m.key}</option>)}
           </select>
-          <Button className="h-9" onClick={() => void run()}>ابدأ الاختبار</Button>
+          <Button className="h-11 md:h-9" onClick={() => void run()}>ابدأ الاختبار</Button>
         </div>
       )}
       {(running || trades.length > 0) && (

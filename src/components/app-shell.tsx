@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   LayoutDashboard, Timer, PlusCircle, ListOrdered, ScanSearch, MessagesSquare, Layers,
   ShieldCheck, Gauge, LineChart, FileText, ScrollText, Settings, LogOut, ChevronDown, Menu,
@@ -14,12 +14,10 @@ import { activeSessionQuery, tradesQuery, violationsQuery } from "@/lib/queries"
 import { isBlocked, useJourney } from "@/lib/use-journey";
 import { HIDDEN_NOTES } from "@/lib/hidden-notes";
 import { planNav, type NavPath, type NavPlan } from "@/lib/nav-plan";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ResponsiveSheet } from "@/components/responsive-sheet";
+import { useMediaQuery, WIDE_QUERY } from "@/hooks/use-media-query";
 
 export const NAV_GROUPS = [
   {
@@ -128,25 +126,19 @@ function NavLink({ n, pinned }: { n: NavItem; pinned?: boolean }) {
  */
 function SignOutButton({ onConfirm, className }: { onConfirm: () => void; className: string }) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
+    <ConfirmDialog
+      trigger={
         <Button variant="ghost" className={className}>
           <LogOut className="size-4" /> تسجيل الخروج
         </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent className="sm:max-w-sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>متأكد بدك تطلع؟</AlertDialogTitle>
-          <AlertDialogDescription>بتحتاج تدخل إيميلك وكلمة السر من جديد عشان ترجع.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>لا، خليني</AlertDialogCancel>
-          <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={onConfirm}>
-            سجّل خروج
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      }
+      title="متأكد بدك تطلع؟"
+      description="بتحتاج تدخل إيميلك وكلمة السر من جديد عشان ترجع."
+      cancelLabel="لا، خليني"
+      confirmLabel="سجّل خروج"
+      destructive
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -180,6 +172,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const plan = useNavPlan();
+  // The sidebar exists only from lg up, so only one bell is mounted: one query, one greeting.
+  const wide = useMediaQuery(WIDE_QUERY);
+  const [moreOpen, setMoreOpen] = useState(false);
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
@@ -192,13 +187,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <RiskWatcher />
       <NotificationSound />
       <VisitRecorder />
-      <aside className="glass-strong sticky top-3 m-3 hidden h-[calc(100dvh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4 lg:flex">
+      {wide && <aside className="glass-strong sticky top-3 m-3 flex h-[calc(100dvh-1.5rem)] w-64 shrink-0 flex-col rounded-[2rem] p-4">
         <div className="flex items-center justify-between"><Logo /><NotificationsBell /></div>
         
         <nav className="mt-5 flex-1 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {plan.pinned.length > 0 && (
             <div className="space-y-1 rounded-lg bg-primary/5 py-2">
-              <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-primary/80">لك الآن</p>
+              <p className="px-3 text-xs font-semibold text-primary/80">لك الآن</p>
               <div className="space-y-0.5">
                 {navItems(plan.pinned).map((n) => (
                   <NavLink key={n.to} n={n} pinned />
@@ -211,7 +206,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             if (items.length === 0) return null;
             return (
               <div key={group.title} className="space-y-1">
-                <p className="px-3 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                <p className="px-3 text-xs font-semibold text-muted-foreground/70">
                   {group.title}
                 </p>
                 <div className="space-y-0.5">
@@ -224,7 +219,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
           {plan.more.length > 0 && (
             <details className="group space-y-1" open={plan.more.some((p) => pathname.startsWith(p))}>
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 text-xs font-semibold text-muted-foreground/70 [&::-webkit-details-marker]:hidden">
                 المزيد
                 <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
               </summary>
@@ -238,14 +233,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <SignOutButton onConfirm={signOut} className="mt-2 w-full justify-start gap-3 px-3 text-muted-foreground" />
-        <p className="mt-2 text-center text-[10px] tracking-[0.2em] text-muted-foreground">انضباط. استراتيجية. حرية.</p>
-      </aside>
+        <p className="mt-2 text-center text-xs text-muted-foreground">انضباط. استراتيجية. حرية.</p>
+      </aside>}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="mobile-header sticky top-0 z-30 grid bg-background grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 lg:hidden">
           <Logo className="min-w-0 scale-90 origin-right" />
           <div className="flex shrink-0 items-center gap-1">
-            <div className="grid size-11 place-items-center"><NotificationsBell /></div>
+            {!wide && <NotificationsBell />}
           </div>
         </header>
         {/* Keyed by route so each screen enters with the same soft iOS motion */}
@@ -261,35 +256,34 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="w-full truncate text-center">{n.label}</span>
           </Link>
         ))}
-        <Sheet>
-          <SheetTrigger asChild>
+        <ResponsiveSheet
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          title="كل الأقسام"
+          trigger={
             <Button variant="ghost" className={`h-[3.25rem] min-w-0 flex-col gap-1 rounded-2xl px-1 text-[10px] transition-transform duration-200 ease-ios active:scale-92 ${MOBILE_NAV.some((n) => pathname.startsWith(n.to)) ? "text-muted-foreground" : "text-foreground"}`}>
               <Menu className="size-5" />
               <span>المزيد</span>
             </Button>
-          </SheetTrigger>
-          <SheetContent side="bottom" className="ios-ease max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-border bg-card px-5 pt-5 shadow-none [background-image:none] [will-change:transform] data-[state=closed]:!duration-200 data-[state=open]:!duration-350" dir="rtl">
-            <SheetHeader className="mb-5 text-right">
-              <SheetTitle>كل الأقسام</SheetTitle>
-            </SheetHeader>
-            <div className="grid grid-cols-2 gap-2">
-              {NAV.filter((n) => !MOBILE_NAV.some((fixed) => fixed.to === n.to)).map((n) => (
-                <SheetClose key={n.to} asChild>
-                  <Link
-                    to={n.to}
-                    preload={false}
-                    className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-3 py-3 text-sm text-muted-foreground"
-                    activeProps={{ className: "border-foreground/30 text-foreground" }}
-                  >
-                    <n.icon className="size-4 shrink-0" />
-                    <span className="truncate">{n.label}</span>
-                  </Link>
-                </SheetClose>
-              ))}
-            </div>
-            <SignOutButton onConfirm={signOut} className="mt-6 h-11 w-full justify-center gap-2 text-muted-foreground" />
-          </SheetContent>
-        </Sheet>
+          }
+        >
+          <div className="grid grid-cols-2 gap-2">
+            {NAV.filter((n) => !MOBILE_NAV.some((fixed) => fixed.to === n.to)).map((n) => (
+              <Link
+                key={n.to}
+                to={n.to}
+                preload={false}
+                onClick={() => setMoreOpen(false)}
+                className="flex min-h-12 min-w-0 items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground active:bg-accent"
+                activeProps={{ className: "border-foreground/30 text-foreground" }}
+              >
+                <n.icon className="size-4 shrink-0" />
+                <span className="line-clamp-2 leading-normal">{n.label}</span>
+              </Link>
+            ))}
+          </div>
+          <SignOutButton onConfirm={signOut} className="mt-6 h-11 w-full justify-center gap-2 text-muted-foreground" />
+        </ResponsiveSheet>
       </nav>
     </div>
   );
