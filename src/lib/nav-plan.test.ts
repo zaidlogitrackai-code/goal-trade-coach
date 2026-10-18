@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { NAV } from "@/components/app-shell";
 import { buildJourney } from "./journey";
-import { planNav, type NavPath, type NavState } from "./nav-plan";
-
-// The shell looks every planned path up in NAV; a path missing there crashed it once (/knowledge).
-const inNav = new Set<string>(NAV.map((n) => n.to));
+import { planNav } from "./nav-plan";
+import { MORE, navEntry, type NavPath } from "./nav-registry";
 
 const fresh = buildJourney({
   focusReady: false,
@@ -27,36 +24,23 @@ const steps: (NavPath | null)[] = [
   null,
   ...new Set([...fresh.steps, ...blockedDay.steps].map((s) => s.to)),
 ];
-
-function states(): NavState[] {
-  const out: NavState[] = [];
-  for (const nextStep of steps)
-    for (const blocked of [false, true])
-      for (const activeSession of [false, true])
-        for (const [trades, closed] of [[0, 0], [2, 1], [10, 6]] as const)
-          for (const setup of [0, 1])
-            for (const violationsWeek of [0, 3])
-              out.push({
-                strategies: setup,
-                rules: setup,
-                trades,
-                closed,
-                notes: 0,
-                activeSession,
-                violationsWeek,
-                blocked,
-                nextStep,
-              });
-  return out;
-}
+const inMore = new Set<string>(MORE.flatMap((g) => g.items.map((n) => n.path)));
 
 describe("planNav", () => {
-  it("only plans paths the shell can render", () => {
-    for (const s of [null, ...states()]) {
-      const plan = planNav(s);
-      for (const p of [...plan.pinned, ...plan.more, ...plan.mobile]) {
-        expect(inNav.has(p), `${p} for ${JSON.stringify(s)}`).toBe(true);
-      }
+  it("only marks pages the phone can reach, and dots the «المزيد» button for sheet pages", () => {
+    for (const nextStep of steps) {
+      const plan = planNav({ nextStep });
+      if (plan.next == null) continue;
+      expect(navEntry(plan.next), plan.next).not.toBeNull();
+      expect(plan.inMore, plan.next).toBe(inMore.has(plan.next));
     }
+  });
+  it("marks nothing while loading, or when the step is home itself", () => {
+    expect(planNav(null)).toEqual({ next: null, inMore: false });
+    expect(planNav({ nextStep: "/dashboard" })).toEqual({ next: null, inMore: false });
+  });
+  it("marks a tab in place and a sheet page through the sheet's button", () => {
+    expect(planNav({ nextStep: "/session" })).toEqual({ next: "/session", inMore: false });
+    expect(planNav({ nextStep: "/rules" })).toEqual({ next: "/rules", inMore: true });
   });
 });

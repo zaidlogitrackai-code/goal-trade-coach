@@ -2,9 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Crosshair, Menu, Plus } from "lucide-react";
+import { Crosshair, History, Plus, SquarePen } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { ChatHeader } from "@/components/app-shell";
 import { SessionAgent } from "@/components/session-agent";
 import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
 import { isPendingDelete } from "@/lib/undo-delete";
@@ -140,25 +141,24 @@ function CoachPage() {
 
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
-      <div className="mb-2 grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto sm:max-w-sm">
-            <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
-            <Button onClick={() => { void newThread(); setSheetOpen(false); }} className="w-full"><Plus className="size-4" /> محادثة جديدة</Button>
-            {focusBox}
-            {autoToggle}
-            {threadList(() => setSheetOpen(false))}
-          </SheetContent>
-        </Sheet>
-        <div className="min-w-0 text-center">
-          <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
-          <p className="text-xs text-muted-foreground">سَنَد · شريكك ضد الطمع</p>
-        </div>
-        <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={() => void newThread()}><Plus className="size-5" /></Button>
-      </div>
+      <ChatHeader
+        status={activeTitle}
+        actions={<>
+          <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="محادثة جديدة" onClick={() => void newThread()}><SquarePen className="size-4" /></Button>
+          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="المحادثات"><History className="size-4" /></Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto sm:max-w-sm">
+              <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
+              <Button onClick={() => { void newThread(); setSheetOpen(false); }} className="w-full"><Plus className="size-4" /> محادثة جديدة</Button>
+              {focusBox}
+              {autoToggle}
+              {threadList(() => setSheetOpen(false))}
+            </SheetContent>
+          </Sheet>
+        </>}
+      />
 
       {active && (
         <SessionAgent

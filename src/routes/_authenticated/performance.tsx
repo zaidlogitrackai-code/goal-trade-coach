@@ -88,7 +88,7 @@ function PerformancePage() {
 
       <div className="glass inline-flex rounded-full p-1" role="tablist">
         {PERIODS.map((p) => (
-          <button key={p.id} role="tab" aria-selected={period === p.id} onClick={() => nav({ search: { period: p.id } })}
+          <button key={p.id} role="tab" aria-selected={period === p.id} onClick={() => nav({ search: { period: p.id }, replace: true })}
             className={`rounded-full px-4 py-1.5 text-sm transition ${period === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>{p.label}</button>
         ))}
       </div>

@@ -3,14 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { EmptyState, Loading, PageHeader } from "@/components/app-shell";
+import { ChatHeader, EmptyState, Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { currentUserId, strategiesQuery } from "@/lib/queries";
-import { Layers, Sparkles, Plus, AlertOctagon, GraduationCap } from "lucide-react";
+import { Layers, Sparkles, Plus, AlertOctagon } from "lucide-react";
 import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -41,27 +41,21 @@ function StrategiesPage() {
   const { c, controls } = useAgentChats(STRATEGY_THREAD, GREETING);
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
-      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <GraduationCap className="size-5 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold lg:text-xl">مدرّب الاستراتيجية</h1>
-            <p className="text-xs text-muted-foreground">{n ? `عندك ${n} استراتيجية` : "ما عندك استراتيجية بعد — اشرح لي وحدة"}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-        {controls}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="استراتيجياتي"><Layers className="size-4" /></Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
-            <SheetHeader><SheetTitle>استراتيجياتي</SheetTitle></SheetHeader>
-            <div className="mt-4"><StrategyManager /></div>
-          </SheetContent>
-        </Sheet>
-        </div>
-      </div>
+      <ChatHeader
+        status={n ? `عندك ${n} استراتيجية` : "ما عندك استراتيجية بعد — اشرح لي وحدة"}
+        actions={<>
+          {controls}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="استراتيجياتي"><Layers className="size-4" /></Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
+              <SheetHeader><SheetTitle>استراتيجياتي</SheetTitle></SheetHeader>
+              <div className="mt-4"><StrategyManager /></div>
+            </SheetContent>
+          </Sheet>
+        </>}
+      />
       {c && <SessionAgent
         key={c}
         threadId={c}

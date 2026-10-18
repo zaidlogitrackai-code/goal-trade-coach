@@ -3,9 +3,9 @@ import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FlaskConical, History, MessageSquare, ScanSearch, SquarePen } from "lucide-react";
+import { FlaskConical, History, MessageSquare, SquarePen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { EmptyState } from "@/components/app-shell";
+import { ChatHeader, EmptyState } from "@/components/app-shell";
 import { Md } from "@/components/md";
 import { SessionAgent } from "@/components/session-agent";
 import { PaperTestPanel } from "@/components/paper-test-panel";
@@ -134,8 +134,10 @@ function AnalystPage() {
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  // Switching chats replaces the entry: the nav bar's back chevron leaves the analyst, it
+  // doesn't walk back through every chat opened here.
   function openThread(id: string | undefined) {
-    void navigate({ to: "/analyst", search: id ? { c: id } : {} });
+    void navigate({ to: "/analyst", search: id ? { c: id } : {}, replace: true });
   }
 
   // Opening the analyst (no ?c) always lands on a fresh chat, like ChatGPT.
@@ -152,11 +154,11 @@ function AnalystPage() {
         const { count } = await supabase.from("coach_messages").select("id", { count: "exact", head: true }).eq("thread_id", lastId).eq("role", "user");
         if (!count) { void navigate({ to: "/analyst", search: { c: lastId }, replace: true }); return; }
       }
-      await startNew(true);
+      await startNew();
     })();
   }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function startNew(replace = false) {
+  async function startNew() {
     if (creating) return;
     setCreating(true);
     try {
@@ -166,22 +168,16 @@ function AnalystPage() {
       if (error) throw error;
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content: GREETING });
       await qc.invalidateQueries({ queryKey: ["analyst-threads"] });
-      void navigate({ to: "/analyst", search: { c: data.id }, replace });
+      void navigate({ to: "/analyst", search: { c: data.id }, replace: true });
     } catch { toast.error("ما قدرت أبدأ محادثة جديدة"); }
     finally { setCreating(false); }
   }
 
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
-      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <ScanSearch className="size-5 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold lg:text-xl">المحلل الذكي</h1>
-            <p className="truncate text-xs text-muted-foreground">ارفع الشارت وتناقش معه — القرار النهائي لك</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <ChatHeader
+        status="ارفع الشارت وتناقش معه — القرار النهائي لك"
+        actions={<>
           <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="اختبار ذاتي تجريبي" title="اختبار ذاتي 10 دقائق" onClick={() => setTesting(true)}><FlaskConical className="size-4" /></Button>
           <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-4" /></Button>
           <Sheet open={open} onOpenChange={setOpen}>
@@ -191,13 +187,13 @@ function AnalystPage() {
             <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-md">
               <SheetHeader><SheetTitle>سجل المحادثات</SheetTitle></SheetHeader>
               <Button className="mt-4 w-full gap-2" disabled={creating} onClick={() => { setOpen(false); void startNew(); }}><SquarePen className="size-4" /> محادثة جديدة</Button>
-              <div className="mt-4"><Conversations activeId={c} onOpen={openThread} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew(true)} /></div>
+              <div className="mt-4"><Conversations activeId={c} onOpen={openThread} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew()} /></div>
               <h3 className="mb-3 mt-8 text-sm font-semibold text-muted-foreground">التحليلات المحفوظة</h3>
               <PastAnalyses />
             </SheetContent>
           </Sheet>
-        </div>
-      </div>
+        </>}
+      />
       {c && testing && <PaperTestPanel threadId={c} onClose={() => setTesting(false)} />}
       {c && <SessionAgent
         key={c}

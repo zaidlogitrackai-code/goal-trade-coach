@@ -10,7 +10,6 @@ import {
   splitMarkets,
   type SignalTrade,
 } from "./focus";
-import { planNav } from "./nav-plan";
 
 const now = new Date("2026-10-11T12:00:00Z");
 const tr = (o: Partial<SignalTrade>): SignalTrade => ({
@@ -130,42 +129,5 @@ describe("signals", () => {
       money,
     );
     expect(ins.at(-1)!.text).toContain("XAUUSD");
-  });
-});
-
-describe("planNav", () => {
-  const base = {
-    strategies: 2,
-    rules: 3,
-    trades: 10,
-    closed: 8,
-    notes: 1,
-    activeSession: false,
-    violationsWeek: 0,
-    blocked: false,
-  };
-  it("falls back to the static mobile bar while loading", () => {
-    expect(planNav(null)).toEqual({
-      pinned: [],
-      more: [],
-      mobile: ["/dashboard", "/session", "/new-trade", "/trades", "/risk"],
-    });
-  });
-  it("puts setup gaps and the session first for a new trader, tucks empty pages away", () => {
-    const p = planNav({ ...base, strategies: 0, rules: 0, trades: 0, closed: 0, notes: 0 });
-    expect(p.pinned).toEqual(["/session", "/strategies", "/rules", "/coach"]);
-    expect(p.more).toEqual(["/trades", "/discipline", "/performance", "/reports"]);
-    expect(p.mobile[0]).toBe("/dashboard");
-    expect(p.mobile).toHaveLength(5);
-  });
-  it("leads with the new trade during a session, and with review when blocked", () => {
-    expect(planNav({ ...base, activeSession: true }).pinned.slice(0, 2)).toEqual([
-      "/new-trade",
-      "/session",
-    ]);
-    expect(planNav({ ...base, blocked: true, violationsWeek: 2 }).pinned.slice(0, 2)).toEqual([
-      "/discipline",
-      "/coach",
-    ]);
   });
 });

@@ -1,4 +1,4 @@
-import type { NavPath } from "./nav-plan";
+import type { NavPath } from "./nav-registry";
 
 /**
  * The client's steps, in order: set up once (focus, strategy, rules), then the

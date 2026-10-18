@@ -76,18 +76,10 @@ describe("journey", () => {
     expect(blockedActive.current?.key).toBe("close");
     expect(buildJourney({ ...ready, blocked: true }).current).toBeNull();
   });
-  it("the nav pins the current step's page first", () => {
-    const base = {
-      strategies: 1,
-      rules: 1,
-      trades: 5,
-      closed: 5,
-      notes: 1,
-      activeSession: false,
-      violationsWeek: 0,
-      blocked: false,
-    };
-    expect(planNav({ ...base, nextStep: "/rules" }).pinned[0]).toBe("/rules");
-    expect(planNav({ ...base, nextStep: "/dashboard" }).pinned[0]).toBe("/session");
+  it("the nav marks the current step's page without moving it", () => {
+    const rulesStep = buildJourney({ ...ready, rules: 0 }).current!;
+    expect(rulesStep.to).toBe("/rules");
+    expect(planNav({ nextStep: rulesStep.to }).next).toBe("/rules");
+    expect(planNav({ nextStep: "/dashboard" }).next).toBeNull();
   });
 });

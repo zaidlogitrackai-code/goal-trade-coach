@@ -3,11 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { LimitsSummary } from "@/components/limits-summary";
 import { RiskGauges } from "@/components/risk-gauges";
 import { RiskGuardian } from "@/components/risk-guardian";
-import { Loading } from "@/components/app-shell";
+import { ChatHeader, Loading } from "@/components/app-shell";
 import { useAgentChats } from "@/components/agent-chats";
 import { SessionAgent } from "@/components/session-agent";
 import { RISK_THREAD } from "@/components/risk-watcher";
@@ -80,17 +80,9 @@ function RiskPage() {
 
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
-      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <ShieldCheck className="size-5 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold lg:text-xl">حارس المخاطر</h1>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={`size-2 rounded-full ${tone}`} /> حالة اليوم: {label}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+      <ChatHeader
+        status={<span className="flex items-center gap-1.5"><span className={`size-2 shrink-0 rounded-full ${tone}`} /> اليوم: {label}</span>}
+        actions={<>
           {controls}
           <Button size="sm" variant={data?.trading_paused ? "default" : "destructive"} onClick={togglePause}>
             {data?.trading_paused ? "استئناف" : "إيقاف التداول"}
@@ -107,8 +99,8 @@ function RiskPage() {
               </div>
             </SheetContent>
           </Sheet>
-        </div>
-      </div>
+        </>}
+      />
       {data && metrics && <RiskGauges s={data} m={metrics} />}
       {c && <SessionAgent
         key={c}

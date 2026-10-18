@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loading, Stat } from "@/components/app-shell";
+import { ChatHeader, Loading, Stat } from "@/components/app-shell";
 import { useCallback, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useAgentChats } from "@/components/agent-chats";
@@ -20,7 +20,7 @@ import { dayKey } from "@/lib/trading-day";
 import { disciplineReport } from "@/lib/stats";
 import { REVENGE_WINDOW_MIN } from "@/lib/emotions";
 import { countConsecutiveLosses } from "@/lib/trading-status";
-import { Gauge, ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/discipline")({
   head: () => ({
@@ -56,24 +56,20 @@ function DisciplinePage() {
   }, [morning, qc]);
   return (
     <div className="agent-page mx-auto w-full max-w-4xl">
-      <div className="mb-2 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Gauge className="size-5 shrink-0" />
-          <h1 className="truncate font-display text-lg font-semibold lg:text-xl">حارس الانضباط</h1>
-        </div>
-        <div className="flex items-center gap-2">
-        {controls}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="أرقامي"><ShieldAlert className="size-4" /></Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
-            <SheetHeader><SheetTitle>أرقامي</SheetTitle></SheetHeader>
-            <div className="mt-4"><DisciplineStats /></div>
-          </SheetContent>
-        </Sheet>
-        </div>
-      </div>
+      <ChatHeader
+        actions={<>
+          {controls}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="secondary" className="size-9 rounded-full" aria-label="أرقامي"><ShieldAlert className="size-4" /></Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[92%] overflow-y-auto sm:max-w-xl">
+              <SheetHeader><SheetTitle>أرقامي</SheetTitle></SheetHeader>
+              <div className="mt-4"><DisciplineStats /></div>
+            </SheetContent>
+          </Sheet>
+        </>}
+      />
       <div className="mb-2 shrink-0"><StreakCard compact /></div>
       {c && <SessionAgent
         key={c}

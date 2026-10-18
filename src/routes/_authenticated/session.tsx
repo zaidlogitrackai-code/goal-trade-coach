@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
+import { ChatHeader, EmptyState, Loading, Stat } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { SessionAgent, GREETING_START } from "@/components/session-agent";
 import { currentUserId, fmtDate, fmtMoney, settingsQuery, tradesQuery } from "@/lib/queries";
@@ -109,11 +109,12 @@ function SessionPage() {
   const [creating, setCreating] = useState(false);
   const hasActive = !!ss.data?.find((x) => !x.ended_at);
 
+  // Switching chats replaces the entry, so history (and Safari's swipe back) holds pages, not chats.
   function openChat(id: string | undefined) {
-    void navigate({ to: "/session", search: id ? { c: id } : {} });
+    void navigate({ to: "/session", search: id ? { c: id } : {}, replace: true });
   }
 
-  async function startNew(replace = false) {
+  async function startNew() {
     if (creating) return;
     setCreating(true);
     try {
@@ -123,7 +124,7 @@ function SessionPage() {
       if (error) throw error;
       await supabase.from("coach_messages").insert({ user_id, thread_id: data.id, role: "assistant", content: hasActive ? ACTIVE_GREETING : GREETING_START });
       await qc.invalidateQueries({ queryKey: ["session-chats"] });
-      void navigate({ to: "/session", search: { c: data.id }, replace });
+      void navigate({ to: "/session", search: { c: data.id }, replace: true });
     } catch { toast.error("ما قدرت أبدأ محادثة جديدة"); }
     finally { setCreating(false); }
   }
@@ -141,7 +142,7 @@ function SessionPage() {
         const { count } = await supabase.from("coach_messages").select("id", { count: "exact", head: true }).eq("thread_id", lastId).eq("role", "user");
         if (!count) { void navigate({ to: "/session", search: { c: lastId }, replace: true }); return; }
       }
-      await startNew(true);
+      await startNew();
     })();
   }, [c, ss.isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -233,27 +234,17 @@ function SessionPage() {
 
   return (
     <div className="agent-page mx-auto w-full max-w-3xl">
-      <div className="hidden shrink-0 lg:block">
-        <PageHeader title="جلسة التداول" subtitle="المساعد ينظم جلستك: يسألك عن تارقتك، يبدأ الجلسة، ويسوي المراجعة لما تخلص." />
-      </div>
-
-      {/* Top bar: title + history */}
-      <div className="flex shrink-0 items-center justify-between gap-2 pb-2">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold lg:hidden">جلسة التداول</p>
-          {active ? (
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="size-1.5 rounded-full bg-success animate-pulse" />
-              <span>شغالة</span>
-              <Elapsed since={active.started_at} />
-              <span>·</span>
-              <span dir="ltr" className={`font-data ${sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(sessionPnl, cur)}</span>
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">ما في جلسة مفتوحة</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
+      <ChatHeader
+        status={active ? (
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 shrink-0 rounded-full bg-success animate-pulse" />
+            <span>شغالة</span>
+            <Elapsed since={active.started_at} />
+            <span>·</span>
+            <span dir="ltr" className={`font-data ${sessionPnl > 0 ? "text-success" : sessionPnl < 0 ? "text-destructive" : ""}`}>{fmtMoney(sessionPnl, cur)}</span>
+          </span>
+        ) : "ما في جلسة مفتوحة"}
+        actions={<>
           <Button size="icon" variant="ghost" aria-label="محادثة جديدة" disabled={creating} onClick={() => void startNew()}><SquarePen className="size-5" /></Button>
           {active && (
             <ResponsiveSheet
@@ -285,13 +276,13 @@ function SessionPage() {
             <SheetContent side="right" className="flex w-[88%] flex-col gap-4 overflow-y-auto sm:max-w-md">
               <SheetHeader><SheetTitle className="pr-8 text-right">سجل المحادثات</SheetTitle></SheetHeader>
               <Button className="w-full gap-2" disabled={creating} onClick={() => { setOpen(false); void startNew(); }}><SquarePen className="size-4" /> محادثة جديدة</Button>
-              <Chats activeId={c} onOpen={openChat} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew(true)} />
+              <Chats activeId={c} onOpen={openChat} onClose={() => setOpen(false)} onActiveDeleted={() => void startNew()} />
               <h3 className="mt-4 text-sm font-semibold text-muted-foreground">الجلسات المنتهية</h3>
               {historyList}
             </SheetContent>
           </Sheet>
-        </div>
-      </div>
+        </>}
+      />
 
       {c && <SessionAgent key={c} threadId={c} quick={[]} hasActive={!!active} greeting={active ? ACTIVE_GREETING : GREETING_START} onChanged={() => { qc.invalidateQueries({ queryKey: ["session-chats"] }); qc.invalidateQueries({ queryKey: ["sessions"] }); qc.invalidateQueries({ queryKey: ["settings"] }); qc.invalidateQueries({ queryKey: ["trades"] }); }} />}
     </div>
