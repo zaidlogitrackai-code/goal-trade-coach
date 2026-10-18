@@ -19,19 +19,35 @@ const EntrySchema = z.object({
 });
 export type CapitalEntry = z.infer<typeof EntrySchema>;
 export type Ledger = { entries: CapitalEntry[] };
+/** An entry that failed validation, with whatever id/time could still be read. */
+export type DroppedEntry = { id: string | null; at: string | null };
+/**
+ * What parseLedger could not read. A dropped entry silently moves the balance (and so
+ * every % limit), so the circuit breaker treats it as incomplete data instead of hiding it.
+ */
+export type ParsedLedger = Ledger & { dropped: DroppedEntry[]; corrupt: boolean };
 
-export function parseLedger(content: string | null | undefined): Ledger {
-  if (!content) return { entries: [] };
+export function parseLedger(content: string | null | undefined): ParsedLedger {
+  if (!content) return { entries: [], dropped: [], corrupt: false };
+  let list: unknown;
   try {
-    const raw = JSON.parse(content) as { entries?: unknown[] };
-    const entries = (raw.entries ?? []).flatMap((e) => {
-      const r = EntrySchema.safeParse(e);
-      return r.success ? [r.data] : [];
-    });
-    return { entries };
+    list = (JSON.parse(content) as { entries?: unknown } | null)?.entries;
   } catch {
-    return { entries: [] };
+    return { entries: [], dropped: [], corrupt: true };
   }
+  if (!Array.isArray(list)) return { entries: [], dropped: [], corrupt: true };
+  const entries: CapitalEntry[] = [];
+  const dropped: DroppedEntry[] = [];
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  for (const e of list) {
+    const r = EntrySchema.safeParse(e);
+    if (r.success) entries.push(r.data);
+    else {
+      const o = (e && typeof e === "object" ? e : {}) as Record<string, unknown>;
+      dropped.push({ id: str(o["id"]), at: str(o["at"]) });
+    }
+  }
+  return { entries, dropped, corrupt: false };
 }
 
 export type CapitalTrade = {

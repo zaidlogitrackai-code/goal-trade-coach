@@ -1,5 +1,8 @@
 import { dayStart, monthStart, weekStart } from "./trading-day";
 
+// The day's display status and tone, plus the protect-profit warning. Whether new risk
+// may be taken is the circuit breaker's call (circuit-breaker.ts, losses only).
+
 export type TradingStatus =
   | "ready"
   | "caution"
@@ -93,6 +96,25 @@ export function computeDayMetrics(
   };
 }
 
+export type ProtectProfit = { maxTrades: boolean; profitCap: boolean; text: string };
+
+/**
+ * «احمِ ربحك»: today's trade count or the profit cap is reached. Not a circuit-breaker
+ * state (circuit-breaker.ts counts losses only) — a warning the gate turns into a review.
+ */
+export function protectProfit(
+  m: Pick<DayMetrics, "tradesToday" | "todayPnl">,
+  limits: { max_trades_per_day?: number | null; max_daily_profit?: number | null },
+): ProtectProfit | null {
+  const maxT = Number(limits.max_trades_per_day) || 0;
+  const cap = Number(limits.max_daily_profit) || 0;
+  const maxTrades = maxT > 0 && m.tradesToday >= maxT;
+  const profitCap = cap > 0 && m.todayPnl >= cap;
+  if (!maxTrades && !profitCap) return null;
+  const text = maxTrades && profitCap ? "وصلت حدّ ربحك وصفقاتك اليوم" : profitCap ? "وصلت حدّ ربحك اليوم" : "وصلت حدّ صفقاتك اليوم";
+  return { maxTrades, profitCap, text };
+}
+
 export function computeStatus(s: StatusSettings, m: DayMetrics, now: Date = new Date()): TradingStatus {
   if (s.trading_paused) return "stopped";
   if (s.cooldown_until && new Date(s.cooldown_until).getTime() > now.getTime()) return "stopped";
@@ -101,8 +123,7 @@ export function computeStatus(s: StatusSettings, m: DayMetrics, now: Date = new 
   if ((s.monthly_max_loss ?? 0) > 0 && m.monthPnl <= -s.monthly_max_loss!) return "loss_limit";
   if ((s.weekly_target ?? 0) > 0 && m.weekPnl >= s.weekly_target!) return "target_hit";
   if ((s.monthly_target ?? 0) > 0 && m.monthPnl >= s.monthly_target!) return "target_hit";
-  if (s.max_daily_profit > 0 && m.todayPnl >= s.max_daily_profit) return "stopped";
-  if (s.max_trades_per_day > 0 && m.tradesToday >= s.max_trades_per_day) return "stopped";
+  if (protectProfit(m, s)) return "stopped";
   if (s.max_consecutive_losses > 0 && m.consecutiveLosses >= s.max_consecutive_losses) return "stopped";
   if (m.violationsToday > 0) return "rules_broken";
   if (s.max_daily_risk > 0 && m.riskUsed > s.max_daily_risk) return "rules_broken";

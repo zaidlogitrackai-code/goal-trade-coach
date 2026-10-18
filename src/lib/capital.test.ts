@@ -6,6 +6,7 @@ import {
   parseLedger,
   removeEntry,
   type CapitalTrade,
+  type Ledger,
 } from "./capital";
 
 const trades: CapitalTrade[] = [
@@ -42,7 +43,7 @@ describe("capital", () => {
 
   it("deposit, withdrawal and set_balance, with growth separated from money moved", () => {
     const now = new Date("2026-10-05T12:00:00Z");
-    let l = parseLedger(null);
+    let l: Ledger = parseLedger(null);
     const d = applyMove(l, { kind: "deposit", amount: 500 }, 1090, now, "a");
     expect(d.balance).toBe(1590);
     l = d.ledger;
@@ -83,5 +84,17 @@ describe("capital", () => {
       parseLedger(JSON.stringify({ entries: [{ id: "x", kind: "steal", amount: 5, at: "" }] }))
         .entries,
     ).toEqual([]);
+  });
+
+  it("reports what it could not read instead of hiding it", () => {
+    expect(parseLedger(null)).toEqual({ entries: [], dropped: [], corrupt: false });
+    expect(parseLedger("{oops")).toMatchObject({ entries: [], corrupt: true });
+    expect(parseLedger("{}").corrupt).toBe(true);
+    const ok = { id: "a", kind: "deposit", amount: 100, note: null, at: "2026-10-02T09:00:00Z" };
+    const bad = { id: "b", kind: "deposit", amount: "lots", at: "2026-10-05T09:00:00Z" };
+    const p = parseLedger(JSON.stringify({ entries: [ok, bad, 7] }));
+    expect(p.entries.map((e) => e.id)).toEqual(["a"]);
+    expect(p.dropped).toEqual([{ id: "b", at: "2026-10-05T09:00:00Z" }, { id: null, at: null }]);
+    expect(p.corrupt).toBe(false);
   });
 });

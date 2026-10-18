@@ -15,6 +15,16 @@ function readPct(v: unknown): Pct {
   return out;
 }
 
+/**
+ * The balance today's % limits are taken from: the day's start balance once it is
+ * snapshotted, else the live balance. Losses taken during the day must not shrink
+ * the day's own limit (2% of 10,000 stays 200 after a −150 trade).
+ */
+export function anchorBalance(plan: { start_balance?: number | null } | null | undefined, live: number): number {
+  const start = Number(plan?.start_balance);
+  return Number.isFinite(start) && start > 0 ? start : Number(live) || 0;
+}
+
 /** Replace dollar limits with pct × current balance; adds current_balance. */
 export function applyPctLimits<S extends Record<string, unknown>>(s: S, balance: number): S & { current_balance: number } {
   const pct = readPct(s["limits_pct"]);

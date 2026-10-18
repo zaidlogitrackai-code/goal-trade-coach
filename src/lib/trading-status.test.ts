@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDayMetrics, computeStatus, countConsecutiveLosses, type StatusSettings, type StatusTrade } from "./trading-status";
+import { computeDayMetrics, computeStatus, countConsecutiveLosses, protectProfit, type StatusSettings, type StatusTrade } from "./trading-status";
 
 const now = new Date("2026-10-11T12:00:00+03:00");
 const base: StatusSettings = {
@@ -79,4 +79,15 @@ describe("today follows the trader's time zone", () => {
   it("23:30 Riyadh yesterday does not", () => {
     expect(computeDayMetrics(s, [at("2026-10-17T20:30:00Z")], 0, now).tradesToday).toBe(0);
   });
+});
+
+describe("protect profit", () => {
+  const limits = { max_trades_per_day: 5, max_daily_profit: 500 };
+  it("nothing reached → null", () => expect(protectProfit({ tradesToday: 4, todayPnl: 499 }, limits)).toBeNull());
+  it("max trades reached", () =>
+    expect(protectProfit({ tradesToday: 5, todayPnl: 0 }, limits)).toEqual({ maxTrades: true, profitCap: false, text: "وصلت حدّ صفقاتك اليوم" }));
+  it("profit cap reached", () =>
+    expect(protectProfit({ tradesToday: 1, todayPnl: 500 }, limits)).toMatchObject({ profitCap: true, text: "وصلت حدّ ربحك اليوم" }));
+  it("both", () => expect(protectProfit({ tradesToday: 6, todayPnl: 600 }, limits)?.text).toBe("وصلت حدّ ربحك وصفقاتك اليوم"));
+  it("0 means off", () => expect(protectProfit({ tradesToday: 50, todayPnl: 5000 }, { max_trades_per_day: 0, max_daily_profit: 0 })).toBeNull());
 });
