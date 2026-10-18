@@ -1,5 +1,6 @@
-import type { Trade, Violation } from "./queries";
-import { inRevengeWindow, isGreed, REVENGE_WINDOW_MIN } from "./emotions";
+import type { Trade } from "./queries";
+
+// Performance helpers only; discipline numbers come from discipline.ts.
 
 export function tradeStats(trades: Trade[]) {
   const closed = trades.filter((t) => t.status === "closed");
@@ -40,34 +41,4 @@ export function equityCurve(trades: Trade[], start: number) {
     .filter((t) => t.status === "closed")
     .sort((a, b) => +new Date(a.closed_at ?? a.opened_at) - +new Date(b.closed_at ?? b.opened_at))
     .map((t, i) => { bal += Number(t.pnl) || 0; return { n: i + 1, balance: Math.round(bal * 100) / 100 }; });
-}
-
-/** Discipline 0-100 and greed signals, derived only from the user's own data. */
-export function disciplineReport(trades: Trade[], violations: Violation[], maxRisk: number, revengeWindowMin = REVENGE_WINDOW_MIN()) {
-  const signals: string[] = [];
-  if (trades.length === 0) return { score: null as number | null, signals, checklistRate: 0, overRisk: 0, revenge: 0, revengeWindowMin, greedy: 0 };
-  const checklistRate = (trades.filter((t) => t.checklist_passed).length / trades.length) * 100;
-  const overRisk = maxRisk > 0 ? trades.filter((t) => Number(t.risk_amount) > maxRisk).length : 0;
-  const sorted = [...trades].sort((a, b) => +new Date(a.opened_at) - +new Date(b.opened_at));
-  let revenge = 0;
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1]!; const cur = sorted[i]!;
-    if (prev.status === "closed" && (Number(prev.pnl) || 0) < 0 && prev.closed_at) {
-      const gap = +new Date(cur.opened_at) - +new Date(prev.closed_at);
-      if (inRevengeWindow(gap, revengeWindowMin)) revenge++;
-    }
-  }
-  const greedy = trades.filter((t) => isGreed(t.emotion)).length;
-  let score = 100;
-  score -= (100 - checklistRate) * 0.3;
-  score -= Math.min(25, overRisk * 5);
-  score -= Math.min(20, revenge * 5);
-  score -= Math.min(15, greedy * 3);
-  score -= Math.min(20, violations.length * 4);
-  if (checklistRate < 80) signals.push(`دخلت ${Math.round(100 - checklistRate)}٪ من صفقاتك بدون إكمال قائمة التحقق.`);
-  if (overRisk) signals.push(`${overRisk} صفقة تجاوزت حد المخاطرة للصفقة.`);
-  if (revenge) signals.push(`${revenge} صفقة فتحتها خلال ${revengeWindowMin} دقيقة بعد خسارة (تداول انتقامي محتمل).`);
-  if (greedy) signals.push(`${greedy} صفقة سجّلت فيها مشاعر طمع أو انتقام أو خوف من الفوات.`);
-  if (violations.length) signals.push(`${violations.length} مخالفة مسجلة لقواعدك.`);
-  return { score: Math.max(0, Math.round(score)), signals, checklistRate, overRisk, revenge, revengeWindowMin, greedy };
 }

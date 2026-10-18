@@ -108,10 +108,7 @@ export const activeSessionQuery = queryOptions({
 
 export { uid as currentUserId };
 
-export function fmtMoney(n: number | null | undefined, currency = "USD") {
-  if (n == null || Number.isNaN(n)) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(n);
-}
+export { fmtMoney } from "@/lib/money";
 
 export function fmtDate(s: string | null) {
   if (!s) return "—";

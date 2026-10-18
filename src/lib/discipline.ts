@@ -1,7 +1,7 @@
 /**
- * Discipline & greed report (Phase 6). Pure: derived only from the user's own
- * trades and violations, so the discipline page, reports and AI context can
- * share one calculation.
+ * The one discipline & greed report. Pure: derived only from the user's own
+ * trades and violations, so the discipline page, reports and AI context share
+ * one score, one set of reasons and one "right after a loss".
  */
 import { countConsecutiveLosses } from "./trading-status";
 import { dayKey, dayStart } from "./trading-day";
@@ -27,6 +27,14 @@ export interface DisciplineViolation {
 const QUICK_MS = 5 * 60_000;
 export const WINDOW_DAYS = 30;
 
+/** The trader's own cooldown length, 30 minutes when he never set one. */
+export const cooldownMinutes = (s?: { cooldown_minutes?: number | null } | null) => {
+  const m = Math.round(Number(s?.cooldown_minutes));
+  return Number.isFinite(m) && m > 0 ? m : 30;
+};
+// A stop of 0 is what a chat-logged trade carries for "no stop".
+const hasStop = (t: DisciplineTrade) => t.stop_loss != null && Number(t.stop_loss) > 0;
+
 export interface EmotionRow {
   emotion: string;
   count: number;
@@ -39,6 +47,8 @@ export interface EmotionRow {
 export interface Intervention {
   kind: "cooldown" | "review" | "overtrading";
   message: string;
+  /** cooldown only: how long the suggested pause is (the trader's cooldown_minutes). */
+  minutes?: number;
 }
 
 export interface DisciplineReport {
@@ -71,15 +81,28 @@ export interface DisciplineReport {
 export function disciplineReport(
   allTrades: DisciplineTrade[],
   allViolations: DisciplineViolation[],
-  opts: { maxRiskPerTrade: number; now?: Date; tz?: string | null; revengeWindowMin?: number },
+  opts: {
+    maxRiskPerTrade: number;
+    now?: Date;
+    tz?: string | null | undefined;
+    revengeWindowMin?: number;
+    cooldownMinutes?: number;
+    /** The reports page's period; the last WINDOW_DAYS days by default. */
+    range?: { start: Date; end: Date };
+  },
 ): DisciplineReport {
   const now = opts.now ?? new Date();
   const tz = opts.tz;
   const windowMin = opts.revengeWindowMin ?? REVENGE_WINDOW_MIN();
-  const since = now.getTime() - WINDOW_DAYS * 86_400_000;
-  const trades = allTrades.filter((t) => new Date(t.opened_at).getTime() >= since);
-  const violations = allViolations.filter((v) => new Date(v.occurred_at).getTime() >= since);
-  const interventions = todayInterventions(allTrades, allViolations, now, tz);
+  const from = opts.range?.start.getTime() ?? now.getTime() - WINDOW_DAYS * 86_400_000;
+  const to = opts.range?.end.getTime() ?? Infinity;
+  const inRange = (at: string) => {
+    const x = new Date(at).getTime();
+    return x >= from && x <= to;
+  };
+  const trades = allTrades.filter((t) => inRange(t.opened_at));
+  const violations = allViolations.filter((v) => inRange(v.occurred_at));
+  const interventions = todayInterventions(allTrades, allViolations, now, tz, opts.cooldownMinutes);
 
   const n = trades.length;
   const empty = {
@@ -110,7 +133,7 @@ export function disciplineReport(
     };
 
   const checklistOk = trades.filter((t) => t.checklist_passed).length;
-  const withStop = trades.filter((t) => t.stop_loss != null).length;
+  const withStop = trades.filter(hasStop).length;
   const losers = trades.filter(
     (t) => t.status === "closed" && (t.pnl ?? 0) < 0 && (t.risk_amount ?? 0) > 0,
   );
@@ -240,7 +263,7 @@ function emotionVsResult(trades: DisciplineTrade[]): EmotionRow[] {
     row.count++;
     if (t.status === "closed") {
       row.closed++;
-      row.pnl += t.pnl ?? 0;
+      row.pnl += Number(t.pnl) || 0;
       if ((t.pnl ?? 0) > 0) row.wins++;
     }
     map.set(key, row);
@@ -260,17 +283,20 @@ export function todayInterventions(
   violations: DisciplineViolation[],
   now = new Date(),
   tz?: string | null,
+  cooldownMin = cooldownMinutes(),
 ): Intervention[] {
   const start = dayStart(now, tz).getTime();
   const out: Intervention[] = [];
   const closedToday = trades.filter(
     (t) => t.status === "closed" && t.closed_at && new Date(t.closed_at).getTime() >= start,
   );
+  // Today's closes only: yesterday's losing run is not a reason to stop now.
   const streak = countConsecutiveLosses(closedToday);
   if (streak >= 2)
     out.push({
       kind: "cooldown",
-      message: `${streak} خسائر متتالية اليوم. خذ فترة تهدئة قبل أي قرار، ولا تبحث عن صفقة تعوّض.`,
+      message: `${streak} خسائر متتالية اليوم. خذ تهدئة ${cooldownMin} دقيقة قبل أي قرار، ولا تدوّر صفقة تعوّض.`,
+      minutes: cooldownMin,
     });
   if (violations.some((v) => v.trade_id && new Date(v.occurred_at).getTime() >= start))
     out.push({

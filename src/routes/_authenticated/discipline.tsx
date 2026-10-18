@@ -1,7 +1,7 @@
 import { StreakCard } from "@/components/streak-card";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatHeader, Loading, Stat } from "@/components/app-shell";
@@ -14,12 +14,11 @@ import { disciplineMorning } from "@/lib/ai.functions";
 import { Button } from "@/components/ui/button";
 import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
-import { currentUserId, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
+import { currentUserId, fmtMoney, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { parseDecimal } from "@/lib/num";
 import { dayKey } from "@/lib/trading-day";
-import { disciplineReport } from "@/lib/stats";
+import { cooldownMinutes, disciplineReport, WINDOW_DAYS } from "@/lib/discipline";
 import { REVENGE_WINDOW_MIN } from "@/lib/emotions";
-import { countConsecutiveLosses } from "@/lib/trading-status";
 import { ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/discipline")({
@@ -102,32 +101,32 @@ function DisciplineStats() {
   }, []);
 
   useEffect(() => {
-    if (s.data && mins === null) setMins(String(s.data.cooldown_minutes || 30));
+    if (s.data && mins === null) setMins(String(cooldownMinutes(s.data)));
   }, [s.data, mins]);
+
+  // Not on the countdown's 1s tick: the report only changes with the data.
+  const rep = useMemo(
+    () =>
+      disciplineReport(t.data ?? [], v.data ?? [], {
+        maxRiskPerTrade: Number(s.data?.max_risk_per_trade) || 0,
+        tz: s.data?.timezone,
+        revengeWindowMin: REVENGE_WINDOW_MIN(s.data),
+        cooldownMinutes: cooldownMinutes(s.data),
+      }),
+    [t.data, v.data, s.data],
+  );
 
   if (s.isLoading || t.isLoading || v.isLoading) return <Loading />;
 
-  const trades = t.data ?? [];
-  const violations = v.data ?? [];
   const settings = s.data!;
-
-  const rep = disciplineReport(trades, violations, Number(settings.max_risk_per_trade) || 0, REVENGE_WINDOW_MIN(settings));
+  const cur = settings.currency;
   const until = settings.cooldown_until ? new Date(settings.cooldown_until).getTime() : 0;
   const left = Math.max(0, until - now);
-  const streak = countConsecutiveLosses(
-    trades.map((x) => ({
-      status: x.status,
-      pnl: x.pnl == null ? null : Number(x.pnl),
-      opened_at: x.opened_at,
-      closed_at: x.closed_at,
-      risk_amount: x.risk_amount,
-    }))
-  );
-  const maxStreak = settings.max_consecutive_losses ?? 0;
-
-  // Additional discipline calculations
-  const tradesWithSL = trades.filter((x) => x.stop_loss != null && x.stop_loss > 0).length;
-  const slRate = trades.length > 0 ? Math.round((tradesWithSL / trades.length) * 100) : 100;
+  const cool = rep.interventions.find((x) => x.kind === "cooldown");
+  const coolMin = cool?.minutes ?? cooldownMinutes(settings);
+  const nudges = rep.interventions.filter((x) => x.kind !== "cooldown");
+  const pct = (x: number | null) => (x == null ? "—" : `${Math.round(x)}%`);
+  const mt = rep.metrics;
 
   async function saveCooldown(patch: { cooldown_until?: string | null; cooldown_minutes?: number }) {
     const user_id = await currentUserId();
@@ -139,7 +138,7 @@ function DisciplineStats() {
     qc.invalidateQueries({ queryKey: ["settings"] });
   }
 
-  const m = Math.max(0, Math.round(parseDecimal(mins).value ?? 0)) || 30;
+  const m = Math.max(0, Math.round(parseDecimal(mins).value ?? 0)) || cooldownMinutes(settings);
   const fmt = (ms: number) => {
     const sec = Math.ceil(ms / 1000);
     return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
@@ -212,33 +211,42 @@ function DisciplineStats() {
           </div>
         )}
 
-        {maxStreak > 0 && streak >= 2 && left === 0 && (
+        {/* Today's losing run and his own cooldown length; it never rewrites the saved default. */}
+        {cool && left === 0 && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3.5 text-xs text-destructive flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 shrink-0" />
-              <span>لديك {streak} خسائر متتالية. ننصحك بقوة ببدء فترة تهدئة 20 دقيقة قبل فتح أي صفقة جديدة.</span>
+              <span>{cool.message}</span>
             </div>
             <Button
               size="sm"
               variant="destructive"
+              className="shrink-0"
               onClick={() =>
-                saveCooldown({
-                  cooldown_minutes: 20,
-                  cooldown_until: new Date(Date.now() + 20 * 60000).toISOString(),
-                })
+                saveCooldown({ cooldown_until: new Date(Date.now() + coolMin * 60000).toISOString() })
               }
             >
-              تهدئة 20 دقيقة
+              تهدئة {coolMin} دقيقة
             </Button>
           </div>
         )}
       </div>
 
-      {/* DISCIPLINE SCORE & BREAKDOWN */}
+      {nudges.length > 0 && (
+        <ul className="panel space-y-2 p-4 text-sm">
+          {nudges.map((x) => (
+            <li key={x.kind} className="flex items-start gap-2">
+              <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>{x.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Everything below is discipline.ts's report: the score and its reasons come from one place. */}
       {rep.score == null ? (
-        <p className="panel p-5 text-center text-sm text-muted-foreground">لا توجد بيانات بعد. سجّل أول صفقة وتطلع درجتك هنا.</p>
+        <p className="panel p-5 text-center text-sm text-muted-foreground">ما فيه صفقات بآخر {WINDOW_DAYS} يوم. سجّل صفقتك وتطلع درجتك هنا.</p>
       ) : (
-        /* REAL DISCIPLINE STATS */
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Stat
@@ -248,85 +256,77 @@ function DisciplineStats() {
             />
             <Stat
               label="الالتزام بوقف الخسارة"
-              value={`${slRate}%`}
-              tone={slRate >= 90 ? "success" : "destructive"}
+              value={pct(mt.stopLossSetRate)}
+              tone={(mt.stopLossSetRate ?? 0) >= 90 ? "success" : "destructive"}
             />
-            <Stat
-              label="الالتزام بقائمة التحقق"
-              value={`${Math.round(rep.checklistRate)}%`}
-            />
+            <Stat label="الالتزام بقائمة التحقق" value={pct(mt.planAdherenceRate)} />
             <Stat
               label="تداول انتقامي محتمل"
-              value={rep.revenge}
-              tone={rep.revenge > 0 ? "destructive" : undefined}
+              value={mt.revengeCount}
+              tone={mt.revengeCount > 0 ? "destructive" : undefined}
             />
             <Stat
               label="صفقات بمشاعر طمع"
-              value={rep.greedy}
-              tone={rep.greedy > 0 ? "warning" : undefined}
+              value={mt.greedCount}
+              tone={mt.greedCount > 0 ? "warning" : undefined}
             />
           </div>
 
-          {/* RATIONALE BEHIND SCORE */}
           <div className="panel p-6 space-y-4">
             <h3 className="font-bold text-base flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
-              <span>السبب والتفسير الموضوعي لدرجة الانضباط ({rep.score}/100)</span>
+              <span>ليش درجتك {rep.score}/100؟</span>
             </h3>
+            <p className="text-xs text-muted-foreground">
+              من {rep.sample} صفقة بآخر {WINDOW_DAYS} يوم. الدخول خلال {mt.revengeWindowMin} دقيقة بعد خسارة ينحسب انتقام.
+            </p>
+            {rep.concerns.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="size-4 shrink-0" />
+                <span>ما فيه ولا إشارة سلبية. كمّل كذا.</span>
+              </div>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {rep.concerns.map((x) => (
+                  <li key={x} className="flex items-start gap-2">
+                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-destructive" />
+                    <span>{x}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {rep.strengths.length > 0 && (
+              <ul className="space-y-2 border-t border-border pt-3 text-sm">
+                {rep.strengths.map((x) => (
+                  <li key={x} className="flex items-start gap-2 text-success">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                    <span>{x}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-            <div className="rounded-lg bg-muted/40 p-4 text-sm leading-relaxed text-foreground/90 space-y-2">
-              <p>
-                تم احتساب درجتك استناداً إلى تحليل {trades.length} صفقات مسجلة ومقارنتها بقواعدك:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground pr-2">
-                <li>
-                  الالتزام بوقف الخسارة: {tradesWithSL} من أصل {trades.length} صفقات تضمنت وقف خسارة مسبق ({slRate}%).
-                </li>
-                <li>
-                  إكمال قائمة التحقق قبل الدخول: {Math.round(rep.checklistRate)}% من صفقاتك استوفت كافة الشروط.
-                </li>
-                {rep.revenge > 0 ? (
-                  <li className="text-destructive font-medium">
-                    خصم {rep.revenge * 5} نقاط بسبب {rep.revenge} صفقات فُتحت خلال {rep.revengeWindowMin} دقيقة بعد خسارة (سلوك انتقامي).
+          {rep.emotionVsResult.length > 1 && (
+            <div className="panel space-y-2 p-6">
+              <h3 className="font-bold text-base">مشاعرك ونتيجتها</h3>
+              <ul className="divide-y divide-border text-sm">
+                {rep.emotionVsResult.map((r) => (
+                  <li key={r.emotion} className="flex items-center justify-between gap-3 py-2">
+                    <span className="min-w-0 truncate">
+                      {r.emotion}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        ({r.count}{r.winRate != null ? ` · فوز ${Math.round(r.winRate)}%` : ""})
+                      </span>
+                    </span>
+                    <span dir="ltr" className={`font-data shrink-0 ${r.pnl > 0 ? "text-success" : r.pnl < 0 ? "text-destructive" : ""}`}>
+                      {r.closed ? fmtMoney(r.pnl, cur, { trim: true }) : "—"}
+                    </span>
                   </li>
-                ) : (
-                  <li className="text-success font-medium">
-                    صفر صفقات انتقامية بعد الخسائر (تحكم انفعالي ممتاز).
-                  </li>
-                )}
-                {rep.overRisk > 0 && (
-                  <li className="text-destructive font-medium">
-                    خصم {rep.overRisk * 5} نقاط لتجاوز سقف المخاطرة المسموح للصفقة الواحدة في {rep.overRisk} صفقات.
-                  </li>
-                )}
-                {violations.length > 0 && (
-                  <li className="text-destructive">
-                    تم قيد {violations.length} مخالفات استثنائية مسجلة في السجل.
-                  </li>
-                )}
+                ))}
               </ul>
             </div>
-
-            {/* Behavioral Signals */}
-            <div className="pt-2">
-              <h4 className="font-semibold text-xs text-muted-foreground mb-2">إشارات السلوك المسجلة:</h4>
-              {rep.signals.length === 0 ? (
-                <div className="flex items-center gap-2 text-xs text-success">
-                  <CheckCircle2 className="size-4" />
-                  <span>لا توجد أي إشارات سلبية. سلوكك التداولي يتسم بالانضباط والهدوء.</span>
-                </div>
-              ) : (
-                <ul className="space-y-2 text-xs">
-                  {rep.signals.map((sig, i) => (
-                    <li key={i} className="flex items-start gap-2 text-foreground/90">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-destructive" />
-                      <span>{sig}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

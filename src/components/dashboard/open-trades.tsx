@@ -3,8 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
 import { safeSession } from "@/lib/safe-storage";
-import { money } from "@/components/dashboard/core-metrics";
-import type { Trade } from "@/lib/queries";
+import { fmtMoney, type Trade } from "@/lib/queries";
 
 /** Open trades with a one-tap "I closed it" that hands off to the coach. */
 export function OpenTrades({ trades, currency }: { trades: Trade[]; currency: string }) {
@@ -30,7 +29,7 @@ export function OpenTrades({ trades, currency }: { trades: Trade[]; currency: st
                 دخول <span className="font-data">{t.entry_price ?? "—"}</span>
                 {" · "}
                 {t.stop_loss != null ? <>وقف <span className="font-data">{t.stop_loss}</span></> : <span className="inline-flex items-center gap-1 font-semibold text-destructive"><AlertTriangle className="size-3" />بدون وقف</span>}
-                {" · "}مخاطرة {money(Number(t.risk_amount), currency)}
+                {" · "}مخاطرة {fmtMoney(Number(t.risk_amount), currency, { trim: true })}
               </p>
             </div>
             <Button size="sm" variant="secondary" className="shrink-0" onClick={() => closeIt(t)}>سكّرتها</Button>

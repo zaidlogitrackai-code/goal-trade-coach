@@ -53,6 +53,29 @@ describe("agent actions", () => {
     expect(parseAction({ type: "update_settings", summary: "", data: '{"timezone":"Asia/Dubai"}' })).toEqual({ timezone: "Asia/Dubai" });
     expect(parseAction({ type: "update_settings", summary: "", data: '{"timezone":"Riyadh"}' })).toBeNull();
   });
+  it("drops null and '' keys instead of turning them into 0 (a limit switched off)", () => {
+    expect(
+      parseAction({
+        type: "update_settings",
+        summary: "",
+        data: '{"max_daily_loss":null,"weekly_max_loss":"","monthly_max_loss":" ","daily_target":100}',
+      }),
+    ).toEqual({ daily_target: 100 });
+  });
+  it("takes only an ISO currency, booking USDT as USD", () => {
+    const cur = (c: string) => parseAction({ type: "update_settings", summary: "", data: JSON.stringify({ currency: c }) });
+    expect(cur("usdt")).toEqual({ currency: "USD" });
+    expect(cur("SAR")).toEqual({ currency: "SAR" });
+    expect(cur("XYZ")).toBeNull();
+    expect(actionIssue({ type: "update_settings", summary: "", data: '{"currency":"XYZ"}' })).toContain("ISO");
+  });
+  it("sets session hours as HH:MM and refuses a broken time", () => {
+    expect(
+      parseAction({ type: "update_settings", summary: "", data: '{"session_start":"9:00","session_end":"17:30:00"}' }),
+    ).toEqual({ session_start: "09:00", session_end: "17:30" });
+    expect(parseAction({ type: "update_settings", summary: "", data: '{"session_start":"25:00"}' })).toBeNull();
+    expect(actionIssue({ type: "update_settings", summary: "", data: '{"session_end":"late"}' })).toContain("17:00");
+  });
   it("rejects negative limits and unknown types", () => {
     expect(
       parseAction({ type: "update_settings", summary: "", data: '{"max_daily_loss":-5}' }),
@@ -234,5 +257,28 @@ describe("auto mode never loosens a limit without a click", () => {
   });
   it("the same zone again, or tightening against the live limit, still runs by itself", () => {
     expect(loosenedLimits({ ...settings, max_daily_loss: 200 }, { timezone: "Asia/Riyadh", max_daily_loss: 150 })).toEqual([]);
+  });
+});
+
+describe("update_settings goes through the one validator", () => {
+  beforeEach(() => {
+    db.rows = {};
+    db.writes = [];
+  });
+  const row = { user_id: "u1", starting_balance: 10_000, created_at: "2026-01-01T00:00:00Z", max_daily_loss: 300, currency: "USD", timezone: "Asia/Riyadh" };
+  it("refuses a weekly loss limit below the daily one", async () => {
+    db.rows["trading_settings"] = row as never;
+    await expect(runAction({ type: "update_settings", summary: "", data: '{"weekly_max_loss":100}' })).rejects.toThrow("حد الخسارة الأسبوعي");
+    expect(db.writes).toEqual([]);
+  });
+  it("an old conflict on file doesn't block an unrelated change", async () => {
+    db.rows["trading_settings"] = { ...row, weekly_max_loss: 100 } as never;
+    await runAction({ type: "update_settings", summary: "", data: '{"daily_target":50}' });
+    expect(db.writes.some((w) => w.table === "trading_settings" && w.op === "upsert")).toBe(true);
+  });
+  it("refuses only one session end", async () => {
+    db.rows["trading_settings"] = row as never;
+    await expect(runAction({ type: "update_settings", summary: "", data: '{"session_start":"09:00"}' })).rejects.toThrow("الجلسة");
+    expect(db.writes).toEqual([]);
   });
 });

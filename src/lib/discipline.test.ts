@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cooldownMinutes,
   disciplineReport,
   scoreSummary,
   todayInterventions,
@@ -137,6 +138,47 @@ describe("disciplineReport", () => {
     const old = tr({ at: "2026-08-01T09:00:00", stop_loss: null, checklist_passed: false });
     expect(disciplineReport([old], [], { maxRiskPerTrade: 0, now }).score).toBeNull();
   });
+
+  it("scores the reports page's own period instead, violations included", () => {
+    const trades = [
+      tr({ at: "2026-08-01T09:00:00", stop_loss: null }),
+      tr({ at: "2026-10-10T09:00:00" }),
+    ];
+    const violations = [
+      { occurred_at: "2026-08-01T10:00:00", trade_id: null },
+      { occurred_at: "2026-10-10T10:00:00", trade_id: null },
+    ];
+    const range = { start: new Date("2026-07-30T00:00:00"), end: new Date("2026-08-02T00:00:00") };
+    const r = disciplineReport(trades, violations, { maxRiskPerTrade: 0, now, range });
+    expect(r.sample).toBe(1);
+    expect(r.metrics.stopLossSetRate).toBe(0);
+    expect(r.metrics.violations).toBe(1);
+  });
+
+  it("a stop of 0 is no stop", () => {
+    const r = disciplineReport([tr({ at: "2026-10-11T09:00:00", stop_loss: 0 })], [], { maxRiskPerTrade: 0, now });
+    expect(r.metrics.stopLossSetRate).toBe(0);
+    expect(r.concerns.join(" ")).toContain("بدون وقف خسارة");
+  });
+
+  it("carries the trader's cooldown length into today's cooldown nudge", () => {
+    const trades = [
+      tr({ at: "2026-10-11T09:00:00", close: "2026-10-11T09:10:00", pnl: -10 }),
+      tr({ at: "2026-10-11T10:00:00", close: "2026-10-11T10:10:00", pnl: -10 }),
+    ];
+    const cool = disciplineReport(trades, [], { maxRiskPerTrade: 0, now, cooldownMinutes: 45 }).interventions[0]!;
+    expect(cool).toMatchObject({ kind: "cooldown", minutes: 45 });
+    expect(cool.message).toContain("45 دقيقة");
+  });
+});
+
+describe("cooldownMinutes", () => {
+  it("is the saved length, 30 when none was set", () => {
+    expect(cooldownMinutes({ cooldown_minutes: 45 })).toBe(45);
+    expect(cooldownMinutes({ cooldown_minutes: 0 })).toBe(30);
+    expect(cooldownMinutes({ cooldown_minutes: null })).toBe(30);
+    expect(cooldownMinutes(null)).toBe(30);
+  });
 });
 
 describe("todayInterventions", () => {
@@ -148,6 +190,16 @@ describe("todayInterventions", () => {
     const out = todayInterventions(trades, [], now);
     expect(out.map((x) => x.kind)).toEqual(["cooldown"]);
     expect(out[0]!.message).toContain("تهدئة");
+    expect(out[0]!.minutes).toBe(30);
+  });
+
+  it("counts only today's losing run: yesterday's two losses don't ask for a pause", () => {
+    const trades = [
+      tr({ at: "2026-10-10T09:00:00", close: "2026-10-10T09:10:00", pnl: -10 }),
+      tr({ at: "2026-10-10T10:00:00", close: "2026-10-10T10:10:00", pnl: -10 }),
+      tr({ at: "2026-10-11T09:00:00", close: "2026-10-11T09:10:00", pnl: -10 }),
+    ];
+    expect(todayInterventions(trades, [], now)).toEqual([]);
   });
 
   it("asks for a short review after a violating trade today", () => {

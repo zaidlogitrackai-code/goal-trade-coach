@@ -1,9 +1,5 @@
+import { fmtMoney } from "@/lib/money";
 import type { DayMetrics, StatusSettings } from "@/lib/trading-status";
-
-function money(n: number) {
-  const v = Math.round(n * 100) / 100;
-  return `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString("en-US")}`;
-}
 
 function Gauge({ label, short, value, sub, used, max }: { label: string; short: string; value: string; sub: string; used: number; max: number }) {
   const pct = max > 0 ? Math.min(100, Math.max(0, (used / max) * 100)) : 0;
@@ -21,7 +17,8 @@ function Gauge({ label, short, value, sub, used, max }: { label: string; short: 
   );
 }
 
-export function RiskGauges({ s, m }: { s: StatusSettings; m: DayMetrics }) {
+export function RiskGauges({ s, m }: { s: StatusSettings & { currency?: string | null }; m: DayMetrics }) {
+  const money = (n: number) => fmtMoney(n, s.currency, { trim: true });
   const lossUsed = Math.max(0, -m.todayPnl);
   return (
     <div className="mb-2 grid shrink-0 grid-cols-4 gap-1.5 sm:gap-2">

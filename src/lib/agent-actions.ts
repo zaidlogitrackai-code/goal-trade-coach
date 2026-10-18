@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
-import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
+import { normalizeCurrency, parseClock, SUPPORTED_CURRENCIES, validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import type { TradeInput } from "@/lib/trade-gate";
 import { dayKey, safeTz } from "@/lib/trading-day";
 import { inMarkets, type FocusPatch } from "@/lib/focus";
@@ -216,15 +216,34 @@ const SETTINGS_KEYS = [
   "cooldown_minutes",
 ] as const;
 
+/** سَنَد sends null or "" for "not mentioned"; coerced, both became 0 = that limit switched off. */
+const dropBlank = (v: unknown) =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).filter(([, x]) => x != null && !(typeof x === "string" && x.trim() === "")))
+    : v;
+const clock = (msg: string) =>
+  z.preprocess((v) => (typeof v === "string" ? (parseClock(v) ?? v) : v), z.string().refine((t) => parseClock(t) === t, msg));
+
 export const SCHEMAS = {
-  update_settings: z
-    .object({
-      ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, num.min(0).optional()])),
-      currency: z.string().max(5).optional(),
-      display_name: z.string().max(60).optional(),
-      timezone: z.string().max(64).refine((tz) => safeTz(tz) === tz, "منطقة زمنية غير معروفة").optional(),
-    })
-    .partial(),
+  update_settings: z.preprocess(
+    dropBlank,
+    z
+      .object({
+        ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, num.min(0).optional()])),
+        // USDT and friends are booked as USD; anything else must be a real ISO code.
+        currency: z
+          .preprocess(
+            (v) => (typeof v === "string" ? (normalizeCurrency(v).code ?? v) : v),
+            z.enum(SUPPORTED_CURRENCIES, { message: "العملة لازم تكون رمز ISO مثل USD أو SAR" }),
+          )
+          .optional(),
+        display_name: z.string().max(60).optional(),
+        timezone: z.string().max(64).refine((tz) => safeTz(tz) === tz, "منطقة زمنية غير معروفة").optional(),
+        session_start: clock("وقت بداية الجلسة لازم يكون مثل 09:00").optional(),
+        session_end: clock("وقت نهاية الجلسة لازم يكون مثل 17:00").optional(),
+      })
+      .partial(),
+  ),
   add_strategy: z.object({
     name: z.string().min(1).max(80),
     description: opt,

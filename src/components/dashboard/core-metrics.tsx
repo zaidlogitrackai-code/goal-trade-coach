@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { TrendingUp, Shield, Activity, Flame, type LucideIcon } from "lucide-react";
+import { fmtMoney } from "@/lib/money";
 
 interface CoreMetricsProps {
   todayPnl: number;
@@ -16,16 +17,8 @@ interface CoreMetricsProps {
   maxConsecutiveLosses: number;
 }
 
-/** Whole numbers without ".00" — cleaner cards. */
-export function money(n: number | null | undefined, currency = "USD") {
-  if (n == null || Number.isNaN(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: Number.isInteger(n) ? 0 : 2,
-    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
-  }).format(n);
-}
+// Whole numbers without ".00" — cleaner cards.
+const money = (n: number | null | undefined, currency: string) => fmtMoney(n, currency, { trim: true });
 
 function Card({ to, label, Icon, value, tone, sub }: {
   to: string; label: string; Icon: LucideIcon; value: string; tone?: string | undefined; sub: string;

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { reportSummary } from "@/lib/ai.functions";
 import { fmtDate, fmtMoney, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
-import { disciplineReport, groupPnl, tradeStats } from "@/lib/stats";
+import { groupPnl, tradeStats } from "@/lib/stats";
+import { disciplineReport } from "@/lib/discipline";
 import { REVENGE_WINDOW_MIN } from "@/lib/emotions";
 import { addDays, dayKey, dayStart, zonedMidnight } from "@/lib/trading-day";
 
@@ -45,13 +46,20 @@ function ReportsPage() {
   const trades = (t.data ?? []).filter((x) => inRange(x.opened_at));
   const viol = (v.data ?? []).filter((x) => inRange(x.occurred_at));
   const k = tradeStats(trades);
-  const d = disciplineReport(trades, viol, Number(s.data?.max_risk_per_trade) || 0, REVENGE_WINDOW_MIN(s.data));
+  const d = disciplineReport(t.data ?? [], v.data ?? [], {
+    maxRiskPerTrade: Number(s.data?.max_risk_per_trade) || 0,
+    tz,
+    revengeWindowMin: REVENGE_WINDOW_MIN(s.data),
+    range: { start, end },
+  });
   const bySym = groupPnl(trades, (x) => x.symbol);
 
   async function runAi() {
     setBusy(true); setAi(null);
     try {
-      const stats = JSON.stringify({ ...k, profitFactor: Number.isFinite(k.profitFactor) ? k.profitFactor : "لا خسائر", discipline: d, bySymbol: bySym, violations: viol.length });
+      // Today's nudges are not part of a period's report.
+      const discipline = { score: d.score, sample: d.sample, concerns: d.concerns, strengths: d.strengths, metrics: d.metrics };
+      const stats = JSON.stringify({ ...k, profitFactor: Number.isFinite(k.profitFactor) ? k.profitFactor : "لا خسائر", discipline, bySymbol: bySym, violations: viol.length });
       const r = await gen({ data: { period: LABEL[p], stats } });
       setAi(r.text);
     } catch (e) { toast.error(e instanceof Error ? e.message : "تعذّر إنشاء التقرير"); }
