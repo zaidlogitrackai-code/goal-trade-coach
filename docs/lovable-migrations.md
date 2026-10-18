@@ -24,7 +24,7 @@ Requirements:
 
 ---
 
-## 0014 — corrective (pending)
+## 0014 — corrective (applied by Lovable on 2026-10-18 as 0014_apply_0014_corrective.sql; original removed)
 
 Paste into Lovable:
 
