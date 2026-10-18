@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ResponsiveSheet } from "@/components/responsive-sheet";
 import { useMediaQuery, WIDE_QUERY } from "@/hooks/use-media-query";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
 
 export const NAV_GROUPS = [
   {
@@ -175,6 +176,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   // The sidebar exists only from lg up, so only one bell is mounted: one query, one greeting.
   const wide = useMediaQuery(WIDE_QUERY);
   const [moreOpen, setMoreOpen] = useState(false);
+  // --vvh and html[data-kb] for every page: chat frames and sheets fit above the keyboard.
+  useVisualViewport();
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
@@ -249,7 +252,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <nav className="glass-strong tab-bar-bottom fixed inset-x-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
+      <nav data-tabbar className="glass-strong tab-bar-bottom fixed inset-x-3 z-40 grid h-[4.25rem] grid-cols-5 items-center rounded-[2rem] px-1.5 lg:hidden" aria-label="التنقل الرئيسي">
         {MOBILE_NAV.map((n) => (
           <Link key={n.to} to={n.to} className="flex h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] text-muted-foreground transition-transform duration-200 ease-ios active:scale-92" activeProps={{ className: "bg-foreground/15 text-foreground font-semibold shadow-[inset_0_1px_0_var(--glass-highlight)]" }}>
             <n.icon className="size-5" />

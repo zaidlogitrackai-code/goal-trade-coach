@@ -1,18 +1,20 @@
 import { rememberChatImage } from "@/lib/agent-actions";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Camera, ImagePlus, Mic, RotateCw, SendHorizontal, Square, X } from "lucide-react";
+import { RotateCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { AgentActions, type StoredAction } from "@/components/agent-actions";
-import { Md } from "@/components/md";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import type { StoredAction } from "@/components/agent-actions";
+import { MessageRow, TypingBubble, UserBubble, type ChatMessage } from "@/components/chat-message";
+import { ChatComposer } from "@/components/chat-composer";
+import { ImageLightbox, type LightboxImage } from "@/components/image-lightbox";
+import { useChatScrollLock } from "@/hooks/use-visual-viewport";
 import { coachReply, transcribeAudio } from "@/lib/ai.functions";
 import { currentUserId, settingsQuery } from "@/lib/queries";
 import { dayKey } from "@/lib/trading-day";
-import { makeThumbnail, prepareImage } from "@/lib/image";
+import { makeThumbnail } from "@/lib/image";
+import { hasNewBelow, shouldAutoScroll } from "@/lib/chat-ui";
 import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
 import { threadState } from "@/lib/chat-check";
 
@@ -34,8 +36,8 @@ function blobToBase64(b: Blob): Promise<string> {
 }
 
 export interface AgentChatProps {
-  hasActive: boolean;
-  onChanged: () => void;
+  hasActive?: boolean;
+  onChanged?: () => void;
   /** Fixed thread title; defaults to today's session thread. */
   title?: string;
   greeting?: string;
@@ -47,11 +49,27 @@ export interface AgentChatProps {
   threadId?: string;
   /** Analyst only: short answers. */
   brief?: boolean;
+  /** Auto-run override from a page with its own switch; otherwise the saved 'coach-auto'. */
+  auto?: boolean;
+  /** An empty thread shows this line, with starters that fill the box (they don't send). */
+  empty?: { text: string; starters: string[] };
+  /** Sent once, as soon as the thread is ready (the home page's quick box). */
+  draft?: { text: string; image: string | null } | null;
+  /** After every send settles: the thread's title and order may have changed. */
+  onSent?: () => void;
 }
 
-export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId, brief }: AgentChatProps) {
+const CHIP = "min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent";
+
+/**
+ * The one chat every agent page uses (coach included): a grid frame, messages over composer,
+ * inside the page's agent-page box, which sizes itself from the visible viewport so the
+ * composer sits right on the keyboard.
+ */
+export function SessionAgent({ hasActive = false, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId, brief, auto: autoProp, empty, draft, onSent }: AgentChatProps) {
+  useChatScrollLock();
   // The day's title waits for his zone, so a guessed day never opens a second thread.
-  const settings = useQuery({ ...settingsQuery, enabled: !title });
+  const settings = useQuery({ ...settingsQuery, enabled: !title && !threadId });
   const threadTitle = title ?? (settings.isFetched ? todayTitle(settings.data?.timezone) : null);
   const qc = useQueryClient();
   const send = useServerFn(coachReply);
@@ -59,34 +77,36 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<string | null>(null);
+  // A double tap lands before the re-render that disables the button.
+  const sending = useRef(false);
+  // What he just sent, shown until his row is saved; `from` = rows before it, so an older
+  // message with the same words can't hide it.
+  const [pending, setPending] = useState<{ text: string; from: number } | null>(null);
   const [freshId, setFreshId] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
-  const [auto, setAuto] = useState(true);
+  const [savedAuto, setSavedAuto] = useState(true);
+  const auto = autoProp ?? savedAuto;
+  const [zoom, setZoom] = useState<LightboxImage | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const camRef = useRef<HTMLInputElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   const boot = useRef(false);
   // Full image of the last send, kept so "retry" can resend it.
   const lastImage = useRef<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  // Shrink the box back after sending a long message.
-  useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
+  // Pages pass inline callbacks; refs keep the memoized rows from re-rendering on every keystroke.
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+  const onSentRef = useRef(onSent);
+  onSentRef.current = onSent;
 
-  // Paste a copied image (screenshot / copied chart) straight into the chat, anywhere on the page.
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const f = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
-      if (!f) return;
-      e.preventDefault();
-      prepareImage(f).then(setImage).catch((err) => toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"));
-    };
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, []);
+  // Scrolling: the list scrolls itself (scrollIntoView also dragged the locked page on iOS).
+  // `pinned` = he is at the bottom; only then do new rows and growing images pull it down.
+  const listRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  const seen = useRef(0);
+  const [newBelow, setNewBelow] = useState(false);
 
-  useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
+  useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setSavedAuto(false); }, []);
 
   // Find (or create once) today's session thread, opened by the agent's question.
   const thread = useQuery({
@@ -112,7 +132,6 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     })();
   }, [threadId, thread.isLoading, thread.data, hasActive, qc, threadTitle, greeting]);
 
-
   const id = threadId ?? thread.data ?? null;
   useEffect(() => { if (id) onReady?.(id); }, [id, onReady]);
   const msgs = useQuery({
@@ -120,22 +139,31 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     enabled: !!id,
     // Agent messages written elsewhere (morning note, watcher alerts) appear without a reload.
     refetchInterval: busy ? false : 15_000,
-    queryFn: async () => {
+    queryFn: async (): Promise<ChatMessage[]> => {
       const { data, error } = await supabase.from("coach_messages").select("id,role,content,actions,image,created_at").eq("thread_id", id!).order("created_at");
       if (error) throw error;
       return data;
     },
   });
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [msgs.data, pending, busy]);
 
-  async function submit(override?: string, again = false) {
-    const msg = (override ?? text).trim() || (image ? "شوف هذي الصورة" : "");
-    if (!msg || busy || !id) return;
+  async function submit(opts: { text?: string; image?: string | null; again?: boolean } = {}) {
+    const again = !!opts.again;
+    const img = again ? lastImage.current : opts.image !== undefined ? opts.image : image;
+    const msg = (opts.text ?? text).trim() || (img ? "شوف هذي الصورة" : "");
+    if (!msg || sending.current || !id) return;
+    sending.current = true;
     setBusy(true);
-    const img = again ? lastImage.current : image;
     lastImage.current = img;
     rememberChatImage(img);
-    if (!again) { setText(""); setImage(null); setPending(msg); }
+    // His own message always brings the view back down to it.
+    pinned.current = true;
+    setNewBelow(false);
+    if (!again) {
+      // A chip or a voice note leaves what he was typing in the box.
+      if (opts.text === undefined) setText("");
+      if (img && img === image) setImage(null);
+      setPending({ text: msg, from: msgs.data?.length ?? 0 });
+    }
     try {
       const thumb = img ? await makeThumbnail(img) : null;
       const out = await sendReliably(
@@ -152,9 +180,28 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
       // The reply did arrive (only the response was lost): nothing to complain about.
       if (state !== "already-answered") toast.error(friendlyError(e));
       // If the message never reached the server, give it back so nothing typed is lost.
-      if (!again && state === "fresh") { setText(msg); if (img) setImage(img); }
-    } finally { setBusy(false); setPending(null); }
+      if (!again && state === "fresh") {
+        setText((cur) => (opts.text === undefined || !cur.trim() ? msg : cur));
+        if (img) setImage(img);
+      }
+    } finally {
+      sending.current = false;
+      setBusy(false);
+      setPending(null);
+      onSentRef.current?.();
+    }
   }
+  // The recorder's onstop and the draft effect run after later renders: always the newest submit.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  // The home page's message: sent once, as soon as this thread can take it.
+  const draftSent = useRef(false);
+  useEffect(() => {
+    if (!draft || !id || draftSent.current) return;
+    draftSent.current = true;
+    void submitRef.current({ text: draft.text, image: draft.image });
+  }, [draft, id]);
 
   async function toggleRecord() {
     if (recording) { recRef.current?.stop(); return; }
@@ -168,11 +215,11 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
         setRecording(false);
         const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
         if (blob.size < 1000) { toast.error("التسجيل قصير جدًا"); return; }
-        setBusy(true); setPending("رسالة صوتية…");
+        setBusy(true); setPending({ text: "رسالة صوتية…", from: Number.MAX_SAFE_INTEGER });
         try {
           const { text: heard } = await transcribe({ data: { audio: await blobToBase64(blob), mime: blob.type || "audio/webm" } });
           setBusy(false); setPending(null);
-          await submit(heard);
+          await submitRef.current({ text: heard });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "ما قدرت أفهم التسجيل");
           setBusy(false); setPending(null);
@@ -184,85 +231,103 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
     } catch { toast.error("اسمح للموقع باستخدام المايك عشان ترسل رسالة صوتية"); }
   }
 
+  const saveActions = useCallback(async (mid: string, next: StoredAction[]) => {
+    await supabase.from("coach_messages").update({ actions: next as never }).eq("id", mid);
+    onChangedRef.current?.();
+  }, []);
+
   const list = msgs.data ?? [];
-  const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending);
+  const showPending = !!pending && !list.slice(pending.from).some((m) => m.role === "user" && retryText(m.content) === pending.text);
   const stuck = !busy ? unansweredMessage(list) : null;
   const quick = quickProp ?? (hasActive ? ["خلصت، سكّر الجلسة", "أبي أدخل صفقة"] : ["إي بتداول اليوم", "لا، ما بتداول اليوم"]);
 
+  const onScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    pinned.current = shouldAutoScroll(el);
+    if (pinned.current) setNewBelow(false);
+  }, []);
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    if (pinned.current) el.scrollTop = el.scrollHeight;
+    else if (hasNewBelow(seen.current, list.length, false)) setNewBelow(true);
+    seen.current = list.length;
+  }, [list.length, showPending, busy, stuck]);
+  useEffect(() => {
+    const el = listRef.current;
+    const content = contentRef.current;
+    if (!el || !content || typeof ResizeObserver === "undefined") return;
+    // Images, action cards and the keyboard change heights without adding a row.
+    const ro = new ResizeObserver(() => { if (pinned.current) el.scrollTop = el.scrollHeight; });
+    ro.observe(el);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
+  function jumpDown() {
+    const el = listRef.current;
+    pinned.current = true;
+    setNewBelow(false);
+    if (!el) return;
+    if (typeof el.scrollTo === "function") el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    else el.scrollTop = el.scrollHeight;
+  }
+
   return (
-    <div className="-mx-4 -mb-2 flex min-h-0 flex-1 flex-col overflow-hidden lg:panel lg:mx-0 lg:mb-0">
-      <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
-        {list.map((m) => (
-          <div key={m.id} className={m.role === "user"
-            ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6"
-            : "w-full min-w-0 break-words text-base leading-[1.75] md:text-sm md:leading-6"}>
-            {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
-            {m.role === "user" && "image" in m && typeof m.image === "string" && (
-              <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
+    <div className="-mx-4 -mb-2 grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden lg:panel lg:mx-0 lg:mb-0">
+      <div className="relative min-h-0">
+        <div ref={listRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain px-4 py-4">
+          <div ref={contentRef} className="space-y-4">
+            {empty && msgs.isSuccess && list.length === 0 && !showPending && (
+              <div className="flex flex-col items-center gap-3 py-10 text-center">
+                <p className="text-sm text-muted-foreground">{empty.text}</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {empty.starters.map((s) => (
+                    <button key={s} type="button" onClick={() => { setText(s); taRef.current?.focus(); }} className={CHIP}>{s}</button>
+                  ))}
+                </div>
+              </div>
             )}
-            {m.role === "assistant" && "image" in m && typeof m.image === "string" && (
-              <a href={m.image} target="_blank" rel="noreferrer" className="mt-2 inline-block">
-                <img src={m.image} alt="الشارت اللي شافه المحلل" className="max-h-24 w-auto rounded-lg border border-border" />
-              </a>
+            {list.map((m) => (
+              <MessageRow key={m.id} m={m} autoRun={auto && m.id === freshId} onActions={saveActions} onOpenImage={setZoom} />
+            ))}
+            {showPending && <UserBubble>{pending.text}</UserBubble>}
+            {busy && <TypingBubble />}
+            {stuck && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>ما وصل الرد على رسالتك.</span>
+                <button type="button" onClick={() => submit({ text: retryText(stuck.content), again: true })} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-4 text-sm text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
+              </div>
             )}
-            {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
-              <div className="mt-3 border-t border-border pt-3">
-                <AgentActions
-                  key={m.id}
-                  actions={m.actions as unknown as StoredAction[]}
-                  {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})}
-                  onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); onChanged(); }}
-                />
+            {!busy && list.length > 0 && quick.length > 0 && (quickProp ? true : list.length < 4) && (
+              <div className="flex flex-wrap gap-2">
+                {quick.map((q) => (
+                  <button key={q} type="button" onClick={() => submit({ text: q })} className={CHIP}>{q}</button>
+                ))}
               </div>
             )}
           </div>
-        ))}
-        {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6">{pending}</div>}
-        {busy && <div className="w-fit rounded-2xl bg-muted px-4 py-2 text-sm text-muted-foreground">يكتب…</div>}
-        {stuck && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>ما وصل الرد على رسالتك.</span>
-            <button onClick={() => submit(retryText(stuck.content), true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-4 text-sm text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
-          </div>
+        </div>
+        {newBelow && (
+          <button type="button" onClick={jumpDown} className="glass-strong absolute inset-x-0 bottom-3 mx-auto flex min-h-11 w-fit items-center rounded-full px-4 text-sm font-medium active:scale-95">
+            جديد ↓
+          </button>
         )}
-        {!busy && list.length > 0 && quick.length > 0 && (quickProp ? true : list.length < 4) && (
-          <div className="flex flex-wrap gap-2">
-            {quick.map((q) => (
-              <button key={q} onClick={() => submit(q)} className="min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent">{q}</button>
-            ))}
-          </div>
-        )}
-        <div ref={endRef} />
       </div>
 
-      <div className="flex shrink-0 items-end gap-2 px-3 pb-1 pt-2 lg:border-t lg:border-border/40 lg:p-3">
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
-        <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setImage(await prepareImage(f)); } catch (err) { toast.error(err instanceof Error ? err.message : "ما قدرت أقرأ الصورة"); } } }} />
-        <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
-        <Button type="button" size="icon" variant="secondary" className="size-10 shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
-        <Textarea
-          ref={taRef}
-          rows={1}
-          value={text}
-          onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}
-          placeholder={recording ? "يسجّل… اضغط ■ للإرسال" : placeholder ?? "رد على المساعد…"}
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl py-2"
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
-        />
-        {text.trim() || image ? (
-          <Button size="icon" className="size-10 shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy}><SendHorizontal className="size-4 rotate-180" /></Button>
-        ) : (
-          <Button size="icon" variant={recording ? "destructive" : "default"} className={`size-10 shrink-0 rounded-full ${recording ? "animate-pulse" : ""}`} aria-label={recording ? "إيقاف وإرسال" : "رسالة صوتية"} onClick={toggleRecord} disabled={busy}>
-            {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
-          </Button>
-        )}
-      </div>
-      {image && (
-        <div className="relative mx-3 mb-1 w-fit">
-          <img src={image} alt="الصورة المرفقة" className="size-12 rounded-lg border border-border object-cover" />
-          <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
-        </div>
-      )}
+      <ChatComposer
+        text={text}
+        onText={setText}
+        image={image}
+        onImage={setImage}
+        busy={busy}
+        recording={recording}
+        placeholder={placeholder ?? "رد على المساعد…"}
+        onSend={() => void submit()}
+        onToggleRecord={() => void toggleRecord()}
+        taRef={taRef}
+      />
+      <ImageLightbox image={zoom} onClose={() => setZoom(null)} />
     </div>
   );
 }

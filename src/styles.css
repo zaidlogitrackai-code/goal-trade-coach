@@ -296,6 +296,23 @@
 }
 @utility pb-tab-bar {
   padding-bottom: calc(5.75rem + max(0.75rem, env(safe-area-inset-bottom)));
+  /* On a (scroll-locked) chat the keyboard hides the tab bar and covers the home indicator:
+     nothing to reserve. Other pages keep the space, so a form being typed into never jumps. */
+  @media (width < 64rem) {
+    :root[data-kb][data-chat] & { padding-bottom: 0.5rem; }
+  }
+}
+
+/* The floating tab bar would ride on top of the keyboard and cover the composer. */
+:root[data-kb] [data-tabbar] {
+  display: none;
+}
+
+/* A chat on screen: the page never scrolls, only the message list (see useChatScrollLock). */
+:root[data-chat],
+:root[data-chat] body {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 /* Home-screen app uses black-translucent (white status-bar glyphs). In the light theme keep a
@@ -311,12 +328,26 @@
   }
 }
 
-/* Full-height agent chat page: fills space between mobile header/nav (or desktop padding). */
+/* Full-height agent chat page: fills the visible viewport (--vvh, set by useVisualViewport;
+   it shrinks with the keyboard, 100dvh does not) between the mobile header and the tab bar
+   (4rem header + 0.75rem top gap + 5.75rem tab-bar reserve), or the desktop padding. With the
+   keyboard up the tab bar is hidden, so only the header and a 0.5rem gap stay. */
 @utility agent-page {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 10.5rem - env(safe-area-inset-top) - max(0.75rem, env(safe-area-inset-bottom)));
-  @media (width >= 64rem) { height: calc(100dvh - 4rem); }
+  height: calc(var(--vvh, 100dvh) - 10.5rem - env(safe-area-inset-top) - max(0.75rem, env(safe-area-inset-bottom)));
+  @media (width < 64rem) {
+    :root[data-kb][data-chat] & { height: calc(var(--vvh, 100dvh) - 5.25rem - env(safe-area-inset-top)); }
+  }
+  @media (width >= 64rem) { height: calc(var(--vvh, 100dvh) - 4rem); }
+}
+
+/* Assistant markdown: each paragraph takes the direction of its own first letter, so an
+   English quote or a pasted MT5 line reads left-to-right inside an Arabic reply. */
+@utility bidi-paragraphs {
+  & :is(p, li, h1, h2, h3, h4, blockquote) {
+    unicode-bidi: plaintext;
+  }
 }
 
 /* iPhone-like screen entrance: short, transform-only, spring-eased */

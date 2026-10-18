@@ -1,23 +1,16 @@
-import { rememberChatImage } from "@/lib/agent-actions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Camera, Crosshair, ImagePlus, Menu, Plus, RotateCw, SendHorizontal, X } from "lucide-react";
+import { Crosshair, Menu, Plus } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { AgentActions, type StoredAction } from "@/components/agent-actions";
 import { DeleteThreadButton } from "@/components/delete-thread-button";
+import { SessionAgent } from "@/components/session-agent";
+import { COACH_DRAFT_KEY } from "@/components/dashboard/quick-coach";
 import { isPendingDelete } from "@/lib/undo-delete";
 import { supabase } from "@/integrations/supabase/client";
-import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { coachReply } from "@/lib/ai.functions";
 import { currentUserId } from "@/lib/queries";
-import { makeThumbnail, prepareImage } from "@/lib/image";
-import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
-import { threadState } from "@/lib/chat-check";
 import { isFocusEmpty } from "@/lib/focus";
 import { focusQuery } from "@/lib/focus-store";
 
@@ -26,17 +19,29 @@ export const Route = createFileRoute("/_authenticated/coach")({
   component: CoachPage,
 });
 
+const SUGGESTIONS = ["راجع آخر صفقاتي وقل لي وين أغلط", "اسألني عن أهدافي وحدودي", "ساعدني أكتب قواعد استراتيجيتي"];
+const EMPTY = { text: "شو بدك نشتغل عليه اليوم؟", starters: SUGGESTIONS };
+
+type Draft = { threadId: string; text: string; image: string | null };
+
+function readDraft(): { text: string; image: string | null } | null {
+  const raw = sessionStorage.getItem(COACH_DRAFT_KEY);
+  sessionStorage.removeItem(COACH_DRAFT_KEY);
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as { text?: unknown; image?: unknown };
+    return typeof d.text === "string" && d.text.trim() ? { text: d.text, image: typeof d.image === "string" ? d.image : null } : null;
+  } catch { return null; }
+}
+
+/** سَنَد's own conversations: a thread list around the shared SessionAgent chat. */
 function CoachPage() {
   const qc = useQueryClient();
-  const send = useServerFn(coachReply);
   const [active, setActive] = useState<string | null>(null);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<string | null>(null);
-  const [image, setImage] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  // The assistant message whose actions should auto-run (only the reply we just received).
-  const [freshId, setFreshId] = useState<string | null>(null);
+  // Until the boot below has decided which chat opens (a home-page draft gets a fresh one).
+  const [opening, setOpening] = useState(true);
+  const [draft, setDraft] = useState<Draft | null>(null);
   const [auto, setAuto] = useState(true);
   useEffect(() => { if (localStorage.getItem("coach-auto") === "off") setAuto(false); }, []);
   function toggleAuto() {
@@ -44,18 +49,6 @@ function CoachPage() {
     setAuto(next);
     localStorage.setItem("coach-auto", next ? "on" : "off");
   }
-  const fileRef = useRef<HTMLInputElement>(null);
-  const camRef = useRef<HTMLInputElement>(null);
-  async function pick(file?: File) {
-    if (!file) return;
-    try { setImage(await prepareImage(file)); } catch (e) { toast.error(e instanceof Error ? e.message : "ما قدرت أقرأ الصورة"); }
-  }
-  const endRef = useRef<HTMLDivElement>(null);
-  // Full image of the last send, kept so "retry" can resend it.
-  const lastImage = useRef<string | null>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  // Shrink the box back after sending a long message.
-  useEffect(() => { if (!text && taRef.current) taRef.current.style.height = ""; }, [text]);
 
   const focus = useQuery(focusQuery);
   const threads = useQuery({
@@ -67,82 +60,41 @@ function CoachPage() {
       return data.filter((t) => !isPendingDelete(t.id) && !["حارس المخاطر", "مدرّب الاستراتيجية", "تدريب الذكاء", "حارس الانضباط"].some((b) => t.title === b || t.title.startsWith(`${b} · `)) && !t.title.startsWith("المحلل الذكي") && !/^جلسة( \d{4}-\d{2}-\d{2}| · .*)$/.test(t.title));
     },
   });
-  const msgs = useQuery({
-    queryKey: ["messages", active],
-    enabled: !!active,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("coach_messages").select("id,role,content,actions,image,created_at").eq("thread_id", active!).order("created_at");
-      if (error) throw error;
-      return data;
-    },
-  });
 
-  useEffect(() => { if (!active && threads.data?.length) setActive(threads.data[0]!.id); }, [threads.data, active]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.data, pending]);
-
-  async function newThread() {
-    const user_id = await currentUserId();
-    const { data, error } = await supabase.from("coach_threads").insert({ user_id }).select().single();
-    if (error) { toast.error("ما قدرت أنشئ محادثة"); return undefined; }
-    await qc.invalidateQueries({ queryKey: ["threads"] });
-    setActive(data.id);
-    return data.id;
-  }
-
-  async function submit(draft?: { text: string; image: string | null }, again = false) {
-    const msg = (draft?.text ?? text).trim();
-    if (!msg || busy) return;
-    setBusy(true);
-    let sentId: string | null | undefined = null;
-    let sentImg: string | null = null;
+  const creating = useRef(false);
+  async function newThread(): Promise<string | undefined> {
+    if (creating.current) return undefined;
+    creating.current = true;
     try {
-      const id = again ? active : draft ? await newThread() : active ?? (await newThread());
-      if (!id) return;
-      sentId = id;
-      const img = again ? lastImage.current : draft ? draft.image : image;
-      sentImg = img;
-      lastImage.current = img;
-      rememberChatImage(img);
-      if (!again) { setText(""); setImage(null); setPending(msg); }
-      const thumb = img ? await makeThumbnail(img) : null;
-      const out = await sendReliably(
-        (retry) => send({ data: { threadId: id, message: msg, ...(img ? { image: img } : {}), ...(thumb ? { thumb } : {}), ...(retry || again ? { retry: true } : {}) } }),
-        () => threadState(id, msg),
-      );
-      if (out.kind === "reply" && out.value?.messageId) setFreshId(out.value.messageId);
-      if (out.kind === "pending") toast.error("الرد تأخر. اضغط «أعد المحاولة».");
-      await qc.invalidateQueries({ queryKey: ["messages", id] });
-      qc.invalidateQueries({ queryKey: ["threads"] });
-    } catch (e) {
-      await qc.invalidateQueries({ queryKey: ["messages"] });
-      qc.invalidateQueries({ queryKey: ["threads"] });
-      const rows = sentId ? [...(qc.getQueryData<{ role: string; content: string }[]>(["messages", sentId]) ?? [])].reverse() : [];
-      const state = retryDecision(rows, msg);
-      // The reply did arrive (only the response was lost): nothing to complain about.
-      if (state !== "already-answered") toast.error(friendlyError(e));
-      // If the message never reached the server, give it back so nothing typed is lost.
-      if (!again && state === "fresh") { setText(msg); if (sentImg) setImage(sentImg); }
-    } finally { setBusy(false); setPending(null); }
+      const user_id = await currentUserId();
+      const { data, error } = await supabase.from("coach_threads").insert({ user_id }).select().single();
+      if (error) { toast.error("ما قدرت أنشئ محادثة"); return undefined; }
+      await qc.invalidateQueries({ queryKey: ["threads"] });
+      setActive(data.id);
+      return data.id;
+    } finally { creating.current = false; }
   }
 
-  // A message sent from the home page box: open a fresh chat and send it once.
-  const draftDone = useRef(false);
+  // A message sent from the home page box: open a fresh chat and send it there once.
+  const booted = useRef(false);
   useEffect(() => {
-    if (draftDone.current || threads.isLoading) return;
-    draftDone.current = true;
-    const raw = sessionStorage.getItem("coach-draft");
-    if (!raw) return;
-    sessionStorage.removeItem("coach-draft");
-    try { void submit(JSON.parse(raw) as { text: string; image: string | null }); } catch { /* ignore bad draft */ }
+    if (booted.current || threads.isLoading) return;
+    booted.current = true;
+    const d = readDraft();
+    if (!d) { setOpening(false); return; }
+    void newThread().then((threadId) => { if (threadId) setDraft({ threadId, ...d }); }).finally(() => setOpening(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads.isLoading]);
 
-  const list = msgs.data ?? [];
-  const showPending = pending && !list.some((m) => m.role === "user" && m.content === pending && list[list.length - 1]?.role === "assistant");
-  const stuck = !busy ? unansweredMessage(list) : null;
+  // Otherwise the newest chat; with none at all (first visit, last one deleted) a fresh one to type in.
+  useEffect(() => {
+    if (opening || active || !threads.isSuccess) return;
+    if (threads.data.length) setActive(threads.data[0]!.id);
+    else void newThread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opening, active, threads.isSuccess, threads.data]);
 
   const activeTitle = threads.data?.find((t) => t.id === active)?.title ?? "محادثة جديدة";
-  const suggestions = ["راجع آخر صفقاتي وقل لي وين أغلط", "اسألني عن أهدافي وحدودي", "ساعدني أكتب قواعد استراتيجيتي"];
 
   const focusBox = focus.data && (
     <Link
@@ -186,89 +138,39 @@ function CoachPage() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl">
-        <div className="agent-page -mx-4 -mb-2 overflow-hidden lg:panel lg:mx-0 lg:mb-0">
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-2 pb-2 lg:px-3 lg:py-2">
-            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-              <SheetTrigger asChild>
-                <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto sm:max-w-sm">
-                <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
-                <Button onClick={() => { void newThread(); setSheetOpen(false); }} className="w-full"><Plus className="size-4" /> محادثة جديدة</Button>
-                {focusBox}
-                {autoToggle}
-                {threadList(() => setSheetOpen(false))}
-              </SheetContent>
-            </Sheet>
-            <div className="min-w-0 text-center">
-              <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
-              <p className="text-xs text-muted-foreground">{busy ? "يكتب…" : "سَنَد · شريكك ضد الطمع"}</p>
-            </div>
-            <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={newThread}><Plus className="size-5" /></Button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 lg:px-6 lg:py-5"><div className="mx-auto max-w-3xl space-y-4 lg:space-y-5">
-            {list.length === 0 && !pending && (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <p className="text-sm text-muted-foreground">شو بدك نشتغل عليه اليوم؟</p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {suggestions.map((s) => (
-                    <button key={s} onClick={() => setText(s)} className="min-h-11 rounded-full border border-border bg-muted/30 px-4 text-sm hover:bg-accent">{s}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {list.map((m) => (
-              <div key={m.id} className={m.role === "user"
-                ? "ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6"
-                : "w-full break-words px-0.5 text-base leading-[1.75] md:text-sm md:leading-6 lg:leading-7"}>
-                {m.role === "assistant" ? <Md>{m.content}</Md> : m.content}
-                {m.role === "user" && "image" in m && typeof m.image === "string" && (
-                  <img src={m.image} alt="الصورة المرفقة" className="mt-2 max-h-16 w-auto rounded-lg" />
-                )}
-                {m.role === "assistant" && Array.isArray(m.actions) && m.actions.length > 0 && (
-                  <div className="mt-3 border-t border-border pt-3">
-                    <AgentActions key={m.id} actions={m.actions as unknown as StoredAction[]} {...(auto && m.id === freshId ? { autoRunKey: m.id } : {})} onChange={async (next) => { await supabase.from("coach_messages").update({ actions: next as never }).eq("id", m.id); }} />
-                  </div>
-                )}
-              </div>
-            ))}
-            {showPending && <div className="ml-auto w-fit max-w-[82%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-primary px-3.5 py-2.5 text-base leading-[1.75] text-primary-foreground md:text-sm md:leading-6">{pending}</div>}
-            {busy && <div className="mr-auto w-fit rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 text-sm text-muted-foreground">يكتب…</div>}
-            {stuck && (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span>ما وصل الرد على رسالتك.</span>
-                <button onClick={() => submit({ text: retryText(stuck.content), image: null }, true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-4 text-sm text-foreground hover:bg-accent"><RotateCw className="size-3.5" /> أعد المحاولة</button>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div></div>
-
-          {image && (
-            <div className="relative mx-3 mt-2 w-fit">
-              <img src={image} alt="الصورة المرفقة" className="max-h-20 rounded-lg border border-border" />
-              <button type="button" aria-label="حذف الصورة" onClick={() => setImage(null)} className="absolute -top-2 -left-2 rounded-full bg-secondary p-1"><X className="size-3" /></button>
-            </div>
-          )}
-          <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 pb-1 pt-2 lg:pb-4">
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
-            <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
-            <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="إرفاق صورة" onClick={() => fileRef.current?.click()}><ImagePlus className="size-4" /></Button>
-            <Button type="button" size="icon" variant="secondary" className="shrink-0 rounded-full" aria-label="صوّر الشارت بالكاميرا" onClick={() => camRef.current?.click()}><Camera className="size-4" /></Button>
-            <Textarea
-              onPaste={(e) => void pick(Array.from(e.clipboardData.files)[0])}
-              ref={taRef}
-              rows={1}
-              value={text}
-              onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`; }}
-              placeholder="اكتب رسالتك…"
-              className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl py-2"
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
-            />
-            <Button size="icon" className="shrink-0 rounded-full" aria-label="إرسال" onClick={() => submit()} disabled={busy || !text.trim()}><SendHorizontal className="size-4 rotate-180" /></Button>
-          </div>
+    <div className="agent-page mx-auto w-full max-w-4xl">
+      <div className="mb-2 grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <Button size="icon" variant="ghost" aria-label="المحادثات"><Menu className="size-5" /></Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="flex w-[85%] flex-col gap-4 overflow-y-auto sm:max-w-sm">
+            <SheetHeader><SheetTitle className="pr-8 text-right">المحادثات</SheetTitle></SheetHeader>
+            <Button onClick={() => { void newThread(); setSheetOpen(false); }} className="w-full"><Plus className="size-4" /> محادثة جديدة</Button>
+            {focusBox}
+            {autoToggle}
+            {threadList(() => setSheetOpen(false))}
+          </SheetContent>
+        </Sheet>
+        <div className="min-w-0 text-center">
+          <p className="truncate text-sm font-semibold lg:text-base">{activeTitle}</p>
+          <p className="text-xs text-muted-foreground">سَنَد · شريكك ضد الطمع</p>
         </div>
+        <Button size="icon" variant="ghost" aria-label="محادثة جديدة" onClick={() => void newThread()}><Plus className="size-5" /></Button>
+      </div>
+
+      {active && (
+        <SessionAgent
+          key={active}
+          threadId={active}
+          quick={[]}
+          auto={auto}
+          empty={EMPTY}
+          placeholder="اكتب رسالتك…"
+          draft={draft?.threadId === active ? draft : null}
+          onSent={() => void qc.invalidateQueries({ queryKey: ["threads"] })}
+        />
+      )}
     </div>
   );
 }
