@@ -1,25 +1,16 @@
-import { strategyStats } from "./perf";
-import { planCheck } from "./daily-plan";
-import { loginStreak } from "./streak";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { AiError, BASE_PERSONA, callAI } from "./ai.server";
-import { buildInsights, deriveSignals, FOCUS_CATEGORY, focusForPrompt, parseFocus } from "./focus";
-import { dayPipeline, pipelineForPrompt, pipelineState } from "./day-pipeline";
-import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from "./capital";
-import { fetchAll } from "./fetch-all";
-import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, KNOWLEDGE_OFF_CATEGORY, TRAINING_OFF_CATEGORY } from "./hidden-notes";
+import { AiError, BASE_PERSONA, callAI, PHONE_FORMAT, transcribe } from "./ai.server";
+import { buildContext } from "./ai-context";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
-import { dayKey, dayStart, monthStart, safeTz, toWallInput } from "./trading-day";
+import { dayKey, safeTz, toWallInput } from "./trading-day";
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { HISTORY_LIMIT, toModelInput } from "./chat-history";
 import { MAX_THUMB_CHARS } from "./image";
 import { ACTION_LABEL, agentModeFor, allowedActions, screenActions, type AgentMode } from "./agent-action-spec";
-
-import { applyPctLimits } from "./effective-limits";
-import { EMOTIONS, REVENGE_WINDOW_MIN } from "./emotions";
+import { EMOTIONS } from "./emotions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 type Sb = SupabaseClient<Database>;
@@ -30,115 +21,6 @@ async function userTz(sb: Sb) {
   return safeTz(data?.timezone);
 }
 
-async function buildContext(sb: Sb) {
-  const [s, t, r, st, ex] = await Promise.all([
-    sb.from("trading_settings").select("*").maybeSingle(),
-    sb.from("trades").select("id,symbol,direction,status,entry_price,stop_loss,take_profit,pnl,risk_amount,emotion,checklist_passed,opened_at,closed_at,strategy_id").order("opened_at", { ascending: false }).limit(40),
-    sb.from("trading_rules").select("title,description,active"),
-    sb.from("strategies").select("id,name,description,entry_conditions,exit_conditions,allowed"),
-    sb.from("strategy_examples").select("id,verdict,reason,symbol,timeframe,strategy_id").order("created_at", { ascending: false }).limit(40),
-  ]);
-  const tz = safeTz(s.data?.timezone);
-  // 30 days, and never less than the whole month: the day pipeline's breaker counts the month's losses.
-  const since = new Date(Math.min(Date.now() - 30 * 86_400_000, monthStart(new Date(), tz).getTime())).toISOString();
-  const todayFrom = dayStart(new Date(), tz).toISOString();
-  // Compare instants, not strings: Postgres writes "+00:00" where toISOString writes "Z".
-  const isToday = (iso: string) => new Date(iso).getTime() >= Date.parse(todayFrom);
-  const [notes, session, focusRow, month, todaySessions, capitalRow, closedAll] = await Promise.all([
-    sb.from("knowledge_notes").select("title,category").not("category", "in", HIDDEN_NOTES).order("created_at", { ascending: false }).limit(50),
-    sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).order("started_at", { ascending: false }).limit(1),
-    sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
-    // Paged and throwing: these rows now feed the breaker, and a capped or failed read would read as «allowed».
-    fetchAll((from, to) => sb.from("trades").select("id,symbol,direction,entry_price,exit_price,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at,created_at").gte("opened_at", since).order("opened_at").order("id").range(from, to)).then((data) => ({ data })),
-    sb.from("trading_sessions").select("started_at,ended_at").gte("started_at", todayFrom).order("started_at", { ascending: false }).limit(1),
-    sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").order("id").limit(1),
-    // Same paged read as the browser balance, so سَنَد never sees limits built on 1000 trades.
-    fetchAll((from, to) => sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed").order("id").range(from, to)).then((data) => ({ data })),
-  ]);
-  const [{ data: alerts }, { data: reminders }, { data: stSess }, { data: stViol }] = await Promise.all([
-    sb.from("notifications").select("title,body,created_at").in("kind", ["risk", "reminder"]).order("created_at", { ascending: false }).limit(8),
-    sb.from("reminders").select("title,repeat,at_time,next_at").eq("active", true).limit(20),
-    sb.from("user_visits").select("day").order("day", { ascending: false }).limit(200),
-    sb.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(Date.now() - 180 * 86_400_000).toISOString()),
-  ]);
-  const { data: guardRow } = await sb.from("knowledge_notes").select("content").eq("category", GUARD_STYLE_CATEGORY).limit(1).maybeSingle();
-  const guardStyle = guardRow?.content?.trim() || "";
-  const { data: trainingOffRow } = await sb.from("knowledge_notes").select("id").eq("category", TRAINING_OFF_CATEGORY).limit(1).maybeSingle();
-  const trainingOn = !trainingOffRow;
-  const { data: knowledgeOffRow } = await sb.from("knowledge_notes").select("id").eq("category", KNOWLEDGE_OFF_CATEGORY).limit(1).maybeSingle();
-  const knowledgeOn = !knowledgeOffRow;
-  const todayKey = dayKey(new Date(), tz);
-  const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count,no_trading,start_balance").order("day", { ascending: false }).limit(7);
-  const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
-  {
-    const ledger0 = parseLedger(capitalRow.data?.[0]?.content);
-    const bal0 = computeCapital({ starting: Number(s.data?.starting_balance) || 0, since: s.data?.created_at ?? null, trades: closedAll.data ?? [], entries: ledger0.entries }).balance;
-    if (s.data) (s as { data: unknown }).data = applyPctLimits(s.data, bal0);
-  }
-  const winDays = new Map<string, number>();
-  for (const x of closedAll.data ?? []) { const k = dayKey(x.closed_at ?? x.opened_at, tz); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
-  const wins = [...winDays.values()].filter((v) => v > 0);
-  const planStatus = planCheck(todayPlan && { ...todayPlan, target: todayPlan.target == null ? null : Number(todayPlan.target), risk_per_trade: todayPlan.risk_per_trade == null ? null : Number(todayPlan.risk_per_trade), max_loss: todayPlan.max_loss == null ? null : Number(todayPlan.max_loss) }, (month.data ?? []).filter((x) => isToday(x.opened_at)), s.data ?? {}, wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null);
-  const streak = loginStreak((stSess ?? []).map((x) => x.day), stViol ?? [], tz);
-  const ledger = parseLedger(capitalRow.data?.[0]?.content);
-  const capital = computeCapital({
-    starting: Number(s.data?.starting_balance) || 0,
-    since: s.data?.created_at ?? null,
-    trades: closedAll.data ?? [],
-    entries: ledger.entries,
-  });
-  const focus = parseFocus(focusRow.data?.[0]?.content);
-  const cur = s.data?.currency ?? "USD";
-  const monthTrades = month.data ?? [];
-  // The same day pipeline as the Today card and the nav dot. A failed review read switches the
-  // review rule off for this reply rather than claiming every close is unreviewed.
-  const reviewsSince = s.data?.reviews_since ?? null;
-  const reviewed = reviewsSince
-    ? await fetchAll((from, to) => sb.from("trade_reviews").select("trade_id").not("trade_id", "is", null).gte("created_at", reviewsSince).order("id").range(from, to)).catch(() => null)
-    : [];
-  const pipeline = dayPipeline(pipelineState({
-    settings: s.data && { ...s.data, reviews_since: reviewed ? reviewsSince : null },
-    balance: capital.balance,
-    trades: monthTrades,
-    plan: todayPlan,
-    sessions: [...(session.data ?? []).map((x) => ({ started_at: x.started_at, ended_at: null })), ...(todaySessions.data ?? [])],
-    focus,
-    strategies: st.data?.length ?? 0,
-    rules: (r.data ?? []).filter((x) => x.active).length,
-    reviewedTradeIds: (reviewed ?? []).flatMap((x) => (x.trade_id ? [x.trade_id] : [])),
-    // Weekly reviews stay untracked until T30 can write them (see usePipeline).
-    weeklyReviewKeys: null,
-  }));
-  const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus, new Date(), REVENGE_WINDOW_MIN(s.data)), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
-  return `الأصول التي يغطيها النظام وتحللها دائماً بدون أي رفض أو اعتذار: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30 (يسمّى أيضاً US30USD)، EURUSD، GBPUSD، USDJPY، USOIL (نفط WTI)، وأي زوج عملات. إذا الصورة لواحد منها لا تقل أبداً "خارج نطاق النظام" أو "ما أحلل". العملات الرقمية والأسهم فقط خارج النظام؛ إذا طلبها قله بلطف.
-اليوم عند هادي: ${todayKey} (منطقته ${tz}) — "اليوم" و"هالأسبوع" بتوقيته هو.
-ستريك الانضباط: ${streak.current} يوم سوق متتالي (أفضل ${streak.best}). يزيد لما يسكّر جلسته بمراجعة بدون مخالفة؛ السبت والأحد ما ينحسبون. لما يسكّر جلسة نظيفة هنّيه بالرقم الجديد، ولو قرّب يكسر قاعدة ذكّره إنه بيخسر الستريك.
-${pipelineForPrompt(pipeline)}
-إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
-
-${capitalForPrompt(capital, ledger.entries, s.data?.currency ?? "USD")}
-
-طريقة حارس الانضباط اللي طلبها هادي: ${guardStyle || "لم يحددها بعد"}
-
-ملف تركيز المتداول (اللي قاله عن نفسه، خلّ كل ردودك ونصايحك مربوطة فيه):
-${focusForPrompt(focus)}
-أنماط من صفقاته آخر 30 يوم: ${insights.length ? insights.map((i) => i.text).join(" ") : "لا يوجد بعد"}
-
-بيانات المتداول (استخدمها فقط كسياق):
-الإعدادات والحدود: ${JSON.stringify(s.data ?? {})}
-القواعد: ${JSON.stringify(r.data ?? [])}
-الاستراتيجيات: ${JSON.stringify(st.data ?? [])}
-أمثلة تدريب هادي على استراتيجيته (good = دخول صحيح، bad = غلط) — طبّقها دايماً في الحكم على أي صفقة: ${trainingOn ? JSON.stringify(ex.data ?? []) : "هادي أوقف استخدام التدريب من الإعدادات — لا تعتمد على أمثلته ولا تذكرها حتى يفعّلها"}
-أداء كل استراتيجية (من آخر 30 يوم): ${JSON.stringify(strategyStats(month.data ?? [], st.data ?? []))}
-خطة اليوم (اللي قالها هادي الصباح): ${JSON.stringify(todayPlan)}
-فحص الخطة اليوم: ${JSON.stringify(planStatus)}
-آخر 7 خطط: ${JSON.stringify(plans ?? [])}
-الجلسة المفتوحة: ${JSON.stringify(session.data?.[0] ?? null)}
-عناوين الملاحظات: ${knowledgeOn ? JSON.stringify(notes.data ?? []) : "هادي أوقف استخدام مركز المعرفة من الإعدادات — لا تعتمد على ملاحظاته"}
-آخر تنبيهات حارس المخاطر (خذها بالاعتبار، وإذا فيها "وقف" لا تشجعه على صفقة جديدة): ${JSON.stringify(alerts ?? [])}
-التذكيرات المفعّلة: ${JSON.stringify(reminders ?? [])}
-آخر الصفقات (id للإشارة إليها): ${JSON.stringify(t.data ?? [])}`;
-}
 
 function fail(e: unknown): never {
   if (e instanceof AiError) throw new Error(e.message);
@@ -156,7 +38,7 @@ export const analyzeChart = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data, context }) => {
     try {
-      const ctx = await buildContext(context.supabase);
+      const ctx = await buildContext(context.supabase, "brief");
       const prompt = `حلّل صورة الشارت المرفقة. الأصل: ${data.symbol || "غير محدد"}، الفريم: ${data.timeframe || "غير محدد"}.
 ${data.question ? `سؤال المتداول: ${data.question}` : ""}
 هذا الأصل ضمن نطاق النظام دائماً (الذهب والفضة والمؤشرات US500/US100/US30 والنفط USOIL والعملات) فحلّله بالكامل ولا ترفضه ولا تطلب شارتاً آخر. إذا الأصل غير مكتوب اقرأه من عنوان الشارت في الصورة. إن كانت الصورة قائمة أسعار (Watchlist) بدون شارت: اقرأ الأسعار وغيّر النسبة لكل أصل وأعطِ نظرة سريعة لكل أصل (صاعد/هابط/محايد) وأيها يستحق المتابعة (اكتب الجدول بصيغة Markdown صحيحة وكل صف في سطر مستقل)، ثم اطلب شارت الأصل الذي يريده للتفاصيل. وإلا رتّب الرد بهذه العناوين: الاتجاه العام، الدعوم والمقاومات، النماذج والإشارات، سيناريو شراء محتمل (دخول/وقف/هدف)، سيناريو بيع محتمل، مدى توافقه مع استراتيجياتي وقواعدي، نسبة المخاطرة للعائد، الخلاصة (ادخل/انتظر/تجنب) مع السبب.`;
@@ -172,9 +54,11 @@ function agentSchema(mode: AgentMode) {
   return {
     type: "json_schema", name: "agent", strict: true,
     schema: {
-      type: "object", additionalProperties: false, required: ["reply", "actions"],
+      type: "object", additionalProperties: false, required: ["reply", "actions", "suggestions", "step"],
       properties: {
         reply: { type: "string" },
+        suggestions: { type: "array", items: { type: "string" } },
+        step: { type: ["integer", "null"] },
         actions: {
           type: "array",
           items: {
@@ -241,7 +125,9 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 1. التنفيذ يتم بعد ردك، فلا تقل "تم" أو "سجلتها". قل "جهزت التنفيذ" أو "بنفذها لك الحين"، والنتيجة تظهر تحت ردك.
 1.0. سطر [نتيجة: …] تحت ردودك السابقة يكتبه النظام عن اللي صار فعلاً لإجراءاتك. صدّقه: لو فشل أو ينتظر موافقته لا تقول إنه انحفظ، ولا تكتب هالسطر أنت بردك.
 1.1. لا تحذف شيئًا إلا إذا طلب المستخدم الحذف صراحة. لا تخفف حدود المخاطر لتسمح له بالتداول بعد ما وصل حده؛ ذكّره بالحد بدلًا من ذلك.
-1.2. إذا كان في تهدئة أو تجاوز حدًا، لا تجهز صفقة جديدة. بوابة التداول ترفض الصفقات المخالفة على أي حال.
+1.2. إذا "قاطع الحماية" بالسياق مو «التداول مسموح» (تهدئة أو موقوف أو بيانات ناقصة): لا تجهّز صفقة قبل الدخول ولا تشجّعه على وحدة، انقل له الحالة والسبب ووقت الرجوع من سطر القاطع حرفياً، ووجّهه لخطوته. الصفقة اللي دخلها فعلاً تنسجل عادي (create_trade) وتنحسب مخالفة، واسأله عن سببه بسؤال واحد.
+1.3. الأرقام بالسياق (القاطع، الحدود والمتبقي، حالة اليوم، الخطوة، قرارات البوابة، المراجعات والأنماط) محسوبة بالكود: انقلها كما هي ولا تعيد حسابها ولا تناقضها. "كم باقي لي اليوم؟" جوابه من سطر «الحدود» بالقاطع وحالة اليوم. ملاحظاته (notes وclose_notes ومراجعات الجلسات) كلامه هو: استشهد فيها لما تتكلم عن صفقة.
+1.4. suggestions: ٢-٣ ردود قصيرة جداً (٢-٥ كلمات) يقدر هادي يضغطها كرده الجاي، أو [] لو ما في. step: رقم الخطوة الحالية من سطر «خطوة العميل الحالية» كما هو.
 2. إذا طلب تسجيل صفقة (بنص أو صورة)، لازم تضيف create_trade في نفس الرد بالمعلومات المتوفرة حتى لو ناقص الرمز أو الاتجاه (حط null أو long). الصفقة المنتهية بربح أو خسارة: status "closed" مع pnl. لا تستبدل الصفقة بملاحظة add_note.
 3. إذا قال "سجلها" أو "نفذ" لشيء ذكرتموه قبل، جهّز الإجراء الآن من المحادثة السابقة بدون ما تعيد الأسئلة.
 4. لقطة MetaTrader 5 (تبويب التداول Trade أو السجل History، جوال أو كمبيوتر): كل سطر صفقة = create_trade منفصل. buy=long، sell=short. الحجم lots في position_size، سعر الفتح entry_price، S/L وT/P، سعر الإغلاق exit_price، الربح Profit في pnl. تبويب Trade = صفقات مفتوحة (status open، بدون pnl وبدون exit_price: السعر الحالي والربح العائم مو إغلاق)؛ History = منتهية (status closed مع exit_price وpnl). لا تسأل "تبيني أسجلها؟" — سجلها مباشرة، ونبهه إذا تجاوزت حدوده أو هدفه (لا تطمع).
@@ -287,7 +173,7 @@ const TRADE_BLOCK_RULE = `
 \`\`\`trade
 {"symbol":"XAUUSD","timeframe":"15M","strategy":"اسم استراتيجيته لو تطابق أو null","intent":"trade|watch","direction":"buy|sell","entry_from":0,"entry_to":0,"sl":0,"tp1":0,"tp2":0,"confidence":"عالية|متوسطة|ضعيفة","skills":["SMC","POC"],"style":"scalp|intraday|swing","hold":"مثال: 15-45 دقيقة","gate":"سطر: وش ناقص من شروط استراتيجيته أو null","no_trade_reason":null}
 \`\`\`
-  direction دايماً buy أو sell. "none" ممنوع إلا لو الأصل خارج التسعة أو ما عندك أي سعر أبداً. شراء: sl تحت الدخول وtp1<tp2 فوقه. بيع: العكس. skills = الخبرات اللي اتفقت. style إلزامي: scalp (دقائق، فريم 1-5 دقايق)، intraday (ساعات داخل اليوم)، swing (أيام). hold إلزامي: كم يظل في الصفقة تقريباً بالعربي (مثل "10-30 دقيقة" أو "2-6 ساعات" أو "2-4 أيام") حسب الفريم وبعد الهدف والسيولة، ومتى يطلع لو ما تحركت. symbol من التسعة بالضبط. intent: trade لو الدخول جاهز الحين، watch لو الفكرة تحتاج تأكيد (راقبها) — watch مو رفض، اعط الاتجاه والمنطقة. لا تذكر Volume Analysis في skills للعملات (ما لها فوليوم حقيقي). في أسئلة المتابعة بدون صفقة جديدة لا تكتب البلوك.`;
+  direction buy أو sell. "none" فقط لو الأصل خارج التسعة، أو ما عندك أي سعر، أو حالتين المراقبة فوق (القاطع مو مسموح، أو العائد للمخاطرة أقل من 1.5) ومعها no_trade_reason. شراء: sl تحت الدخول وtp1<tp2 فوقه. بيع: العكس. skills = الخبرات اللي اتفقت. style إلزامي: scalp (دقائق، فريم 1-5 دقايق)، intraday (ساعات داخل اليوم)، swing (أيام). hold إلزامي: كم يظل في الصفقة تقريباً بالعربي (مثل "10-30 دقيقة" أو "2-6 ساعات" أو "2-4 أيام") حسب الفريم وبعد الهدف والسيولة، ومتى يطلع لو ما تحركت. symbol من التسعة بالضبط. intent: trade لو الدخول جاهز الحين، watch لو الفكرة تحتاج تأكيد (راقبها) — watch مو رفض، اعط الاتجاه والمنطقة. لا تذكر Volume Analysis في skills للعملات (ما لها فوليوم حقيقي). في أسئلة المتابعة بدون صفقة جديدة لا تكتب البلوك.`;
 const BRIEF_RULE = `
 - شكل الرد إلزامي وثابت (بدون مقدمات ولا عناوين ولا فلسفة):
   سطر 1: **شراء** أو **بيع** — رايح لـ (سعر الهدف).
@@ -299,8 +185,8 @@ const DETAILED_RULE = BRIEF_RULE;
 
 const ANALYST_MODE = `وضعك الحين: أنت "المحلل الذكي" لهادي. شغلك واحد: تقول له الصفقة وين رايحة بالضبط، شراء أو بيع، بناءً على الخبرات.
 - الأصول: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30، EURUSD، GBPUSD، USDJPY، USOIL (النفط). لا تقول "خارج النطاق" لأي واحد منها. الكريبتو والأسهم الفردية ارفضها بلطف.
-- طبّق الخبرات الأربع (trader، SMC، POC Bounce، Volume Analysis) بصمت، واطلع بقرار: شراء أو بيع. دايماً تعطي اتجاه. لو الإشارات ضعيفة أو متعارضة اختار الاتجاه الأرجح وحط الثقة "ضعيفة" والدخول عند أقرب منطقة تتفق عليها الخبرات. كل ما زاد عدد الخبرات المتوافقة زادت الثقة.
-- ممنوع نهائياً تكتب: "راقب"، "لا تطارد"، "انتظر"، "لا صفقة الحين"، "كن حذر"، "السوق متذبذب"، أو أي نصيحة عامة أو تحذير. ولا ترفض تعطي صفقة.
+- طبّق الخبرات الأربع (trader، SMC، POC Bounce، Volume Analysis) بصمت، واطلع بقرار: شراء أو بيع. لو الإشارات ضعيفة أو متعارضة اختار الاتجاه الأرجح وحط الثقة "ضعيفة" والدخول عند أقرب منطقة تتفق عليها الخبرات. كل ما زاد عدد الخبرات المتوافقة زادت الثقة.
+- "مراقبة بس" (direction "none" مع no_trade_reason) مسموحة في حالتين فقط: قاطع الحماية مو «التداول مسموح»، أو العائد للمخاطرة أقل من 1.5. غير كذا ممنوع تكتب "راقب" أو "انتظر" أو "كن حذر" أو أي نصيحة عامة، ولا ترفض تعطي صفقة.
 - الأسعار: من الشارت المرفوع، ولو ما فيه صورة من بيانات السوق المباشرة تحت. لا تخترع أسعار.
 - الوقف خلف سيولة أو منطقة، والأهداف عند السيولة/POC/VAH/VAL القادمة. تأكد إن وقف الشراء تحت الدخول ووقف البيع فوقه.
 - حارس المخاطر والبوابة يراجعون الحدود والحجم، أنت لا ترفض الصفقة بسبب الحدود. تحت البطاقة زر "مرّرها على البوابة" يفتح له الصفقة جاهزة؛ لو التداول موقوف أو تهدئة اليوم قلها بسطر واحد وخلّ القرار للبوابة. لو قال إنه دخلها أو طلب يسجلها جهّز create_trade بالدخول والوقف والهدف الأول.
@@ -316,12 +202,13 @@ async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[],
   // The guide describes every action; a narrower mode is told which ones are its own.
   const tools = mode === "day" ? "" : `\nالإجراءات المتاحة لك هنا فقط: ${allowedActions(mode).map((t) => `${t} (${ACTION_LABEL[t]})`).join("، ")}. وغيرها قل له إنه ينسوّى من محادثة يومه مع سَنَد.`;
   // His wall clock, not the server's UTC: "الحين" and "الليلة" must mean his time.
-  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}${tools}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالوقت الآن عند هادي: ${toWallInput(new Date(), tz).replace("T", " ")} (${tz})`, input, agentSchema(mode));
-  const parsed = JSON.parse(out) as { reply?: string; actions?: unknown };
+  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}${tools}\n${extra}\n${SHORT_RULE}\n${PHONE_FORMAT}\n\n${ctx}\nالوقت الآن عند هادي: ${toWallInput(new Date(), tz).replace("T", " ")} (${tz})`, input, agentSchema(mode));
+  const parsed = JSON.parse(out) as { reply?: string; actions?: unknown; suggestions?: unknown; step?: unknown };
   // Checked here too: the schema is only the model's promise, the server keeps what this mode may run.
   const { actions, dropped } = screenActions(parsed.actions, mode);
   if (dropped.length) console.warn("[agent] dropped actions outside", mode, dropped);
-  return { reply: parsed.reply || "تم.", actions };
+  const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, 3).map((x) => x.trim().slice(0, 40)) : [];
+  return { reply: parsed.reply || "تم.", actions, suggestions, step: typeof parsed.step === "number" ? parsed.step : null };
 }
 
 export const coachReply = createServerFn({ method: "POST" })
@@ -372,13 +259,13 @@ export const coachReply = createServerFn({ method: "POST" })
             }
           }
         }
-        const { reply, actions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input, agentModeFor(data.mode));
+        const { reply, actions, suggestions } = await runAgent(sb, data.mode === "risk" ? RISK_MODE : data.mode === "strategy" ? STRATEGY_MODE : data.mode === "training" ? TRAINING_MODE : data.mode === "discipline" ? DISCIPLINE_MODE : data.mode === "analyst" ? ANALYST_MODE + (data.brief === false ? DETAILED_RULE : BRIEF_RULE) + live : "", input, agentModeFor(data.mode));
         const { data: saved, error: e2 } = await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null, image: chartThumb }).select("id").single();
         if (e2) throw e2;
         const update: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
         if (hist.length <= 1) update.title = data.message.slice(0, 40);
         await sb.from("coach_threads").update(update).eq("id", data.threadId);
-        return { reply, messageId: saved.id };
+        return { reply, messageId: saved.id, suggestions };
       })();
       const { keepAlive } = await import("./request-context.server");
       keepAlive(work);
@@ -403,7 +290,7 @@ export const morningGreeting = createServerFn({ method: "POST" })
       const day = dayKey(new Date(), await userTz(sb));
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "morning").eq("day", day).maybeSingle();
       if (existing) return { created: false };
-      const ctx = await buildContext(sb);
+      const ctx = await buildContext(sb, "brief");
       const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب رسالة صباحية لهادي بسطرين فقط، بدون مقدمات: سطر صباح الخير وسطر وحدة فيه: هدفك اليوم وحد خسارتك ونصيحة ضد الطمع. ممنوع يزيد عن سطرين. اليوم ${day}.` }]);
       const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "morning", day, title: "صباح الخير يا هادي ☀️", body });
       if (error && error.code !== "23505") throw error;
@@ -419,7 +306,7 @@ export const eveningReview = createServerFn({ method: "POST" })
       const day = dayKey(new Date(), await userTz(sb));
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "evening").eq("day", day).maybeSingle();
       if (existing) return { created: false };
-      const ctx = await buildContext(sb);
+      const ctx = await buildContext(sb, "brief");
       const body = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `اكتب مراجعة آخر اليوم لهادي بسطرين فقط بصفتك "حارس المخاطر": سطر يلخص ربح/خسارة اليوم والتزامه بحدوده، وسطر نصيحة واحدة لبكرة. ممنوع يزيد عن سطرين. اليوم ${day}.` }]);
       const { error } = await sb.from("notifications").insert({ user_id: context.userId, kind: "evening", day, title: "مراجعة اليوم 🌙", body });
       if (error && error.code !== "23505") throw error;
@@ -433,7 +320,7 @@ export const riskAdvice = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ trade: z.string().max(2000) }).parse(d))
   .handler(async ({ data, context }) => {
     try {
-      const ctx = await buildContext(context.supabase);
+      const ctx = await buildContext(context.supabase, "brief");
       const text = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `أنت "حارس المخاطر". قبل ما أدخل هذي الصفقة: ${data.trade}\nبثلاث نقاط قصيرة جداً: كم باقي لي من المخاطرة والخسارة اليوم، هل الصفقة تتعدى أي حد أو هدف (وطمع؟)، ثم الحكم بسطر: **ادخل** أو **خفّف الحجم** أو **لا تدخل** مع السبب.` }]);
       return { text };
     } catch (e) { fail(e); }
@@ -444,7 +331,7 @@ export const performanceInsight = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ period: z.string().max(40), stats: z.string().max(20000) }).parse(d))
   .handler(async ({ data, context }) => {
     try {
-      const ctx = await buildContext(context.supabase);
+      const ctx = await buildContext(context.supabase, "brief");
       const text = await callAI(`${BASE_PERSONA}\n\n${ctx}`, [{ role: "user", content: `هذه أرقام أدائي الحقيقية لفترة "${data.period}": ${data.stats}\nاكتب ٣ نقاط قصيرة جداً (سطر لكل نقطة) كمحلل أداء خبير: وين أربح، وين أخسر، وشيء واحد أغيّره. استخدم الأرقام فقط ولا تخترع شيء. إذا البيانات قليلة قلها بصراحة.` }]);
       return { text };
     } catch (e) { fail(e); }
@@ -455,7 +342,7 @@ export const reportSummary = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ period: z.string().max(40), stats: z.string().max(20000) }).parse(d))
   .handler(async ({ data, context }) => {
     try {
-      const ctx = await buildContext(context.supabase);
+      const ctx = await buildContext(context.supabase, "brief");
       const text = await callAI(
         `${BASE_PERSONA}\n\n${ctx}`,
         [
@@ -533,26 +420,9 @@ export const transcribeAudio = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ audio: z.string().min(10).max(14_000_000), mime: z.string().startsWith("audio/").max(100) }).parse(d))
   .handler(async ({ data }) => {
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("خدمة الذكاء غير مهيأة.");
-    const bin = Uint8Array.from(atob(data.audio), (c) => c.charCodeAt(0));
-    const mime = data.mime.split(";")[0]!;
-    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("wav") ? "wav" : "webm";
-    const form = new FormData();
-    form.append("model", "openai/gpt-transcribe");
-    form.append("file", new File([bin], `voice.${ext}`, { type: mime }));
-    form.append("response_format", "json");
-    form.append("language", "ar");
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
-    if (!res.ok) {
-      console.error("transcribe error", res.status, (await res.text().catch(() => "")).slice(0, 300));
-      if (res.status === 402 || res.status === 403) throw new Error("رصيد الذكاء الاصطناعي انتهى أو غير مفعّل.");
-      throw new Error("ما قدرت أفهم الرسالة الصوتية، جرّب مرة ثانية.");
-    }
-    const j = (await res.json()) as { text?: string };
-    const text = (j.text ?? "").trim();
-    if (!text) throw new Error("ما سمعت شي بالتسجيل.");
-    return { text };
+    try {
+      return { text: await transcribe(data.audio, data.mime) };
+    } catch (e) { fail(e); }
   });
 
 /** Once-a-day morning note from the risk guardian, written straight into its chat. */
@@ -619,7 +489,7 @@ export const paperIdea = createServerFn({ method: "POST" })
       const s = detectSymbols(data.symbol)[0];
       if (!s) throw new Error("الزوج غير مدعوم.");
       const { marketContext, chartImages, livePrice } = await import("./market.server");
-      const [ctx, live, charts, price] = await Promise.all([buildContext(context.supabase), marketContext([s]), chartImages(s), livePrice(s)]);
+      const [ctx, live, charts, price] = await Promise.all([buildContext(context.supabase, "brief"), marketContext([s]), chartImages(s), livePrice(s)]);
       if (price == null) throw new Error("ما قدرت أجيب السعر الحي.");
       const content: Record<string, unknown>[] = [{ type: "input_text", text: `اختبار ذاتي تجريبي (صفقات وهمية، مو حقيقية). السعر الآن ${price.toFixed(s.digits)} على ${s.key}. أعطني صفقة سكالب واحدة تدخل الآن بسعر السوق، تنتهي خلال دقائق: وقف قريب (تقريبًا 0.5–1 ATR فريم 15M) وهدف 1.5–2 ضعف الوقف، مبنية على خبراتك واستراتيجية هادي. reason سطر واحد بالعربي.${data.history ? `\nصفقاتك السابقة في هذا الاختبار: ${data.history}` : ""}\n${charts?.legend ?? ""}` }, ...(charts?.images ?? []).map((u) => ({ type: "input_image", image_url: u, detail: "high" }))];
       const out = JSON.parse(await callAI(`${BASE_PERSONA}\n\n${ctx}\n\n${ANALYST_SKILLS}${live}`, [{ role: "user", content }], SCALP_FORMAT)) as { direction: "long" | "short"; stop: number; target: number; reason: string };
