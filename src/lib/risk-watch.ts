@@ -59,6 +59,31 @@ export function riskAlerts(s: StatusSettings, trades: WatchTrade[], now = new Da
   return out;
 }
 
+export type ToastLevel = RiskAlert["level"] | "info";
+
+/**
+ * What an insert into notifications means for delivery. 23505 is the dedupe_key
+ * unique index: an earlier run (or another tab) already delivered it.
+ */
+export function deliveryOf(error: { code?: string } | null | undefined): "new" | "already" | "failed" {
+  if (!error) return "new";
+  return error.code === "23505" ? "already" : "failed";
+}
+
+const RANK: Record<ToastLevel, number> = { danger: 3, warning: 2, success: 1, info: 0 };
+
+/**
+ * One toast per watcher run: the worst item's title, plus how many more wait in
+ * the bell. Several stacked toasts used to cover the header on the phone.
+ */
+export function collapseToasts(items: { title: string; body: string; level: ToastLevel }[]): { title: string; body: string; level: ToastLevel } | null {
+  if (!items.length) return null;
+  const worst = items.reduce((w, x) => (RANK[x.level] > RANK[w.level] ? x : w));
+  const more = items.length - 1;
+  if (!more) return worst;
+  return { title: worst.title, body: `+${more} ${more === 1 ? "تنبيه" : "تنبيهات"} بالجرس`, level: worst.level };
+}
+
 /** Next time a daily reminder at HH:MM (the trader's clock) fires after `from`. */
 export function nextDaily(at: string, from = new Date(), tz?: string | null): Date {
   const [h, mi] = at.split(":").map(Number);

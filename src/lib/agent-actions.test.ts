@@ -123,6 +123,22 @@ describe("sanad deletions need approval", () => {
   });
 });
 
+describe("delete_notifications hides, never deletes", () => {
+  beforeEach(() => {
+    db.rows = {};
+    db.writes = [];
+  });
+  it("issues an update to dismissed, never a delete", async () => {
+    await runAction({ type: "delete_notifications", summary: "", data: "{}" });
+    expect(db.writes).toEqual([{ table: "notifications", op: "update", payload: { dismissed: true, read: true } }]);
+    expect(db.writes.some((w) => w.op === "delete")).toBe(false);
+  });
+  it("still waits for a click in auto mode", async () => {
+    await expect(runAction({ type: "delete_notifications", summary: "", data: "{}" }, { auto: true })).rejects.toBeInstanceOf(NeedsConfirmation);
+    expect(db.writes).toEqual([]);
+  });
+});
+
 describe("MT5 screenshots never close an open trade by floating P&L", () => {
   it("an open trade with pnl -35 and no exit_price stays open", () => {
     expect(isClosedUpload({ pnl: -35 })).toBe(false);

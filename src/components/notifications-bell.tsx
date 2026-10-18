@@ -26,11 +26,10 @@ export function NotificationsBell() {
   const q = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
-      // Today in the trader's zone: older notifications are cleared, so the bell never piles up.
+      // Only today in the trader's zone, so the bell never piles up. Older rows are
+      // filtered out, never deleted: their dedupe_keys stop alerts from firing twice.
       const st = await qc.ensureQueryData(settingsQuery).catch(() => null);
       const since = dayStart(new Date(), st?.timezone).toISOString();
-      // Only with his real zone: a guessed midnight could delete today's once-a-day locks.
-      if (st) await supabase.from("notifications").delete().lt("created_at", since);
       const { data, error } = await supabase.from("notifications").select("*").gte("created_at", since).eq("dismissed", false).order("created_at", { ascending: false }).limit(20);
       if (error) throw error;
       return data;

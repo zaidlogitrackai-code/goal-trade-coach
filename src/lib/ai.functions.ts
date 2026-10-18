@@ -202,7 +202,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 - end_session: {"review" (مراجعة الجلسة)}
 - start_cooldown: {"minutes"} — تهدئة؛ لا تستطيع إنهاء تهدئة أو تقصيرها
 - mark_notifications_read: {}
-- delete_notifications: {} (يمسح كل التنبيهات)
+- delete_notifications: {} (يخفي كل التنبيهات من الجرس)
 - attach_trade_image: {"trade_id"} أو {"symbol"} — يحفظ آخر صورة رفعها في المحادثة مع الصفقة (استخدمه دايماً لما يرفع صورة صفقة وتسجلها أو تقفلها)
 - remove_trade_image: {"trade_id"} أو {"symbol"}
 - add_violation: {"note","rule" (عنوان قاعدة أو null),"symbol" (أو null)} — لما يكسر قاعدة أو يطمع
@@ -546,7 +546,7 @@ export const riskMorning = createServerFn({ method: "POST" })
       const key = `risk-morning-${data.day}`;
       const { data: seen } = await sb.from("notifications").select("id").eq("dedupe_key", key).limit(1);
       if (seen?.length) return { skipped: true };
-      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true } as never);
+      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "risk", day: data.day, title: "صباح الخير من حارس المخاطر", body: "رسالتك اليومية في صفحة إدارة المخاطر", dedupe_key: key, read: true, dismissed: true });
       if (lock) return { skipped: true };
       const { reply, actions } = await runAgent(sb, RISK_MODE, [{ role: "user", content: "اكتب لي رسالة صباحية قصيرة جدًا (٣ أسطر كحد أقصى): حالة حدودي اليوم، كم باقي لي مخاطرة وصفقات، أي تعارض بالإعدادات (وجهّز تصحيحه). ابدأ بـ صباح الخير هادي. ممنوع فقرات طويلة." }]);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });
@@ -563,7 +563,7 @@ export const disciplineMorning = createServerFn({ method: "POST" })
       const key = `discipline-morning-${data.day}`;
       const { data: seen } = await sb.from("notifications").select("id").eq("dedupe_key", key).limit(1);
       if (seen?.length) return { skipped: true };
-      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "reminder", day: data.day, title: "حارس الانضباط", body: "حدد خطتك اليوم في صفحة الانضباط", dedupe_key: key, read: true } as never);
+      const { error: lock } = await sb.from("notifications").insert({ user_id: context.userId, kind: "reminder", day: data.day, title: "حارس الانضباط", body: "حدد خطتك اليوم في صفحة الانضباط", dedupe_key: key, read: true, dismissed: true });
       if (lock) return { skipped: true };
       const { reply, actions } = await runAgent(sb, DISCIPLINE_MODE, [{ role: "user", content: "ابدأ يومي: إذا ما عندي خطة اليوم اسألني عن هدفي وعدد صفقاتي وستوبي وأقصى خسارة. إذا عندي خطة ذكّرني فيها بسطرين كحد أقصى. ممنوع فقرات طويلة." }]);
       await sb.from("coach_messages").insert({ user_id: context.userId, thread_id: data.threadId, role: "assistant", content: reply, actions: actions.length ? actions : null });

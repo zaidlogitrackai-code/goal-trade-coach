@@ -103,7 +103,7 @@ export const ACTION_LABEL: Record<ActionType, string> = {
   rename_thread: "تغيير اسم محادثة",
   add_strategy_example: "حفظ مثال تدريب",
   delete_strategy_example: "حذف مثال تدريب",
-  delete_notifications: "مسح التنبيهات",
+  delete_notifications: "إخفاء التنبيهات",
 };
 
 /** The last image the user sent in chat, so the agent can attach it to a trade. */
@@ -925,7 +925,12 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       return check(error);
     }
     case "delete_notifications": {
-      const { error } = await supabase.from("notifications").delete().eq("user_id", user_id);
+      // Hide, never delete: the rows' dedupe_keys are the once-only locks for alerts and daily messages.
+      const { error } = await supabase
+        .from("notifications")
+        .update({ dismissed: true, read: true })
+        .eq("user_id", user_id)
+        .eq("dismissed", false);
       return check(error);
     }
     case "mark_notifications_read": {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextDaily, riskAlerts, type WatchTrade } from "./risk-watch";
+import { collapseToasts, deliveryOf, nextDaily, riskAlerts, type WatchTrade } from "./risk-watch";
 import { dayKey, wallClock } from "./trading-day";
 
 const now = new Date(2026, 9, 12, 15, 0);
@@ -45,4 +45,32 @@ describe("nextDaily", () => {
     expect(nextDaily("23:45", new Date("2026-10-12T20:30:00Z"), RIYADH).toISOString()).toBe("2026-10-12T20:45:00.000Z");
   });
   it("a bad time falls back to 09:00", () => expect(wallClock(nextDaily("xx", at, RIYADH), RIYADH).hour).toBe(9));
+});
+
+describe("delivery", () => {
+  it("loss_80 then loss_hit on the same day are two separate alerts", () => {
+    const k80 = riskAlerts(s, [closed(-160)], now).map((a) => a.key);
+    const kHit = riskAlerts(s, [closed(-200)], now).map((a) => a.key);
+    expect(k80.find((k) => k.startsWith("loss_80"))).toBeTruthy();
+    expect(kHit.find((k) => k.startsWith("loss_hit"))).toBeTruthy();
+    expect(kHit).not.toContain(k80.find((k) => k.startsWith("loss_80")));
+  });
+  it("a duplicate dedupe_key means already delivered, anything else failed", () => {
+    expect(deliveryOf(null)).toBe("new");
+    expect(deliveryOf({ code: "23505" })).toBe("already");
+    expect(deliveryOf({ code: "42501" })).toBe("failed");
+    expect(deliveryOf({})).toBe("failed");
+  });
+});
+
+describe("collapseToasts", () => {
+  const a = (title: string, level: "danger" | "warning" | "success" | "info") => ({ title, body: `${title} body`, level });
+  it("nothing to show", () => expect(collapseToasts([])).toBeNull());
+  it("one alert keeps its own body", () => expect(collapseToasts([a("قربت", "warning")])).toEqual(a("قربت", "warning")));
+  it("three alerts give one toast with the worst title and the count", () => {
+    expect(collapseToasts([a("هدف", "success"), a("وقف", "danger"), a("⏰ تذكير", "info")])).toEqual({ title: "وقف", body: "+2 تنبيهات بالجرس", level: "danger" });
+  });
+  it("ties keep the first one, and one extra reads singular", () => {
+    expect(collapseToasts([a("أول", "warning"), a("ثاني", "warning")])).toEqual({ title: "أول", body: "+1 تنبيه بالجرس", level: "warning" });
+  });
 });
