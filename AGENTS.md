@@ -13,7 +13,7 @@
 - App data is read/written from the browser Supabase client under owner-only RLS; protected pages live under `src/routes/_authenticated/` (ssr: false) — single-user personal app, no server functions needed yet.
 - AI features (analyst, coach, report summary) run only through authenticated server functions in `src/lib/ai.functions.ts`, using `src/lib/ai.server.ts` (gateway call, streamed to final text) — keeps the API key server-side and grounds replies in the user's own data.
 - Performance/discipline/report numbers come from pure helpers in `src/lib/stats.ts` — one calculation shared by every page.
-- AI-proposed changes are structured actions (`src/lib/agent-actions.ts`) validated with zod and executed in the browser only after the user clicks approve — the AI never writes data on its own.
+- AI-proposed changes are structured actions (`src/lib/agent-actions.ts`) validated with zod and executed in the browser; سَنَد auto-runs them except DESTRUCTIVE actions (deletes) and any loosening of a limit, which always wait for a click (owner decision, docs/decisions/sanad-steps.md) — full control without silent data loss.
 - The daily morning message is generated lazily on the first visit of the day (`morningGreeting`, unique per user/day) — no scheduler needed for a single-user app.
 - Mobile navigation uses four fixed primary destinations plus a complete “more” sheet — stable icon positions reduce cognitive load while preserving every route.
 - AI-created trades are de-duplicated via `src/lib/trade-dedupe.ts` (symbol+direction+entry, 24h) — re-uploading the same broker screenshot must never double-count.

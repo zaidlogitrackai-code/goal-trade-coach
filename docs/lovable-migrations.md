@@ -21,3 +21,13 @@ Requirements:
   - The UNIQUE (user_id, kind, day) constraint on `notifications` is gone, and the index `notifications_daily_once` exists.
   - The new tables have RLS enabled with the owner-only policy.
   - The `trade-screenshots` and `chat-images` storage buckets exist.
+
+---
+
+## 0014 — corrective (pending)
+
+Paste into Lovable:
+
+```
+Apply the database migration drizzle/migrations/0014_corrective.sql to Lovable Cloud exactly as written (do not rewrite it and do not change app code in src/). Register it in the drizzle journal like 0011–0013, then regenerate src/integrations/supabase/types.ts so it includes trading_settings.reviews_since, trading_settings.paused_until, trade_events.realized_pnl and the new capital_movements table. Then confirm: coach_messages is in the supabase_realtime publication, agent_action_log accepts status 'running', pre_trade_checks accepts intent 'watch', and capital_movements has RLS with the owner-only policy.
+```
