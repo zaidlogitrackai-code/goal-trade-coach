@@ -13,6 +13,10 @@ describe("agent actions", () => {
       }),
     ).toEqual({ weekly_target: 500, monthly_max_loss: 1500 });
   });
+  it("lets سَنَد set a real IANA time zone, never a typo", () => {
+    expect(parseAction({ type: "update_settings", summary: "", data: '{"timezone":"Asia/Dubai"}' })).toEqual({ timezone: "Asia/Dubai" });
+    expect(parseAction({ type: "update_settings", summary: "", data: '{"timezone":"Riyadh"}' })).toBeNull();
+  });
   it("rejects negative limits and unknown types", () => {
     expect(
       parseAction({ type: "update_settings", summary: "", data: '{"max_daily_loss":-5}' }),

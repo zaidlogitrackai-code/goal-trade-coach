@@ -2,13 +2,13 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { currentUserId, settingsQuery } from "@/lib/queries";
-import { dayKey } from "@/lib/streak";
+import { dayKey, safeTz } from "@/lib/trading-day";
 
 /** Silently marks today as a visit day (feeds the hidden login streak). */
 export function VisitRecorder() {
   const s = useQuery(settingsQuery);
   const qc = useQueryClient();
-  const tz = s.data?.timezone || "Asia/Riyadh";
+  const tz = safeTz(s.data?.timezone);
   useEffect(() => {
     if (s.isLoading) return;
     const day = dayKey(new Date(), tz);

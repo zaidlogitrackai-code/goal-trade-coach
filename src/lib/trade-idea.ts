@@ -64,3 +64,25 @@ export function lotForRisk(symbol: string, entry: number, stop: number, maxRiskU
   if (!(perLot > 0) || !(maxRiskUsd > 0)) return 0;
   return Math.floor((maxRiskUsd / perLot) * 100 + 1e-9) / 100;
 }
+
+/**
+ * P&L sign the exit price implies: 1 profit, -1 loss, 0 flat, null when unknown.
+ * Fees and swap can still flip a near-flat trade, so callers warn on a mismatch, never block.
+ */
+export function expectedPnlSign(
+  direction: string | null | undefined,
+  entry: number | null | undefined,
+  exit: number | null | undefined,
+): -1 | 0 | 1 | null {
+  if (entry == null || exit == null || !(entry > 0) || !(exit > 0) || !Number.isFinite(entry + exit)) return null;
+  const up = exit > entry ? 1 : exit < entry ? -1 : 0;
+  if (direction === "long") return up;
+  if (direction === "short") return up === 0 ? 0 : up === 1 ? -1 : 1;
+  return null;
+}
+
+/** The "risk within limits" check may tick only for a real computed risk under a real limit. */
+export function withinRiskLimit(risk: number | null | undefined, limit: number | null | undefined): boolean {
+  const l = Number(limit);
+  return risk != null && risk > 0 && Number.isFinite(l) && l > 0 && risk <= l;
+}

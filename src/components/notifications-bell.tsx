@@ -8,14 +8,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Md } from "@/components/md";
 import { morningGreeting } from "@/lib/ai.functions";
-import { fmtDate } from "@/lib/queries";
-
-/** Start of today on this device (older notifications are cleared automatically, so the bell never piles up). */
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
+import { fmtDate, settingsQuery } from "@/lib/queries";
+import { dayStart } from "@/lib/trading-day";
 
 /** Bell with the AI coach's daily morning message (created once per day on first visit). */
 export function NotificationsBell() {
@@ -32,9 +26,11 @@ export function NotificationsBell() {
   const q = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
-      const since = startOfToday();
-      // Daily clean-up: anything from before today disappears on its own.
-      await supabase.from("notifications").delete().lt("created_at", since);
+      // Today in the trader's zone: older notifications are cleared, so the bell never piles up.
+      const st = await qc.ensureQueryData(settingsQuery).catch(() => null);
+      const since = dayStart(new Date(), st?.timezone).toISOString();
+      // Only with his real zone: a guessed midnight could delete today's once-a-day locks.
+      if (st) await supabase.from("notifications").delete().lt("created_at", since);
       const { data, error } = await supabase.from("notifications").select("*").gte("created_at", since).eq("dismissed", false).order("created_at", { ascending: false }).limit(20);
       if (error) throw error;
       return data;

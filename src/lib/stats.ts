@@ -1,4 +1,5 @@
 import type { Trade, Violation } from "./queries";
+import { isGreed } from "./emotions";
 
 export function tradeStats(trades: Trade[]) {
   const closed = trades.filter((t) => t.status === "closed");
@@ -41,8 +42,6 @@ export function equityCurve(trades: Trade[], start: number) {
     .map((t, i) => { bal += Number(t.pnl) || 0; return { n: i + 1, balance: Math.round(bal * 100) / 100 }; });
 }
 
-const GREEDY = ["طمع", "انتقام", "خوف من الفوات", "FOMO"];
-
 /** Discipline 0-100 and greed signals, derived only from the user's own data. */
 export function disciplineReport(trades: Trade[], violations: Violation[], maxRisk: number) {
   const signals: string[] = [];
@@ -58,7 +57,7 @@ export function disciplineReport(trades: Trade[], violations: Violation[], maxRi
       if (gap >= 0 && gap < 15 * 60 * 1000) revenge++;
     }
   }
-  const greedy = trades.filter((t) => t.emotion && GREEDY.some((g) => t.emotion!.includes(g))).length;
+  const greedy = trades.filter((t) => isGreed(t.emotion)).length;
   let score = 100;
   score -= (100 - checklistRate) * 0.3;
   score -= Math.min(25, overRisk * 5);

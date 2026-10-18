@@ -1,9 +1,10 @@
+import { EMOTIONS } from "./emotions";
+
 export type AiTrade = {
   action: "open" | "close"; symbol: string | null; direction: "long" | "short" | null;
   entry: number | null; sl: number | null; tp: number | null; size: number | null; risk: number | null;
   exit_price: number | null; pnl: number | null; strategy: string | null; emotion: string | null; notes: string | null;
 };
-export const EMOTIONS = ["هادئ", "واثق", "متوتر", "متحمس", "خائف", "غاضب", "طمع"];
 const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? String(x) : "");
 
 /** Map an AI-parsed trade to the new-trade form values (strings). */

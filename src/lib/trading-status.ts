@@ -1,3 +1,5 @@
+import { dayStart, monthStart, weekStart } from "./trading-day";
+
 export type TradingStatus =
   | "ready"
   | "caution"
@@ -20,6 +22,8 @@ export interface StatusSettings {
   weekly_max_loss?: number;
   monthly_target?: number;
   monthly_max_loss?: number;
+  /** trading_settings.timezone: day/week/month windows follow the trader's clock. */
+  timezone?: string | null;
 }
 
 export interface StatusTrade {
@@ -41,25 +45,6 @@ export interface DayMetrics {
   violationsToday: number;
   weekPnl: number;
   monthPnl: number;
-}
-
-export function startOfToday(now = new Date()): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-/** Week starts Sunday (Saudi trading week). */
-export function startOfWeek(now = new Date()): Date {
-  const d = startOfToday(now);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
-export function startOfMonth(now = new Date()): Date {
-  const d = startOfToday(now);
-  d.setDate(1);
-  return d;
 }
 
 function pnlSince(trades: StatusTrade[], since: number) {
@@ -85,7 +70,7 @@ export function computeDayMetrics(
   violationsToday: number,
   now = new Date(),
 ): DayMetrics {
-  const start = startOfToday(now).getTime();
+  const start = dayStart(now, s.timezone).getTime();
   const today = allTrades.filter((t) => new Date(t.opened_at).getTime() >= start);
   const closedToday = allTrades.filter(
     (t) => t.status === "closed" && t.closed_at && new Date(t.closed_at).getTime() >= start,
@@ -103,8 +88,8 @@ export function computeDayMetrics(
     // because no new trade (and so no win) could ever be recorded.
     consecutiveLosses: countConsecutiveLosses(closedToday),
     violationsToday,
-    weekPnl: pnlSince(allTrades, startOfWeek(now).getTime()),
-    monthPnl: pnlSince(allTrades, startOfMonth(now).getTime()),
+    weekPnl: pnlSince(allTrades, weekStart(now, s.timezone).getTime()),
+    monthPnl: pnlSince(allTrades, monthStart(now, s.timezone).getTime()),
   };
 }
 

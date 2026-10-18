@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { CAPITAL_CATEGORY, computeCapital, parseLedger } from "@/lib/capital";
 import { applyPctLimits } from "@/lib/effective-limits";
+import { dayKey, safeTz } from "@/lib/trading-day";
 import type { Database } from "@/integrations/supabase/types";
 
 export type Settings = Database["public"]["Tables"]["trading_settings"]["Row"];
@@ -92,13 +93,14 @@ export function fmtDate(s: string | null) {
   return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "medium", timeStyle: "short" }).format(new Date(s));
 }
 
-export const todayPlanQuery = {
-  queryKey: ["daily_plan", "today"] as const,
+/** Today's plan by the trader's calendar day; the minute refetch rolls it over at his midnight. */
+export const todayPlanQuery = (tz: string | null | undefined) => ({
+  queryKey: ["daily_plan", "today", safeTz(tz)] as const,
   queryFn: async () => {
     const { supabase } = await import("@/integrations/supabase/client");
-    const { data, error } = await supabase.from("daily_plans").select("target").eq("day", new Date().toLocaleDateString("en-CA")).maybeSingle();
+    const { data, error } = await supabase.from("daily_plans").select("target").eq("day", dayKey(new Date(), tz)).maybeSingle();
     if (error) throw error;
     return data;
   },
   refetchInterval: 60_000,
-};
+});

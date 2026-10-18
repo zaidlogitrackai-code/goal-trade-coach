@@ -111,4 +111,27 @@ describe("evaluateTradeGate", () => {
     expect(res.allowed).toBe(true);
     expect(res.warnings.some((r) => r.includes("الحد الأقصى لكل صفقة"))).toBe(true);
   });
+
+  it("an unknown risk stays null and is flagged, never counted as a safe 0", () => {
+    const res = evaluateTradeGate({
+      settings: baseSettings,
+      metrics: baseMetrics,
+      input: { symbol: "EURUSD", direction: "long", entry_price: 1.08, stop_loss: 1.07, risk_amount: null },
+      currentBalance: 10000,
+    });
+    expect(res.metrics.tradeRisk).toBeNull();
+    expect(res.metrics.riskPercentOfBalance).toBeNull();
+    expect(res.warnings.some((r) => r.includes("ما قدرت أحسب مخاطرة"))).toBe(true);
+  });
+
+  it("a known risk still gives its share of the balance", () => {
+    const res = evaluateTradeGate({
+      settings: baseSettings,
+      metrics: baseMetrics,
+      input: { symbol: "EURUSD", direction: "long", stop_loss: 1.07, risk_amount: 50 },
+      currentBalance: 10000,
+    });
+    expect(res.metrics.riskPercentOfBalance).toBe(0.5);
+    expect(res.warnings.some((r) => r.includes("ما قدرت أحسب مخاطرة"))).toBe(false);
+  });
 });

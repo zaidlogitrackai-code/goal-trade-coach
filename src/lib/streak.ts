@@ -1,23 +1,10 @@
+import { addDays, dayKey, isWeekendDay } from "./trading-day";
+export { dayKey };
+
 export interface StreakSession { started_at: string; ended_at: string | null; review: string | null }
 export interface StreakViolation { occurred_at: string }
 export type DayState = "ok" | "broken" | "none" | "pending";
 export interface StreakResult { current: number; best: number; days: { date: string; state: DayState }[] }
-
-/** YYYY-MM-DD of an instant in the given time zone. */
-export function dayKey(d: Date | string, tz: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
-}
-
-function isWeekend(key: string) {
-  const wd = new Date(`${key}T12:00:00Z`).getUTCDay();
-  return wd === 0 || wd === 6;
-}
-
-function prevKey(key: string) {
-  const d = new Date(`${key}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 
 /**
  * Discipline streak over market days (Mon–Fri).
@@ -47,8 +34,8 @@ export function disciplineStreak(sessions: StreakSession[], violations: StreakVi
   const chrono: { date: string; state: DayState }[] = [];
   let k = today;
   for (let i = 0; i < lookback; i++) {
-    if (!isWeekend(k)) chrono.unshift({ date: k, state: stateOf(k) });
-    k = prevKey(k);
+    if (!isWeekendDay(k)) chrono.unshift({ date: k, state: stateOf(k) });
+    k = addDays(k, -1);
   }
 
   let best = 0, run = 0;
@@ -71,11 +58,11 @@ export function loginStreak(visitDays: string[], violations: StreakViolation[], 
   const chrono: { date: string; state: DayState }[] = [];
   let k = today;
   for (let i = 0; i < lookback; i++) {
-    if (!isWeekend(k)) {
+    if (!isWeekendDay(k)) {
       const state: DayState = violDays.has(k) ? "broken" : visits.has(k) ? "ok" : k === today ? "pending" : "broken";
       chrono.unshift({ date: k, state });
     }
-    k = prevKey(k);
+    k = addDays(k, -1);
   }
   let best = 0, run = 0;
   for (const d of chrono) {

@@ -12,18 +12,21 @@ import {
 import {
   computeDayMetrics,
   computeStatus,
-  startOfToday,
   type TradingStatus,
 } from "@/lib/trading-status";
+import { dayStart } from "@/lib/trading-day";
 
-/** Sessions started today, newest first. Invalidated with ["sessions"]. */
+/**
+ * Sessions of the last two days, newest first; useJourney narrows them to the trader's
+ * today (his zone lives in settings, which this query can't see). Invalidated with ["sessions"].
+ */
 export const todaySessionsQuery = {
   queryKey: ["sessions", "today"],
   queryFn: async () => {
     const { data, error } = await supabase
       .from("trading_sessions")
       .select("id,started_at,ended_at")
-      .gte("started_at", startOfToday().toISOString())
+      .gte("started_at", new Date(Date.now() - 2 * 86_400_000).toISOString())
       .order("started_at", { ascending: false });
     if (error) throw error;
     return data;
@@ -44,10 +47,10 @@ export function useJourney(): { journey: Journey; status: TradingStatus } | null
   const today = useQuery(todaySessionsQuery);
   if (!s.data || !t.data || !st.data || !r.data || !v.data || !f.data || !today.data) return null;
 
-  const start = startOfToday().getTime();
+  const start = dayStart(new Date(), s.data.timezone).getTime();
   const violationsToday = v.data.filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const status = computeStatus(s.data, computeDayMetrics(s.data, t.data, violationsToday));
-  const latest = today.data[0];
+  const latest = today.data.find((x) => new Date(x.started_at).getTime() >= start);
   const journey = buildJourney({
     focusReady: f.data.markets.length > 0 && !!(f.data.goal || f.data.weakness),
     strategies: st.data.length,

@@ -12,9 +12,11 @@ import { SessionAgent } from "@/components/session-agent";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { disciplineMorning } from "@/lib/ai.functions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
 import { currentUserId, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
+import { parseDecimal } from "@/lib/num";
+import { dayKey } from "@/lib/trading-day";
 import { disciplineReport } from "@/lib/stats";
 import { countConsecutiveLosses } from "@/lib/trading-status";
 import { Gauge, ShieldAlert, Sparkles, Clock, AlertTriangle, CheckCircle2, Info } from "lucide-react";
@@ -45,7 +47,9 @@ function DisciplinePage() {
   const onReady = useCallback((threadId: string) => {
     if (asked.current) return;
     asked.current = true;
-    morning({ data: { threadId, day: new Date().toLocaleDateString("en-CA") } })
+    // The once-a-day lock is keyed by the trader's own calendar day.
+    qc.ensureQueryData(settingsQuery).catch(() => null)
+      .then((st) => morning({ data: { threadId, day: dayKey(new Date(), st?.timezone) } }))
       .then((r) => { if (r && !r.skipped) qc.invalidateQueries({ queryKey: ["messages", threadId] }); })
       .catch(() => {});
   }, [morning, qc]);
@@ -91,7 +95,8 @@ function DisciplineStats() {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
-  const [mins, setMins] = useState<number | "">("");
+  // null until settings load, so clearing the field to retype doesn't snap back to the default.
+  const [mins, setMins] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -100,7 +105,7 @@ function DisciplineStats() {
   }, []);
 
   useEffect(() => {
-    if (s.data && mins === "") setMins(s.data.cooldown_minutes || 30);
+    if (s.data && mins === null) setMins(String(s.data.cooldown_minutes || 30));
   }, [s.data, mins]);
 
   if (s.isLoading || t.isLoading || v.isLoading) return <Loading />;
@@ -137,7 +142,7 @@ function DisciplineStats() {
     qc.invalidateQueries({ queryKey: ["settings"] });
   }
 
-  const m = Number(mins) || 30;
+  const m = Math.max(0, Math.round(parseDecimal(mins).value ?? 0)) || 30;
   const fmt = (ms: number) => {
     const sec = Math.ceil(ms / 1000);
     return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
@@ -179,13 +184,13 @@ function DisciplineStats() {
             </p>
             <div className="flex flex-wrap items-end gap-3 pt-1">
               <div className="space-y-1">
-                <Label className="text-xs">مدة التهدئة (دقائق)</Label>
-                <Input
-                  type="number"
-                  min={5}
-                  className="w-32 font-data"
-                  value={mins}
-                  onChange={(e) => setMins(e.target.value === "" ? "" : Number(e.target.value))}
+                <Label htmlFor="cooldown-mins" className="text-xs">مدة التهدئة (دقائق)</Label>
+                <NumberField
+                  id="cooldown-mins"
+                  inputMode="numeric"
+                  className="w-32"
+                  value={mins ?? ""}
+                  onValueChange={setMins}
                 />
               </div>
               <Button

@@ -1,34 +1,25 @@
 import type { Trade } from "./queries";
+import { addDays, dayKey, wallClock, weekStart, zonedMidnight } from "./trading-day";
+export { dayKey };
 
 export type Period = "today" | "week" | "month" | "all";
-const DAY = 86_400_000;
 const pnl = (t: Trade) => Number(t.pnl) || 0;
 const closedAt = (t: Trade) => new Date(t.closed_at ?? t.opened_at);
 const closed = (ts: Trade[]) => ts.filter((t) => t.status === "closed").sort((a, b) => +closedAt(a) - +closedAt(b));
 
-/** Local Y-M-D key in the given timezone. */
-export function dayKey(d: Date, tz: string) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-}
-
 /** [start, end) window for a period plus the previous equal window. Week starts Monday. */
 export function periodRange(p: Period, now: Date, tz: string): { start: number; end: number; prevStart: number } | null {
   if (p === "all") return null;
-  const [y, m, d] = dayKey(now, tz).split("-").map(Number) as [number, number, number];
-  const offset = now.getTime() - Date.UTC(y, m - 1, d, ...hms(now, tz));
-  const midnight = Date.UTC(y, m - 1, d) + offset;
-  if (p === "today") return { start: midnight, end: midnight + DAY, prevStart: midnight - DAY };
+  const at = (key: string) => zonedMidnight(key, tz).getTime();
+  const k = dayKey(now, tz);
+  if (p === "today") return { start: at(k), end: at(addDays(k, 1)), prevStart: at(addDays(k, -1)) };
   if (p === "week") {
-    const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
-    const s = midnight - dow * DAY;
-    return { start: s, end: s + 7 * DAY, prevStart: s - 7 * DAY };
+    const s = dayKey(weekStart(now, tz), tz);
+    return { start: at(s), end: at(addDays(s, 7)), prevStart: at(addDays(s, -7)) };
   }
-  const s = Date.UTC(y, m - 1, 1) + offset;
-  return { start: s, end: Date.UTC(y, m, 1) + offset, prevStart: Date.UTC(y, m - 2, 1) + offset };
-}
-function hms(d: Date, tz: string): [number, number, number] {
-  const p = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d).split(":").map(Number);
-  return [(p[0] ?? 0) % 24, p[1] ?? 0, p[2] ?? 0];
+  const [y, m] = k.split("-").map(Number) as [number, number];
+  const first = (dm: number) => new Date(Date.UTC(y, m - 1 + dm, 1)).toISOString().slice(0, 10);
+  return { start: at(first(0)), end: at(first(1)), prevStart: at(first(-1)) };
 }
 
 export function inRange(ts: Trade[], from: number, to: number) {
@@ -90,14 +81,15 @@ export function weekdayName(t: Trade, tz: string) {
   return WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]!;
 }
 export function hourBucket(t: Trade, tz: string) {
-  const h = hms(new Date(t.opened_at), tz)[0];
+  const h = wallClock(t.opened_at, tz).hour;
   return `${String(h).padStart(2, "0")}:00`;
 }
 
 export function sideSplit(ts: Trade[]) {
   const c = closed(ts);
   const f = (dir: string) => { const x = c.filter((t) => t.direction === dir); return { count: x.length, pnl: x.reduce((a, t) => a + pnl(t), 0) }; };
-  return { buy: f("buy"), sell: f("sell") };
+  // trades.direction is CHECK (long|short) in the DB.
+  return { long: f("long"), short: f("short") };
 }
 
 /** Percent change helper; null when there is no base. */

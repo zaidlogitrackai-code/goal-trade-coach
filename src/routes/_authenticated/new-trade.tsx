@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, Loading } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,11 +16,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { riskAdvice } from "@/lib/ai.functions";
 import { Md } from "@/components/md";
 import { toForm, type AiTrade } from "@/lib/ai-trade";
+import { EMOTIONS, isSensitive, revengeLine } from "@/lib/emotions";
 import { currentUserId, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, violationsQuery } from "@/lib/queries";
-import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
+import { computeDayMetrics } from "@/lib/trading-status";
+import { dayStart } from "@/lib/trading-day";
 import { evaluateTradeGate } from "@/lib/trade-gate";
 import { inMarkets, splitMarkets } from "@/lib/focus";
 import { FOREX_ONLY_MSG, forexSymbol } from "@/lib/forex";
+import { parseDecimal } from "@/lib/num";
+import { enterMovesToNextField } from "@/lib/form-keys";
+import { lotForRisk, riskUsd, withinRiskLimit } from "@/lib/trade-idea";
 import { useCapital } from "@/lib/capital-store";
 import { focusQuery } from "@/lib/focus-store";
 import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
@@ -42,8 +48,6 @@ const CHECKLIST_ITEMS = [
   { id: "calm", label: "أنا هادئ ومركّز ومستعد ذهنياً", desc: "خالٍ من التوتر أو الغضب أو الاستعجال الناتج عن FOMO." },
 ];
 
-const EMOTIONS = ["هادئ", "واثق", "متوتر", "متحمس", "خائف", "غاضب", "طمع"];
-const SENSITIVE_EMOTIONS = ["طمع", "خائف", "متوتر", "غاضب"];
 /** Minimum answer length for "what is pushing you to enter?" */
 const MOTIVE_MIN = 10;
 /** Minimum length for an override justification. */
@@ -99,7 +103,7 @@ function NewTrade() {
 
   const settings = s.data;
   if (s.isLoading || t.isLoading || !settings) return <Loading />;
-  const start = startOfToday().getTime();
+  const start = dayStart(new Date(), settings.timezone).getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const metrics = computeDayMetrics(settings, t.data ?? [], violationsToday);
 
@@ -121,12 +125,27 @@ function NewTrade() {
       : null,
   ].filter((x): x is string => !!x);
 
-  const num = (x: string) => (x === "" ? null : Number(x));
+  const num = (x: string) => parseDecimal(x).value;
+  /** USD at stake via contract size — the same riskUsd the AI trade path uses. */
+  function money(form: typeof f) {
+    const sym = forexSymbol(form.symbol);
+    const e = num(form.entry), sl = num(form.sl), tp = num(form.tp), sz = num(form.size);
+    const manual = num(form.risk);
+    const at = (exit: number | null) => (sym && e && exit && sz ? riskUsd(sym, e, exit, sz) : null);
+    return { risk: manual != null ? Math.abs(manual) : at(sl), profit: at(tp) };
+  }
   const entryNum = num(f.entry);
   const slNum = num(f.sl);
   const tpNum = num(f.tp);
   const sizeNum = num(f.size);
-  const riskNum = num(f.risk) ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
+  const { risk: riskNum, profit: potentialProfit } = money(f);
+  const maxRisk = Number(settings.max_risk_per_trade) || 0;
+  const symNow = forexSymbol(f.symbol);
+  const rightLot = symNow && entryNum && slNum ? lotForRisk(symNow, entryNum, slNum, maxRisk) : 0;
+  // Saving waits for the three numbers every check depends on, so a stray Return can't log half a trade.
+  const missing = [!symNow && "الأصل", !(entryNum != null && entryNum > 0) && "سعر الدخول", !(slNum != null && slNum > 0) && "وقف الخسارة"]
+    .filter((x): x is string => !!x);
+  const canSave = missing.length === 0;
 
   const allChecked = checks.every(Boolean);
 
@@ -159,28 +178,44 @@ function NewTrade() {
     currentBalance: capital?.summary.balance ?? settings.starting_balance,
   });
 
-  const sensitive = !!f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion);
+  const sensitive = isSensitive(f.emotion);
   const emotionCheckDone = !sensitive || (reflectionReason.trim().length >= MOTIVE_MIN && isCompensating !== null);
   const revenge = sensitive && isCompensating === true;
   // Everything that makes this trade a documented exception.
   // Advisory only: nothing here blocks or demands a justification.
   const overrideReasons: string[] = [];
 
-  // Calculations for display
-  const potentialLoss = riskNum ?? (entryNum && slNum && sizeNum ? Math.abs(entryNum - slNum) * sizeNum : null);
-  const potentialProfit = entryNum && tpNum && sizeNum ? Math.abs(tpNum - entryNum) * sizeNum : null;
-
   /** Auto-answer what the AI can infer from the extracted trade itself. */
   function autoChecks(form: typeof f) {
-    const e = num(form.entry), sl = num(form.sl), sz = num(form.size);
-    const risk = num(form.risk) ?? (e && sl && sz ? Math.abs(e - sl) * sz : null);
+    const risk = money(form).risk;
     return CHECKLIST_ITEMS.map((it) =>
       it.id === "strategy" ? !!form.strategy_id
-      : it.id === "sl" ? !!sl
-      : it.id === "risk" ? risk !== null && risk <= Number(settings!.max_risk_per_trade ?? Infinity)
+      : it.id === "sl" ? !!num(form.sl)
+      : it.id === "risk" ? withinRiskLimit(risk, maxRisk)
       : false,
     );
   }
+
+  /** A number changed: re-derive the sl/risk answers, keep the trader's other answers. */
+  function setNumbers(nf: typeof f) {
+    setF(nf);
+    setChecks(autoChecks(nf).map((x, i) => x || !!(checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk")));
+  }
+
+  // Lot size that fits the per-trade limit; using it clears a typed risk amount that would go stale.
+  const rightSize = rightLot > 0 && (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span>
+        الحجم الصح لحدّك ({fmtMoney(maxRisk, settings.currency)}):{" "}
+        <span dir="ltr" className="font-data font-semibold text-foreground">{rightLot}</span>
+      </span>
+      {rightLot !== sizeNum && (
+        <Button type="button" size="sm" variant="secondary" onClick={() => setNumbers({ ...f, size: String(rightLot), risk: "" })}>
+          استخدم
+        </Button>
+      )}
+    </div>
+  );
 
   function apply(target: AiTrade) {
     const form = toForm(target, st.data ?? []);
@@ -221,9 +256,9 @@ function NewTrade() {
       if (isOverride && overrideReasonText) {
         notesCombined += `\n[مبرر الاستثناء]: ${overrideReasonText}`;
       }
-      if (f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion)) {
+      if (sensitive) {
         if (reflectionReason) notesCombined += `\n[دافع الدخول]: ${reflectionReason}`;
-        if (isCompensating !== null) notesCombined += `\n[هل هو تعويض]: ${isCompensating ? "نعم" : "لا"}`;
+        if (isCompensating !== null) notesCombined += `\n${revengeLine(isCompensating)}`;
       }
 
       // 1. Insert trade
@@ -294,6 +329,18 @@ function NewTrade() {
       return;
     }
 
+    if ([f.entry, f.sl, f.tp, f.size, f.risk].some((x) => parseDecimal(x).invalid)) {
+      setManualOpen(true);
+      toast.error("في رقم مكتوب غلط، صحّحه قبل التسجيل.");
+      return;
+    }
+
+    if (!canSave) {
+      setManualOpen(true);
+      toast.error(`اكتب ${missing.join(" و")} قبل التسجيل.`);
+      return;
+    }
+
     if (!emotionCheckDone) {
       toast.error("أجب عن سؤالَي فحص المشاعر قبل التسجيل.");
       return;
@@ -353,7 +400,7 @@ function NewTrade() {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} onKeyDown={enterMovesToNextField} className="space-y-6">
         {aiLoaded && (
           <section className="panel space-y-4 p-5" aria-label="ملخص الصفقة">
             <div className="flex items-center gap-2 font-semibold">
@@ -377,6 +424,7 @@ function NewTrade() {
                 </div>
               ))}
             </dl>
+            {rightSize}
             {advice && (
               <div className="rounded-lg border border-border p-3 text-sm leading-7">
                 <p className="mb-1 text-xs font-medium text-muted-foreground">رأي حارس المخاطر</p>
@@ -386,8 +434,7 @@ function NewTrade() {
             {!slNum && (
               <div className="space-y-1.5">
                 <Label htmlFor="quick-sl">وين وقف الخسارة؟</Label>
-                <Input id="quick-sl" dir="ltr" inputMode="decimal" value={f.sl}
-                  onChange={(e) => { const nf = { ...f, sl: e.target.value }; setF(nf); setChecks(autoChecks(nf).map((x, i) => x || !!(checks[i] && CHECKLIST_ITEMS[i]!.id !== "sl" && CHECKLIST_ITEMS[i]!.id !== "risk"))); }} />
+                <NumberField id="quick-sl" value={f.sl} onValueChange={(sl) => setNumbers({ ...f, sl })} />
               </div>
             )}
             {CHECKLIST_ITEMS.map((item, i) => checks[i] ? null : (
@@ -445,6 +492,12 @@ function NewTrade() {
             <Input
               id="symbol"
               dir="ltr"
+              enterKeyHint="next"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-11 text-base md:text-base"
               placeholder="EURUSD أو XAUUSD أو US100"
               value={f.symbol}
               onChange={(e) => setF({ ...f, symbol: e.target.value })}
@@ -505,27 +558,21 @@ function NewTrade() {
 
           <div className="space-y-2">
             <Label htmlFor="entry">سعر الدخول</Label>
-            <Input
+            <NumberField
               id="entry"
-              type="number"
-              step="any"
-              dir="ltr"
               value={f.entry}
-              onChange={(e) => setF({ ...f, entry: e.target.value })}
+              onValueChange={(entry) => setF({ ...f, entry })}
               placeholder="1.0850"
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="sl">وقف الخسارة (إلزامي)</Label>
-            <Input
+            <NumberField
               id="sl"
-              type="number"
-              step="any"
-              dir="ltr"
               className={!slNum ? "border-destructive/60" : ""}
               value={f.sl}
-              onChange={(e) => setF({ ...f, sl: e.target.value })}
+              onValueChange={(sl) => setF({ ...f, sl })}
               placeholder="1.0800"
             />
             {!slNum && (
@@ -535,42 +582,32 @@ function NewTrade() {
 
           <div className="space-y-2">
             <Label htmlFor="tp">الهدف (أخذ الربح)</Label>
-            <Input
+            <NumberField
               id="tp"
-              type="number"
-              step="any"
-              dir="ltr"
               value={f.tp}
-              onChange={(e) => setF({ ...f, tp: e.target.value })}
+              onValueChange={(tp) => setF({ ...f, tp })}
               placeholder="1.0950"
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="size">حجم الصفقة (العقد / الكمية)</Label>
-            <Input
+            <NumberField
               id="size"
-              type="number"
-              step="any"
-              dir="ltr"
               value={f.size}
-              onChange={(e) => setF({ ...f, size: e.target.value })}
+              onValueChange={(size) => setF({ ...f, size })}
               placeholder="1.0"
             />
+            {rightSize}
           </div>
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="risk">مبلغ المخاطرة بالعملة ({settings.currency})</Label>
-            <Input
+            <NumberField
               id="risk"
-              type="number"
-              step="any"
-              min={0}
-              dir="ltr"
-              className="font-data"
               value={f.risk}
-              onChange={(e) => setF({ ...f, risk: e.target.value })}
-              placeholder={potentialLoss ? String(Math.round(potentialLoss * 100) / 100) : "50"}
+              onValueChange={(risk) => setF({ ...f, risk })}
+              placeholder={riskNum ? String(riskNum) : "50"}
             />
             <p className="text-xs text-muted-foreground">
               الحد الأقصى لكل صفقة:{" "}
@@ -596,7 +633,7 @@ function NewTrade() {
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">الخسارة المحتملة</span>
               <p dir="ltr" className="font-data text-lg font-bold text-destructive">
-                {potentialLoss != null ? fmtMoney(potentialLoss, settings.currency) : "—"}
+                {riskNum != null ? fmtMoney(riskNum, settings.currency) : "—"}
               </p>
             </div>
 
@@ -619,7 +656,7 @@ function NewTrade() {
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">نسبة المخاطرة من الرصيد</span>
               <p dir="ltr" className="font-data text-lg font-bold text-foreground">
-                {gateResult.metrics.riskPercentOfBalance}%
+                {gateResult.metrics.riskPercentOfBalance != null ? `${gateResult.metrics.riskPercentOfBalance}%` : "—"}
               </p>
             </div>
           </div>
@@ -673,7 +710,7 @@ function NewTrade() {
           </div>
 
           {/* Mandatory Reflection Question if sensitive emotion chosen */}
-          {f.emotion && SENSITIVE_EMOTIONS.includes(f.emotion) && (
+          {sensitive && (
             <div className="rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-3 text-xs">
               <p className="font-semibold text-warning flex items-center gap-1.5">
                 <AlertCircle className="size-4" />
@@ -737,12 +774,14 @@ function NewTrade() {
         {(aiLoaded || manualOpen) && <Button
           type="submit"
           size="lg"
-          disabled={busy}
+          disabled={busy || !canSave}
           variant="default"
           className="w-full sm:w-auto text-base"
         >
           {busy
             ? "جارٍ الحفظ…"
+            : !canSave
+            ? `اكتب ${missing.join(" و")}`
             : !emotionCheckDone
             ? "أجب عن فحص المشاعر أولاً"
             : "تسجيل الصفقة"}

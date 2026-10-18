@@ -9,6 +9,7 @@ import { applyPctLimits } from "@/lib/effective-limits";
 import { loadCapital } from "@/lib/capital-store";
 import { eveningReview } from "@/lib/ai.functions";
 import { effectiveDailyTarget } from "@/lib/daily-plan";
+import { dayKey, wallClock } from "@/lib/trading-day";
 
 const EVERY_MS = 60_000;
 export const RISK_THREAD = "حارس المخاطر";
@@ -30,11 +31,13 @@ export function RiskWatcher() {
     async function tick() {
       try {
         const user_id = await currentUserId();
-        const [s, t, plan] = await Promise.all([
+        const [s, t] = await Promise.all([
           supabase.from("trading_settings").select("*").maybeSingle(),
           supabase.from("trades").select("id,symbol,stop_loss,status,pnl,risk_amount,opened_at,closed_at").gte("opened_at", new Date(Date.now() - 35 * 86_400_000).toISOString()),
-          supabase.from("daily_plans").select("target").eq("day", new Date().toLocaleDateString("en-CA")).maybeSingle(),
         ]);
+        const tz = s.data?.timezone;
+        const today = dayKey(new Date(), tz);
+        const plan = await supabase.from("daily_plans").select("target").eq("day", today).maybeSingle();
         let added = false;
         if (s.data && t.data) {
           const lim = applyPctLimits(s.data, (await loadCapital()).summary.balance);
@@ -43,7 +46,7 @@ export function RiskWatcher() {
             const { data: seen } = await supabase.from("notifications").select("dedupe_key").in("dedupe_key", alerts.map((a) => a.key));
             const known = new Set((seen ?? []).map((x) => x.dedupe_key));
             for (const a of alerts.filter((x) => !known.has(x.key))) {
-              const { error } = await supabase.from("notifications").insert({ user_id, kind: "risk", day: new Date().toISOString().slice(0, 10), title: a.title, body: a.body, dedupe_key: a.key });
+              const { error } = await supabase.from("notifications").insert({ user_id, kind: "risk", day: today, title: a.title, body: a.body, dedupe_key: a.key });
               if (!error) {
                 pop(a.title, a.body, a.level); added = true;
                 const { data: th } = await supabase.from("coach_threads").select("id").or(`title.eq.${RISK_THREAD},title.like.${RISK_THREAD} · %`).order("updated_at", { ascending: false }).limit(1);
@@ -56,13 +59,13 @@ export function RiskWatcher() {
         const { data: due } = await supabase.from("reminders").select("*").eq("active", true).lte("next_at", new Date().toISOString());
         for (const r of due ?? []) {
           const key = `rem:${r.id}:${r.next_at}`;
-          const { error } = await supabase.from("notifications").insert({ user_id, kind: "reminder", day: new Date().toISOString().slice(0, 10), title: `⏰ ${r.title}`, body: r.body || r.title, dedupe_key: key });
+          const { error } = await supabase.from("notifications").insert({ user_id, kind: "reminder", day: today, title: `⏰ ${r.title}`, body: r.body || r.title, dedupe_key: key });
           if (!error) { pop(`⏰ ${r.title}`, r.body, "info"); added = true; }
-          const patch = r.repeat === "daily" && r.at_time ? { next_at: nextDaily(r.at_time.slice(0, 5)).toISOString() } : { active: false };
+          const patch = r.repeat === "daily" && r.at_time ? { next_at: nextDaily(r.at_time.slice(0, 5), new Date(), tz).toISOString() } : { active: false };
           await supabase.from("reminders").update(patch).eq("id", r.id);
         }
         // Evening review once per day after 21:00.
-        if (new Date().getHours() >= 21) {
+        if (wallClock(new Date(), tz).hour >= 21) {
           const r = await review().catch(() => null);
           if (r?.created) added = true;
         }

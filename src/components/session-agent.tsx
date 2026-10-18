@@ -10,13 +10,15 @@ import { Md } from "@/components/md";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { coachReply, transcribeAudio } from "@/lib/ai.functions";
-import { currentUserId } from "@/lib/queries";
+import { currentUserId, settingsQuery } from "@/lib/queries";
+import { dayKey } from "@/lib/trading-day";
 import { makeThumbnail, prepareImage } from "@/lib/image";
 import { friendlyError, retryText, sendReliably, retryDecision, unansweredMessage } from "@/lib/chat-retry";
 import { threadState } from "@/lib/chat-check";
 
-function todayTitle() {
-  return `جلسة ${new Date().toLocaleDateString("en-CA")}`;
+/** One session thread per trading day, named by the trader's own calendar day. */
+function todayTitle(tz: string | null | undefined) {
+  return `جلسة ${dayKey(new Date(), tz)}`;
 }
 
 export const GREETING_START =
@@ -48,7 +50,9 @@ export interface AgentChatProps {
 }
 
 export function SessionAgent({ hasActive, onChanged, title, greeting, quick: quickProp, mode, placeholder, onReady, threadId, brief }: AgentChatProps) {
-  const threadTitle = title ?? todayTitle();
+  // The day's title waits for his zone, so a guessed day never opens a second thread.
+  const settings = useQuery({ ...settingsQuery, enabled: !title });
+  const threadTitle = title ?? (settings.isFetched ? todayTitle(settings.data?.timezone) : null);
   const qc = useQueryClient();
   const send = useServerFn(coachReply);
   const transcribe = useServerFn(transcribeAudio);
@@ -87,16 +91,16 @@ export function SessionAgent({ hasActive, onChanged, title, greeting, quick: qui
   // Find (or create once) today's session thread, opened by the agent's question.
   const thread = useQuery({
     queryKey: ["session-thread", threadTitle],
-    enabled: !threadId,
+    enabled: !threadId && !!threadTitle,
     queryFn: async () => {
-      const { data, error } = await supabase.from("coach_threads").select("id").eq("title", threadTitle).order("created_at").limit(1);
+      const { data, error } = await supabase.from("coach_threads").select("id").eq("title", threadTitle!).order("created_at").limit(1);
       if (error) throw error;
       return data[0]?.id ?? null;
     },
   });
 
   useEffect(() => {
-    if (threadId || thread.isLoading || thread.data || boot.current) return;
+    if (threadId || !threadTitle || thread.isLoading || thread.data || boot.current) return;
     boot.current = true;
     (async () => {
       const user_id = await currentUserId();

@@ -14,7 +14,8 @@ import { RISK_THREAD } from "@/components/risk-watcher";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
-import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
+import { computeDayMetrics, computeStatus } from "@/lib/trading-status";
+import { dayKey, dayStart } from "@/lib/trading-day";
 import { riskMorning } from "@/lib/ai.functions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -47,8 +48,9 @@ function RiskPage() {
   const onReady = useCallback((threadId: string) => {
     if (asked.current) return;
     asked.current = true;
-    const day = new Date().toLocaleDateString("en-CA");
-    morning({ data: { threadId, day } })
+    // The once-a-day lock is keyed by the trader's own calendar day.
+    qc.ensureQueryData(settingsQuery).catch(() => null)
+      .then((st) => morning({ data: { threadId, day: dayKey(new Date(), st?.timezone) } }))
       .then((r) => { if (r && !r.skipped) qc.invalidateQueries({ queryKey: ["messages", threadId] }); })
       .catch(() => {});
   }, [morning, qc]);
@@ -59,7 +61,7 @@ function RiskPage() {
   let tone = "bg-success", label = "سليمة";
   let metrics: ReturnType<typeof computeDayMetrics> | null = null;
   if (data) {
-    const start = startOfToday().getTime();
+    const start = dayStart(new Date(), data.timezone).getTime();
     const vt = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
     metrics = computeDayMetrics(data, t.data ?? [], vt);
     const st = computeStatus(data, metrics);

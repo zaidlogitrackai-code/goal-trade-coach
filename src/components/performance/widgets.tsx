@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Md } from "@/components/md";
 import { performanceInsight } from "@/lib/ai.functions";
 import { fmtMoney, type Trade } from "@/lib/queries";
-import { dayKey } from "@/lib/perf";
+import { addDays, dayKey } from "@/lib/trading-day";
 
 export const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--foreground)" } };
 
@@ -88,9 +88,10 @@ export function Goals({ rows, cur }: { rows: { label: string; pnl: number; targe
 
 export function PnlCalendar({ days, trades, tz, cur }: { days: Map<string, { day: string; pnl: number; count: number }>; trades: Trade[]; tz: string; cur: string }) {
   const [sel, setSel] = useState<string | null>(null);
-  const today = new Date();
+  // Calendar steps on day keys: 24h steps from "now" can skip or repeat a day around DST.
+  const today = dayKey(new Date(), tz);
   const cells: string[] = [];
-  for (let i = 69; i >= 0; i--) cells.push(dayKey(new Date(today.getTime() - i * 86_400_000), tz));
+  for (let i = 69; i >= 0; i--) cells.push(addDays(today, -i));
   const max = Math.max(1, ...[...days.values()].map((d) => Math.abs(d.pnl)));
   const picked = sel ? trades.filter((t) => t.status === "closed" && dayKey(new Date(t.closed_at ?? t.opened_at), tz) === sel) : [];
   return (
@@ -110,7 +111,7 @@ export function PnlCalendar({ days, trades, tz, cur }: { days: Map<string, { day
         <div className="mt-3 space-y-1 border-t border-border/50 pt-3 text-sm">
           <div className="text-xs text-muted-foreground" dir="ltr">{sel}</div>
           {picked.length === 0 ? <p className="text-muted-foreground">ما في صفقات مسكّرة هذا اليوم.</p> : picked.map((t) => (
-            <div key={t.id} className="flex justify-between"><span>{t.symbol} · {t.direction === "buy" ? "شراء" : "بيع"}</span><span className={`font-data ${(Number(t.pnl) || 0) >= 0 ? "text-success" : "text-destructive"}`} dir="ltr">{fmtMoney(Number(t.pnl) || 0, cur)}</span></div>
+            <div key={t.id} className="flex justify-between"><span>{t.symbol} · {t.direction === "long" ? "شراء" : "بيع"}</span><span className={`font-data ${(Number(t.pnl) || 0) >= 0 ? "text-success" : "text-destructive"}`} dir="ltr">{fmtMoney(Number(t.pnl) || 0, cur)}</span></div>
           ))}
         </div>
       )}

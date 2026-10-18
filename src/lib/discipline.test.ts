@@ -5,6 +5,7 @@ import {
   todayInterventions,
   type DisciplineTrade,
 } from "./discipline";
+import { REVENGE_MARKER, revengeLine } from "./emotions";
 
 const now = new Date("2026-10-11T18:00:00");
 const tr = (o: Partial<DisciplineTrade> & { at: string; close?: string }): DisciplineTrade => ({
@@ -72,7 +73,19 @@ describe("disciplineReport", () => {
 
   it("reads self-declared revenge from the emotional check note", () => {
     const r = disciplineReport(
-      [tr({ at: "2026-10-11T09:00:00", emotion: "غاضب", notes: "— فحص —\nتعويض عن خسارة: نعم" })],
+      [tr({ at: "2026-10-11T09:00:00", emotion: "غاضب", notes: `— فحص —\n${REVENGE_MARKER}` })],
+      [],
+      { maxRiskPerTrade: 0, now },
+    );
+    expect(r.metrics.selfDeclaredRevenge).toBe(1);
+  });
+
+  it("counts exactly what the trade form writes for each answer", () => {
+    const r = disciplineReport(
+      [
+        tr({ at: "2026-10-11T09:00:00", emotion: "طمع", notes: `دافع\n${revengeLine(true)}` }),
+        tr({ at: "2026-10-11T10:00:00", emotion: "طمع", notes: `دافع\n${revengeLine(false)}` }),
+      ],
       [],
       { maxRiskPerTrade: 0, now },
     );

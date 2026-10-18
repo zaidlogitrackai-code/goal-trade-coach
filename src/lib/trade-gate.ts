@@ -1,4 +1,6 @@
 import type { StatusSettings, DayMetrics, StatusTrade } from "./trading-status";
+import { isSensitive } from "./emotions";
+import { safeTz } from "./trading-day";
 
 export interface TradeInput {
   symbol: string;
@@ -15,8 +17,9 @@ export interface TradeInput {
 }
 
 export interface TradeGateMetrics {
-  tradeRisk: number;
-  riskPercentOfBalance: number;
+  /** null when the risk can't be known (no stop or size): unknown must never read as a safe 0. */
+  tradeRisk: number | null;
+  riskPercentOfBalance: number | null;
   totalOpenRisk: number;
   remainingDailyRisk: number | null;
   remainingTrades: number | null;
@@ -105,9 +108,10 @@ export function evaluateTradeGate(options: {
   const warnings: string[] = [];
   let nextAction = "راجع خطة الصفقة وتأكد من الالتزام بشروط الاستراتيجية";
 
-  const tradeRisk = Math.max(0, Number(input.risk_amount) || 0);
+  const riskIn = input.risk_amount == null ? NaN : Number(input.risk_amount);
+  const tradeRisk = Number.isFinite(riskIn) ? Math.max(0, riskIn) : null;
   const totalOpenRisk = openTrades.reduce((acc, t) => acc + (t.status === "open" ? (t.risk_amount ?? 0) : 0), 0);
-  const riskPercentOfBalance = currentBalance > 0 ? Math.round((tradeRisk / currentBalance) * 10000) / 100 : 0;
+  const riskPercentOfBalance = tradeRisk != null && currentBalance > 0 ? Math.round((tradeRisk / currentBalance) * 10000) / 100 : null;
   const r2r = calculateRewardToRisk(input);
 
   const remainingDailyRisk =
@@ -138,7 +142,7 @@ export function evaluateTradeGate(options: {
 
   // 2. Active Cooldown
   if (settings.cooldown_until && new Date(settings.cooldown_until).getTime() > now.getTime()) {
-    const endStr = new Date(settings.cooldown_until).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" });
+    const endStr = new Date(settings.cooldown_until).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", timeZone: safeTz(settings.timezone) });
     warnings.push(`فترة تهدئة نشطة حتى ${endStr}.`);
     nextAction = "ابتعد عن الشاشة وانتظر حتى انتهاء فترة التهدئة لمنع القرارات الانفعالية";
   }
@@ -179,15 +183,19 @@ export function evaluateTradeGate(options: {
 
   // 8. Max Risk per Trade
   const maxRiskPerTrade = settings.max_risk_per_trade ?? 0;
-  if (maxRiskPerTrade > 0 && tradeRisk > maxRiskPerTrade) {
+  if (maxRiskPerTrade > 0 && tradeRisk != null && tradeRisk > maxRiskPerTrade) {
     warnings.push(`المخاطرة المحددة (${tradeRisk}) تتجاوز الحد الأقصى لكل صفقة (${maxRiskPerTrade}).`);
     nextAction = "قلّل حجم العقد (Lot size) لتتوافق المخاطرة مع حد الصفقة الواحدة";
   }
 
   // 9. Daily Risk Exceeded
-  if (settings.max_daily_risk > 0 && metrics.riskUsed + tradeRisk > settings.max_daily_risk) {
+  if (settings.max_daily_risk > 0 && tradeRisk != null && metrics.riskUsed + tradeRisk > settings.max_daily_risk) {
     warnings.push(`هذه الصفقة تتجاوز إجمالي المخاطرة اليومية المتبقية (${remainingDailyRisk ?? 0}).`);
     nextAction = "خفّض حجم المخاطرة أو انتظر إغلاق الصفقات المفتوحة";
+  }
+  // Unknown risk: rules 8 and 9 couldn't run, so say so instead of passing silently.
+  if (tradeRisk == null && input.stop_loss) {
+    warnings.push("ما قدرت أحسب مخاطرة الصفقة (ناقص الحجم أو المبلغ)، فما تأكدت إنها ضمن حدودك.");
   }
 
   // 10. Stop Loss Requirement (Rule requirement)
@@ -208,8 +216,7 @@ export function evaluateTradeGate(options: {
   }
 
   // 13. Emotional / Greed warning
-  const GREED_EMOTIONS = ["طمع", "غاضب", "متوتر", "خائف", "انتقام", "FOMO"];
-  if (input.emotion && GREED_EMOTIONS.some((g) => input.emotion!.includes(g))) {
+  if (isSensitive(input.emotion)) {
     warnings.push(`تم تسجيل حالة نفسية حساسة (${input.emotion}). تأكد من أن الدخول ليس بدافع الانتقام أو الطمع.`);
   }
 

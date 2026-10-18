@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeDayMetrics, computeStatus, countConsecutiveLosses, type StatusSettings, type StatusTrade } from "./trading-status";
 
-const now = new Date("2026-10-11T12:00:00");
+const now = new Date("2026-10-11T12:00:00+03:00");
 const base: StatusSettings = {
   daily_target: 200,
   max_daily_profit: 500,
@@ -10,13 +10,14 @@ const base: StatusSettings = {
   max_daily_risk: 400,
   max_consecutive_losses: 3,
   trading_paused: false,
+  timezone: "Asia/Riyadh",
 };
 const closed = (pnl: number, h: number, risk = 50): StatusTrade => ({
   status: "closed",
   pnl,
   risk_amount: risk,
-  opened_at: `2026-10-11T0${h}:00:00`,
-  closed_at: `2026-10-11T0${h}:30:00`,
+  opened_at: `2026-10-11T0${h}:00:00+03:00`,
+  closed_at: `2026-10-11T0${h}:30:00+03:00`,
 });
 const status = (trades: StatusTrade[], s = base, v = 0) => computeStatus(s, computeDayMetrics(s, trades, v, now));
 
@@ -46,20 +47,36 @@ d2("cooldown", () => {
 });
 
 describe("weekly & monthly limits", () => {
-  const now = new Date("2026-10-14T12:00:00"); // Wednesday
-  const base = { daily_target: 0, max_daily_profit: 0, max_daily_loss: 0, max_trades_per_day: 0, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false };
+  const now = new Date("2026-10-14T12:00:00+03:00"); // Wednesday
+  const base = { daily_target: 0, max_daily_profit: 0, max_daily_loss: 0, max_trades_per_day: 0, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false, timezone: "Asia/Riyadh" };
   const tr = (pnl: number, at: string) => ({ status: "closed", pnl, risk_amount: 0, opened_at: at, closed_at: at });
-  const trades = [tr(-300, "2026-10-12T10:00:00"), tr(-250, "2026-10-13T10:00:00"), tr(400, "2026-10-02T10:00:00")];
+  const trades = [tr(-300, "2026-10-12T10:00:00+03:00"), tr(-250, "2026-10-13T10:00:00+03:00"), tr(400, "2026-10-02T10:00:00+03:00")];
   it("stops at the weekly max loss", () => {
     const s = { ...base, weekly_max_loss: 500 };
     expect(computeStatus(s, computeDayMetrics(s, trades, 0, now), now)).toBe("loss_limit");
   });
   it("monthly target hit when month PnL reaches it", () => {
     const s = { ...base, monthly_target: 300 };
-    const t2 = [tr(350, "2026-10-02T10:00:00")];
+    const t2 = [tr(350, "2026-10-02T10:00:00+03:00")];
     expect(computeStatus(s, computeDayMetrics(s, t2, 0, now), now)).toBe("target_hit");
   });
   it("week pnl ignores last week's trades", () => {
     expect(computeDayMetrics(base, trades, 0, now).weekPnl).toBe(-550);
+  });
+  it("the week starts Monday: Sunday's trade belongs to last week", () => {
+    const sunday = tr(-100, "2026-10-11T15:00:00+03:00");
+    expect(computeDayMetrics(base, [...trades, sunday], 0, now).weekPnl).toBe(-550);
+  });
+});
+
+describe("today follows the trader's time zone", () => {
+  const s = { daily_target: 0, max_daily_profit: 0, max_daily_loss: 0, max_trades_per_day: 0, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false, timezone: "Asia/Riyadh" };
+  const at = (iso: string) => ({ status: "closed", pnl: -50, risk_amount: 10, opened_at: iso, closed_at: iso });
+  const now = new Date("2026-10-18T09:00:00+03:00");
+  it("00:30 Riyadh (21:30 UTC the day before) counts as today", () => {
+    expect(computeDayMetrics(s, [at("2026-10-17T21:30:00Z")], 0, now)).toMatchObject({ tradesToday: 1, todayPnl: -50 });
+  });
+  it("23:30 Riyadh yesterday does not", () => {
+    expect(computeDayMetrics(s, [at("2026-10-17T20:30:00Z")], 0, now).tradesToday).toBe(0);
   });
 });

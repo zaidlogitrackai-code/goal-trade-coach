@@ -10,6 +10,8 @@
 <!-- LOVABLE:END -->
 
 - Daily trading status is computed only in `src/lib/trading-status.ts` (pure, tested) — one source of truth for dashboard and trade form.
+- Every "today / this week (from Monday) / this month" boundary, day key and reminder time comes only from pure `src/lib/trading-day.ts`, in trading_settings.timezone (safeTz falls back to Asia/Riyadh) — the server runs in UTC and the phone can travel, so limits, alerts, plans and once-a-day locks must share the trader's own calendar.
+- Typed numbers go through `parseDecimal` (`src/lib/num.ts`, used by NumberField) and money at risk only through `riskUsd`/contract size in `src/lib/trade-idea.ts` — an Arabic-region iPhone types '١٫٠٨', and a raw price distance is not dollars.
 - App data is read/written from the browser Supabase client under owner-only RLS; protected pages live under `src/routes/_authenticated/` (ssr: false) — single-user personal app, no server functions needed yet.
 - AI features (analyst, coach, report summary) run only through authenticated server functions in `src/lib/ai.functions.ts`, using `src/lib/ai.server.ts` (gateway call, streamed to final text) — keeps the API key server-side and grounds replies in the user's own data.
 - Performance/discipline/report numbers come from pure helpers in `src/lib/stats.ts` — one calculation shared by every page.

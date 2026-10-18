@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { EmptyState, Loading, PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +14,10 @@ import { AiTradeInput } from "@/components/ai-trade-input";
 import { matchOpen, type AiTrade } from "@/lib/ai-trade";
 import { useNavigate } from "@tanstack/react-router";
 import { fmtDate, fmtMoney, settingsQuery, strategiesQuery, tradesQuery, type Trade } from "@/lib/queries";
+import { parseDecimal } from "@/lib/num";
+import { expectedPnlSign } from "@/lib/trade-idea";
+import { fromWallInput, toWallInput } from "@/lib/trading-day";
+import { AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/trades")({
   head: () => ({ meta: [{ title: "سجل الصفقات — نظام هادي" }, { name: "description", content: "كل صفقاتك المسجلة." }] }),
@@ -99,22 +104,42 @@ function TradesPage() {
 
 function CloseDialog({ trade, prefill, onClose }: { trade: Trade | null; prefill: { exit: string; pnl: string } | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [pnl, setPnl] = useState(prefill?.pnl ?? "");
+  const tz = useQuery(settingsQuery).data?.timezone;
+  // A win/loss toggle plus an absolute amount: the iPhone decimal pad has no minus key.
+  const pre = parseDecimal(prefill?.pnl).value;
+  const [side, setSide] = useState<"win" | "loss" | null>(pre == null || pre === 0 ? null : pre < 0 ? "loss" : "win");
+  const [amount, setAmount] = useState(pre == null ? "" : String(Math.abs(pre)));
   const [exit, setExit] = useState(prefill?.exit ?? "");
+  // null = "now" at the moment of saving; set only when he closed it earlier.
+  const [closeAt, setCloseAt] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const exitNum = parseDecimal(exit).value;
+  const implied = expectedPnlSign(trade?.direction, trade?.entry_price, exitNum);
+  const disagree = (side === "win" && implied === -1) || (side === "loss" && implied === 1);
   async function save() {
-    if (!trade || pnl === "") { toast.error("أدخل النتيجة"); return; }
+    const amt = parseDecimal(amount), ex = parseDecimal(exit);
+    if (!trade) return;
+    if (amt.invalid || ex.invalid) { toast.error("في رقم مكتوب غلط، صحّحه"); return; }
+    if (amt.value == null) { toast.error("أدخل النتيجة"); return; }
+    const abs = Math.abs(amt.value);
+    const s = side ?? (amt.value < 0 ? "loss" : null);
+    if (abs > 0 && !s) { toast.error("اختر ربح أو خسارة"); return; }
+    const closedAt = closeAt == null ? new Date() : fromWallInput(closeAt, tz);
+    if (!closedAt) { toast.error("حدد وقت الإغلاق"); return; }
+    // A minute of slack: the picker has no seconds.
+    if (closedAt.getTime() > Date.now() + 60_000) { toast.error("وقت الإغلاق بالمستقبل، صحّحه"); return; }
+    if (closedAt.getTime() < new Date(trade.opened_at).getTime() - 60_000) { toast.error("وقت الإغلاق قبل وقت فتح الصفقة"); return; }
     const { error } = await supabase.from("trades").update({
       status: "closed",
-      pnl: Number(pnl),
-      exit_price: exit === "" ? null : Number(exit),
+      pnl: s === "loss" ? -abs : abs,
+      exit_price: ex.value,
       close_notes: notes || null,
-      closed_at: new Date().toISOString(),
+      closed_at: closedAt.toISOString(),
     }).eq("id", trade.id);
     if (error) { toast.error("تعذر إغلاق الصفقة"); return; }
     await qc.invalidateQueries({ queryKey: ["trades"] });
     toast.success("تم إغلاق الصفقة");
-    setPnl(""); setExit(""); setNotes("");
+    setSide(null); setAmount(""); setExit(""); setCloseAt(null); setNotes("");
     onClose();
   }
   return (
@@ -122,8 +147,40 @@ function CloseDialog({ trade, prefill, onClose }: { trade: Trade | null; prefill
       <DialogContent dir="rtl">
         <DialogHeader><DialogTitle>إغلاق صفقة {trade?.symbol}</DialogTitle></DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2"><Label>الربح / الخسارة (سالب للخسارة)</Label><Input type="number" step="any" dir="ltr" value={pnl} onChange={(e) => setPnl(e.target.value)} /></div>
-          <div className="space-y-2"><Label>سعر الخروج</Label><Input type="number" step="any" dir="ltr" value={exit} onChange={(e) => setExit(e.target.value)} /></div>
+          <div className="space-y-2">
+            <Label>النتيجة</Label>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="ربح أو خسارة">
+              <Button type="button" size="lg" variant={side === "win" ? "default" : "secondary"} aria-pressed={side === "win"} onClick={() => setSide("win")}>ربح</Button>
+              <Button type="button" size="lg" variant={side === "loss" ? "destructive" : "secondary"} aria-pressed={side === "loss"} onClick={() => setSide("loss")}>خسارة</Button>
+            </div>
+          </div>
+          <div className="space-y-2"><Label htmlFor="close-amount">المبلغ</Label><NumberField id="close-amount" value={amount} onValueChange={setAmount} placeholder="120" /></div>
+          <div className="space-y-2">
+            <Label htmlFor="close-exit">سعر الخروج</Label>
+            <NumberField id="close-exit" value={exit} onValueChange={setExit} aria-describedby={disagree ? "close-disagree" : undefined} />
+            {disagree && (
+              <p id="close-disagree" role="status" className="flex items-start gap-1.5 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                {implied === 1
+                  ? `سعر الخروج يقول إنها ربح (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار خسارة. متأكد؟`
+                  : `سعر الخروج يقول إنها خسارة (${trade?.direction === "long" ? "شراء" : "بيع"} من ${trade?.entry_price})، وأنت مختار ربح. متأكد؟`}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="close-at">وقت الإغلاق</Label>
+            <Input
+              id="close-at"
+              type="datetime-local"
+              dir="ltr"
+              className="h-11 text-base md:text-base"
+              value={closeAt ?? toWallInput(new Date(), tz)}
+              min={trade ? toWallInput(trade.opened_at, tz) : undefined}
+              max={toWallInput(new Date(), tz)}
+              onChange={(e) => setCloseAt(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">الحين تلقائياً. لو سكّرتها قبل، غيّر الوقت.</p>
+          </div>
           <div className="space-y-2"><Label>ماذا تعلمت؟</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <Button className="w-full" onClick={save}>حفظ النتيجة</Button>
         </div>

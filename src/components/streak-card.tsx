@@ -3,6 +3,7 @@ import { Flame } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { settingsQuery, violationsQuery } from "@/lib/queries";
 import { loginStreak, type DayState } from "@/lib/streak";
+import { safeTz } from "@/lib/trading-day";
 
 const DOT: Record<DayState, string> = { ok: "bg-success", broken: "bg-destructive", none: "bg-muted", pending: "border border-foreground/40" };
 
@@ -18,7 +19,7 @@ export function StreakCard({ large = false, compact = false }: { large?: boolean
     },
   });
   if (!sess.data || !v.data) return null;
-  const r = loginStreak(sess.data, v.data, s.data?.timezone || "Asia/Riyadh");
+  const r = loginStreak(sess.data, v.data, safeTz(s.data?.timezone));
   if (compact) return (
     <section className="glass grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-full px-3 py-1.5" aria-label="ستريك الانضباط">
       <p className="flex min-w-0 items-center gap-1.5 truncate text-xs">

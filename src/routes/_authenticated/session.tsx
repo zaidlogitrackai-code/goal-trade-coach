@@ -8,7 +8,8 @@ import { EmptyState, Loading, PageHeader, Stat } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { SessionAgent, GREETING_START } from "@/components/session-agent";
 import { currentUserId, fmtDate, fmtMoney, settingsQuery, tradesQuery } from "@/lib/queries";
-import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
+import { computeDayMetrics } from "@/lib/trading-status";
+import { dayStart } from "@/lib/trading-day";
 import { Activity, History, MessageSquare, PauseCircle, SquarePen, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -147,7 +148,7 @@ function SessionPage() {
   const cur = settings.currency ?? "USD";
   const active = ss.data?.find((x) => !x.ended_at);
 
-  const startOfDay = startOfToday().getTime();
+  const startOfDay = dayStart(new Date(), settings.timezone).getTime();
   const dayMetrics = computeDayMetrics(settings, t.data ?? [], 0);
 
   // Filter trades that belong to the active session

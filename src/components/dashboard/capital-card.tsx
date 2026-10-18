@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ArrowDownToLine, ArrowUpFromLine, Pencil, Trash2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 import { MOVE_LABEL, type CapitalMove } from "@/lib/capital";
 import { deleteCapitalEntry, moveCapital, useCapital } from "@/lib/capital-store";
 import { fmtDate, fmtMoney } from "@/lib/queries";
+import { parseDecimal } from "@/lib/num";
 
 type Kind = CapitalMove["kind"];
 const DIALOG: Record<Kind, { title: string; hint: string; label: string }> = {
@@ -172,9 +174,14 @@ function MoveDialog({
   const d = DIALOG[kind];
 
   async function save() {
+    const parsed = parseDecimal(amount);
+    if (parsed.value == null) {
+      toast.error("اكتب المبلغ رقم صحيح");
+      return;
+    }
     setBusy(true);
     try {
-      const r = await moveCapital({ kind, amount: Number(amount), note });
+      const r = await moveCapital({ kind, amount: parsed.value, note });
       await qc.invalidateQueries({ queryKey: ["capital"] });
       toast.success(`تم. رصيدك صار ${fmtMoney(r.balance, currency)}`);
       onClose();
@@ -197,16 +204,7 @@ function MoveDialog({
         <div className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="cap-amount">{d.label}</Label>
-            <Input
-              id="cap-amount"
-              dir="ltr"
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <NumberField id="cap-amount" value={amount} onValueChange={setAmount} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="cap-note">ملاحظة (اختياري)</Label>

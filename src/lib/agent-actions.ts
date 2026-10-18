@@ -7,7 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { currentUserId } from "@/lib/queries";
 import { validateRiskSettings, type RiskSettingsInput } from "@/lib/risk-validation";
 import { evaluateTradeGate, type TradeInput } from "@/lib/trade-gate";
-import { computeDayMetrics, startOfToday } from "@/lib/trading-status";
+import { computeDayMetrics } from "@/lib/trading-status";
+import { dayKey, dayStart, safeTz } from "@/lib/trading-day";
 import { inMarkets, type FocusPatch } from "@/lib/focus";
 import { readFocus, saveFocus } from "@/lib/focus-store";
 import { FOREX_ONLY_MSG, forexSymbol, isForex } from "@/lib/forex";
@@ -188,6 +189,7 @@ export const SCHEMAS = {
       ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, num.min(0).optional()])),
       currency: z.string().max(5).optional(),
       display_name: z.string().max(60).optional(),
+      timezone: z.string().max(64).refine((tz) => safeTz(tz) === tz, "منطقة زمنية غير معروفة").optional(),
     })
     .partial(),
   add_strategy: z.object({
@@ -438,7 +440,8 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       return;
     }
     case "set_daily_plan": {
-      const day = new Date().toLocaleDateString("en-CA");
+      const { data: st } = await supabase.from("trading_settings").select("timezone").eq("user_id", user_id).maybeSingle();
+      const day = dayKey(new Date(), st?.timezone);
       const p = d as { target?: number | null; max_trades?: number | null; risk_per_trade?: number | null; max_loss?: number | null; note?: string | null };
       const { data: cur } = await supabase.from("daily_plans").select("*").eq("day", day).maybeSingle();
       const clean = Object.fromEntries(Object.entries(p).filter(([, v]) => v != null));
@@ -794,7 +797,12 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
       const at = (d["at"] as string | null) ?? null;
       const mins = d["in_minutes"] as number | null;
       const repeat = d["repeat"] === "daily" && at ? "daily" : "once";
-      const next = mins ? new Date(Date.now() + mins * 60_000) : at ? nextDaily(at) : new Date(Date.now() + 60_000);
+      let next = new Date(Date.now() + (mins || 1) * 60_000);
+      if (!mins && at) {
+        // "09:00" means nine on the trader's clock, whatever zone this device is in.
+        const { data: st } = await supabase.from("trading_settings").select("timezone").eq("user_id", user_id).maybeSingle();
+        next = nextDaily(at, new Date(), st?.timezone);
+      }
       const { error } = await supabase.from("reminders").insert({
         user_id, title: String(d["title"]), body: (d["body"] as string | null) ?? "", repeat,
         at_time: at, next_at: next.toISOString(),
@@ -886,11 +894,12 @@ export async function runAction(a: AgentAction, opts: { auto?: boolean } = {}): 
 }
 
 async function gateForAiTrade(input: TradeInput) {
-  const since = startOfToday().toISOString();
+  const now = new Date();
   const [settings, trades, violations, session, strategies] = await Promise.all([
     supabase.from("trading_settings").select("*").maybeSingle(),
     supabase.from("trades").select("status,pnl,risk_amount,opened_at,closed_at"),
-    supabase.from("rule_violations").select("id").gte("occurred_at", since),
+    // Two days always cover the trader's "today" in any zone; narrowed to his midnight below.
+    supabase.from("rule_violations").select("occurred_at").gte("occurred_at", new Date(now.getTime() - 2 * 86_400_000).toISOString()),
     supabase
       .from("trading_sessions")
       .select("id,started_at,plan,mood")
@@ -905,10 +914,12 @@ async function gateForAiTrade(input: TradeInput) {
   const all = trades.data ?? [];
   const bal = (await loadCapital()).summary.balance;
   settings.data = applyPctLimits(settings.data, bal);
+  const start = dayStart(now, settings.data.timezone).getTime();
+  const violationsToday = (violations.data ?? []).filter((v) => new Date(v.occurred_at).getTime() >= start).length;
   // Same gate as the new-trade form. The AI path never overrides a blocked trade.
   return evaluateTradeGate({
     settings: settings.data,
-    metrics: computeDayMetrics(settings.data, all, violations.data?.length ?? 0),
+    metrics: computeDayMetrics(settings.data, all, violationsToday, now),
     input,
     activeSession: session.data?.[0] ?? null,
     allowedStrategyIds: (strategies.data ?? []).map((x) => x.id),

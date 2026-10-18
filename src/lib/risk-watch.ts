@@ -1,4 +1,5 @@
 import { computeDayMetrics, type StatusSettings, type StatusTrade } from "./trading-status";
+import { addDays, dayKey, isoWeekKey, monthKey, zonedTime } from "./trading-day";
 
 export interface WatchTrade extends StatusTrade {
   id: string;
@@ -16,14 +17,11 @@ export interface RiskAlert {
 
 const LONG_OPEN_HOURS = 8;
 
-function dayKey(now: Date) {
-  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-}
-
 /** Everything the risk guardian should warn about right now. Pure: no I/O. */
 export function riskAlerts(s: StatusSettings, trades: WatchTrade[], now = new Date()): RiskAlert[] {
   const m = computeDayMetrics(s, trades, 0, now);
-  const d = dayKey(now);
+  // Keys are the trader's calendar day/week/month, so each alert fires once per period.
+  const d = dayKey(now, s.timezone);
   const out: RiskAlert[] = [];
   const loss = -Math.min(0, m.todayPnl);
 
@@ -38,10 +36,10 @@ export function riskAlerts(s: StatusSettings, trades: WatchTrade[], now = new Da
     out.push({ key: `target_day:${d}`, level: "success", title: "وصلت هدفك اليومي 🎯", body: "لا تطمع. اطلع من السوق، سكّر الشارت، وشوف حياتك." });
   }
   if ((s.weekly_target ?? 0) > 0 && m.weekPnl >= s.weekly_target!) {
-    out.push({ key: `target_week:${d.slice(0, 7)}:${Math.floor(now.getDate() / 7)}`, level: "success", title: "تحقق هدفك الأسبوعي", body: "خلّص أسبوعك هنا، لا تطمع." });
+    out.push({ key: `target_week:${isoWeekKey(now, s.timezone)}`, level: "success", title: "تحقق هدفك الأسبوعي", body: "خلّص أسبوعك هنا، لا تطمع." });
   }
   if ((s.monthly_target ?? 0) > 0 && m.monthPnl >= s.monthly_target!) {
-    out.push({ key: `target_month:${now.getFullYear()}-${now.getMonth() + 1}`, level: "success", title: "تحقق هدفك الشهري", body: "شهر ناجح. حافظ على أرباحك ولا تطمع." });
+    out.push({ key: `target_month:${monthKey(now, s.timezone)}`, level: "success", title: "تحقق هدفك الشهري", body: "شهر ناجح. حافظ على أرباحك ولا تطمع." });
   }
   if (m.consecutiveLosses >= 2) {
     out.push({ key: `streak${m.consecutiveLosses}:${d}`, level: "warning", title: "خسارتين ورا بعض", body: "خذ استراحة الحين. لا تدخل صفقة تعويض." });
@@ -61,11 +59,12 @@ export function riskAlerts(s: StatusSettings, trades: WatchTrade[], now = new Da
   return out;
 }
 
-/** Next time a daily reminder at HH:MM fires after `from`. */
-export function nextDaily(at: string, from = new Date()): Date {
+/** Next time a daily reminder at HH:MM (the trader's clock) fires after `from`. */
+export function nextDaily(at: string, from = new Date(), tz?: string | null): Date {
   const [h, mi] = at.split(":").map(Number);
-  const d = new Date(from);
-  d.setHours(h ?? 9, mi ?? 0, 0, 0);
-  if (d.getTime() <= from.getTime()) d.setDate(d.getDate() + 1);
-  return d;
+  const hour = Number.isInteger(h) && h! >= 0 && h! < 24 ? h! : 9;
+  const minute = Number.isInteger(mi) && mi! >= 0 && mi! < 60 ? mi! : 0;
+  const today = dayKey(from, tz);
+  const d = zonedTime(today, hour, minute, tz);
+  return d.getTime() > from.getTime() ? d : zonedTime(addDays(today, 1), hour, minute, tz);
 }

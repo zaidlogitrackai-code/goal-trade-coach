@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { reportSummary } from "@/lib/ai.functions";
 import { fmtDate, fmtMoney, settingsQuery, tradesQuery, violationsQuery } from "@/lib/queries";
 import { disciplineReport, groupPnl, tradeStats } from "@/lib/stats";
+import { addDays, dayKey, dayStart, zonedMidnight } from "@/lib/trading-day";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({ meta: [{ title: "التقارير — نظام هادي" }, { name: "description", content: "تقارير يومية وأسبوعية وشهرية من صفقاتك." }] }),
@@ -19,7 +20,6 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 type P = "day" | "week" | "month" | "custom";
 const LABEL: Record<P, string> = { day: "اليوم", week: "آخر ٧ أيام", month: "آخر ٣٠ يوم", custom: "فترة مخصصة" };
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 function ReportsPage() {
   const t = useQuery(tradesQuery);
@@ -27,15 +27,19 @@ function ReportsPage() {
   const v = useQuery(violationsQuery);
   const gen = useServerFn(reportSummary);
   const [p, setP] = useState<P>("week");
-  const [from, setFrom] = useState(iso(new Date(Date.now() - 6 * 864e5)));
-  const [to, setTo] = useState(iso(new Date()));
+  // null = the last 7 days on the trader's calendar, filled once his zone is known.
+  const [fromPick, setFrom] = useState<string | null>(null);
+  const [toPick, setTo] = useState<string | null>(null);
   const [ai, setAi] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (t.isLoading) return <Loading />;
   const cur = s.data?.currency ?? "USD";
 
-  const end = p === "custom" ? new Date(to + "T23:59:59") : new Date();
-  const start = p === "custom" ? new Date(from + "T00:00:00") : p === "day" ? new Date(new Date().setHours(0, 0, 0, 0)) : new Date(Date.now() - (p === "week" ? 7 : 30) * 864e5);
+  const tz = s.data?.timezone;
+  const to = toPick ?? dayKey(new Date(), tz);
+  const from = fromPick ?? addDays(to, -6);
+  const end = p === "custom" ? new Date(zonedMidnight(addDays(to, 1), tz).getTime() - 1) : new Date();
+  const start = p === "custom" ? zonedMidnight(from, tz) : p === "day" ? dayStart(new Date(), tz) : new Date(Date.now() - (p === "week" ? 7 : 30) * 864e5);
   const inRange = (d: string) => { const x = new Date(d).getTime(); return x >= start.getTime() && x <= end.getTime(); };
   const trades = (t.data ?? []).filter((x) => inRange(x.opened_at));
   const viol = (v.data ?? []).filter((x) => inRange(x.occurred_at));

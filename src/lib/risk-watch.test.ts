@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nextDaily, riskAlerts, type WatchTrade } from "./risk-watch";
+import { dayKey, wallClock } from "./trading-day";
 
 const now = new Date(2026, 9, 12, 15, 0);
 const s = { daily_target: 100, max_daily_profit: 0, max_daily_loss: 200, max_trades_per_day: 5, max_daily_risk: 0, max_consecutive_losses: 0, trading_paused: false };
@@ -16,9 +17,32 @@ describe("riskAlerts", () => {
     expect(keys([t])).toContain("nosl");
   });
   it("nothing when calm", () => expect(keys([closed(20)])).toEqual([]));
+  it("keys use the trader's padded calendar day", () => {
+    const at = new Date("2026-03-04T23:30:00+03:00"); // 20:30 UTC
+    const t: WatchTrade = { ...closed(-200), opened_at: "2026-03-04T21:00:00+03:00", closed_at: "2026-03-04T22:00:00+03:00" };
+    expect(riskAlerts({ ...s, timezone: "Asia/Riyadh" }, [t], at).map((a) => a.key)).toContain("loss_hit:2026-03-04");
+  });
+  it("weekly and monthly targets fire once per ISO week and month", () => {
+    const at = new Date("2026-10-18T22:00:00+03:00"); // Sunday: still week 42
+    const t: WatchTrade = { ...closed(300), opened_at: "2026-10-14T10:00:00+03:00", closed_at: "2026-10-14T11:00:00+03:00" };
+    const k = riskAlerts({ ...s, daily_target: 0, weekly_target: 200, monthly_target: 200, timezone: "Asia/Riyadh" }, [t], at).map((a) => a.key);
+    expect(k).toContain("target_week:2026-W42");
+    expect(k).toContain("target_month:2026-10");
+  });
 });
 
 describe("nextDaily", () => {
-  it("rolls to tomorrow when time passed", () => expect(nextDaily("09:00", now).getDate()).toBe(13));
-  it("today when still ahead", () => expect(nextDaily("16:30", now).getHours()).toBe(16));
+  const RIYADH = "Asia/Riyadh";
+  const at = new Date("2026-10-12T15:00:00+03:00");
+  it("rolls to tomorrow when time passed", () => expect(dayKey(nextDaily("09:00", at, RIYADH), RIYADH)).toBe("2026-10-13"));
+  it("today when still ahead", () => {
+    const d = nextDaily("16:30", at, RIYADH);
+    expect(dayKey(d, RIYADH)).toBe("2026-10-12");
+    expect(wallClock(d, RIYADH)).toMatchObject({ hour: 16, minute: 30 });
+  });
+  it("fires on the trader's clock, not the server's", () => {
+    // 20:30 UTC is 23:30 in Riyadh: a 23:45 reminder is 15 minutes away, still today there.
+    expect(nextDaily("23:45", new Date("2026-10-12T20:30:00Z"), RIYADH).toISOString()).toBe("2026-10-12T20:45:00.000Z");
+  });
+  it("a bad time falls back to 09:00", () => expect(wallClock(nextDaily("xx", at, RIYADH), RIYADH).hour).toBe(9));
 });

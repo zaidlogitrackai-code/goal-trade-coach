@@ -3,7 +3,9 @@
  * trades and violations, so the discipline page, reports and AI context can
  * share one calculation.
  */
-import { countConsecutiveLosses, startOfToday } from "./trading-status";
+import { countConsecutiveLosses } from "./trading-status";
+import { dayKey, dayStart } from "./trading-day";
+import { isGreed, REVENGE_MARKER } from "./emotions";
 
 export interface DisciplineTrade {
   status: string;
@@ -21,7 +23,6 @@ export interface DisciplineViolation {
   trade_id: string | null;
 }
 
-export const GREED_EMOTIONS = ["طمع", "خوف من الفوات", "FOMO"];
 const REVENGE_MS = 15 * 60_000;
 const QUICK_MS = 5 * 60_000;
 export const WINDOW_DAYS = 30;
@@ -65,21 +66,17 @@ export interface DisciplineReport {
   interventions: Intervention[];
 }
 
-const dayKey = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-};
-
 export function disciplineReport(
   allTrades: DisciplineTrade[],
   allViolations: DisciplineViolation[],
-  opts: { maxRiskPerTrade: number; now?: Date },
+  opts: { maxRiskPerTrade: number; now?: Date; tz?: string | null },
 ): DisciplineReport {
   const now = opts.now ?? new Date();
+  const tz = opts.tz;
   const since = now.getTime() - WINDOW_DAYS * 86_400_000;
   const trades = allTrades.filter((t) => new Date(t.opened_at).getTime() >= since);
   const violations = allViolations.filter((v) => new Date(v.occurred_at).getTime() >= since);
-  const interventions = todayInterventions(allTrades, allViolations, now);
+  const interventions = todayInterventions(allTrades, allViolations, now, tz);
 
   const n = trades.length;
   const empty = {
@@ -120,10 +117,8 @@ export function disciplineReport(
     opts.maxRiskPerTrade > 0
       ? trades.filter((t) => (t.risk_amount ?? 0) > opts.maxRiskPerTrade).length
       : 0;
-  const greedCount = trades.filter(
-    (t) => t.emotion && GREED_EMOTIONS.some((g) => t.emotion!.includes(g)),
-  ).length;
-  const selfDeclaredRevenge = trades.filter((t) => t.notes?.includes("تعويض عن خسارة: نعم")).length;
+  const greedCount = trades.filter((t) => isGreed(t.emotion)).length;
+  const selfDeclaredRevenge = trades.filter((t) => t.notes?.includes(REVENGE_MARKER)).length;
 
   // Re-entries after a loss, gaps between trades, and trading on after two losses.
   const sorted = [...trades].sort((a, b) => +new Date(a.opened_at) - +new Date(b.opened_at));
@@ -133,7 +128,7 @@ export function disciplineReport(
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1]!;
     const cur = sorted[i]!;
-    if (dayKey(prev.opened_at) === dayKey(cur.opened_at))
+    if (dayKey(prev.opened_at, tz) === dayKey(cur.opened_at, tz))
       gaps.push(+new Date(cur.opened_at) - +new Date(prev.opened_at));
     if (prev.status === "closed" && (prev.pnl ?? 0) < 0 && prev.closed_at) {
       const gap = +new Date(cur.opened_at) - +new Date(prev.closed_at);
@@ -148,7 +143,7 @@ export function disciplineReport(
       (x) =>
         x.status === "closed" &&
         x.closed_at &&
-        dayKey(x.closed_at) === dayKey(t.opened_at) &&
+        dayKey(x.closed_at, tz) === dayKey(t.opened_at, tz) &&
         +new Date(x.closed_at) <= opened,
     );
     if (countConsecutiveLosses(sameDayBefore) >= 2) tradesAfterTwoLosses++;
@@ -181,7 +176,7 @@ export function disciplineReport(
     neg.push(
       `${violations.length} مخالفة مسجلة${gateOverrides ? `، منها ${gateOverrides} استثناء من بوابة التداول` : ""}.`,
     );
-  if (greedCount) neg.push(`${greedCount} صفقة سجّلت فيها حالة طمع أو خوف من الفوات.`);
+  if (greedCount) neg.push(`${greedCount} صفقة سجّلت فيها حالة طمع أو انتقام أو خوف من الفوات.`);
   if (withStop < n) neg.push(`${n - withStop} صفقة بدون وقف خسارة.`);
   if (checklistOk < n) neg.push(`${n - checklistOk} صفقة بدون إكمال قائمة التحقق.`);
   if (withStop > 0) pos.push(`حددت وقف الخسارة في ${of(withStop, n)} صفقات.`);
@@ -259,8 +254,9 @@ export function todayInterventions(
   trades: DisciplineTrade[],
   violations: DisciplineViolation[],
   now = new Date(),
+  tz?: string | null,
 ): Intervention[] {
-  const start = startOfToday(now).getTime();
+  const start = dayStart(now, tz).getTime();
   const out: Intervention[] = [];
   const closedToday = trades.filter(
     (t) => t.status === "closed" && t.closed_at && new Date(t.closed_at).getTime() >= start,
@@ -282,7 +278,7 @@ export function todayInterventions(
   const pastDays = new Map<string, number>();
   for (const t of trades)
     if (new Date(t.opened_at).getTime() < start)
-      pastDays.set(dayKey(t.opened_at), (pastDays.get(dayKey(t.opened_at)) ?? 0) + 1);
+      pastDays.set(dayKey(t.opened_at, tz), (pastDays.get(dayKey(t.opened_at, tz)) ?? 0) + 1);
   if (pastDays.size >= 3) {
     const avg = [...pastDays.values()].reduce((a, b) => a + b, 0) / pastDays.size;
     if (todayCount >= Math.max(avg * 1.5, avg + 2))

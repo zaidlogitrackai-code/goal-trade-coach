@@ -11,14 +11,22 @@ import { CAPITAL_CATEGORY, capitalForPrompt, computeCapital, parseLedger } from 
 import { GUARD_STYLE_CATEGORY, HIDDEN_NOTES, KNOWLEDGE_OFF_CATEGORY, TRAINING_OFF_CATEGORY } from "./hidden-notes";
 import { ANALYST_SKILLS } from "./analyst-skills";
 import { detectSymbols } from "./market-symbols";
-import { computeDayMetrics, computeStatus, startOfToday } from "./trading-status";
+import { computeDayMetrics, computeStatus } from "./trading-status";
+import { dayKey, dayStart, safeTz, toWallInput } from "./trading-day";
 import { IMAGE_NOTE, retryDecision } from "./chat-retry";
 import { MAX_THUMB_CHARS } from "./image";
 
 import { applyPctLimits } from "./effective-limits";
+import { EMOTIONS } from "./emotions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 type Sb = SupabaseClient<Database>;
+
+/** The trader's saved zone; the server clock is UTC, so his "today" must come from here. */
+async function userTz(sb: Sb) {
+  const { data } = await sb.from("trading_settings").select("timezone").maybeSingle();
+  return safeTz(data?.timezone);
+}
 
 async function buildContext(sb: Sb) {
   const [s, t, r, st, ex] = await Promise.all([
@@ -29,14 +37,17 @@ async function buildContext(sb: Sb) {
     sb.from("strategy_examples").select("id,verdict,reason,symbol,timeframe,strategy_id").order("created_at", { ascending: false }).limit(40),
   ]);
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const dayStart = startOfToday().toISOString();
+  const tz = safeTz(s.data?.timezone);
+  const todayFrom = dayStart(new Date(), tz).toISOString();
+  // Compare instants, not strings: Postgres writes "+00:00" where toISOString writes "Z".
+  const isToday = (iso: string) => new Date(iso).getTime() >= Date.parse(todayFrom);
   const [notes, session, focusRow, month, todaySessions, todayViolations, capitalRow, closedAll] = await Promise.all([
     sb.from("knowledge_notes").select("title,category").not("category", "in", HIDDEN_NOTES).order("created_at", { ascending: false }).limit(50),
     sb.from("trading_sessions").select("started_at,plan,mood").is("ended_at", null).limit(1),
     sb.from("knowledge_notes").select("content").eq("category", FOCUS_CATEGORY).order("created_at").limit(1),
     sb.from("trades").select("symbol,status,pnl,emotion,strategy_id,stop_loss,risk_amount,opened_at,closed_at").gte("opened_at", since),
-    sb.from("trading_sessions").select("ended_at").gte("started_at", dayStart).order("started_at", { ascending: false }).limit(1),
-    sb.from("rule_violations").select("id").gte("occurred_at", dayStart),
+    sb.from("trading_sessions").select("ended_at").gte("started_at", todayFrom).order("started_at", { ascending: false }).limit(1),
+    sb.from("rule_violations").select("id").gte("occurred_at", todayFrom),
     sb.from("knowledge_notes").select("content").eq("category", CAPITAL_CATEGORY).order("created_at").limit(1),
     sb.from("trades").select("status,pnl,opened_at,closed_at").eq("status", "closed"),
   ]);
@@ -52,7 +63,7 @@ async function buildContext(sb: Sb) {
   const trainingOn = !trainingOffRow;
   const { data: knowledgeOffRow } = await sb.from("knowledge_notes").select("id").eq("category", KNOWLEDGE_OFF_CATEGORY).limit(1).maybeSingle();
   const knowledgeOn = !knowledgeOffRow;
-  const todayKey = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+  const todayKey = dayKey(new Date(), tz);
   const { data: plans } = await sb.from("daily_plans").select("day,target,max_trades,risk_per_trade,max_loss,note,revised_count").order("day", { ascending: false }).limit(7);
   const todayPlan = (plans ?? []).find((p) => p.day === todayKey) ?? null;
   {
@@ -61,10 +72,10 @@ async function buildContext(sb: Sb) {
     if (s.data) (s as { data: unknown }).data = applyPctLimits(s.data, bal0);
   }
   const winDays = new Map<string, number>();
-  for (const x of closedAll.data ?? []) { const k = (x.closed_at ?? x.opened_at).slice(0, 10); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
+  for (const x of closedAll.data ?? []) { const k = dayKey(x.closed_at ?? x.opened_at, tz); winDays.set(k, (winDays.get(k) ?? 0) + (Number(x.pnl) || 0)); }
   const wins = [...winDays.values()].filter((v) => v > 0);
-  const planStatus = planCheck(todayPlan && { ...todayPlan, target: todayPlan.target == null ? null : Number(todayPlan.target), risk_per_trade: todayPlan.risk_per_trade == null ? null : Number(todayPlan.risk_per_trade), max_loss: todayPlan.max_loss == null ? null : Number(todayPlan.max_loss) }, (month.data ?? []).filter((x) => x.opened_at >= dayStart), s.data ?? {}, wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null);
-  const streak = loginStreak((stSess ?? []).map((x) => x.day), stViol ?? [], s.data?.timezone || "Asia/Riyadh");
+  const planStatus = planCheck(todayPlan && { ...todayPlan, target: todayPlan.target == null ? null : Number(todayPlan.target), risk_per_trade: todayPlan.risk_per_trade == null ? null : Number(todayPlan.risk_per_trade), max_loss: todayPlan.max_loss == null ? null : Number(todayPlan.max_loss) }, (month.data ?? []).filter((x) => isToday(x.opened_at)), s.data ?? {}, wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null);
+  const streak = loginStreak((stSess ?? []).map((x) => x.day), stViol ?? [], tz);
   const ledger = parseLedger(capitalRow.data?.[0]?.content);
   const capital = computeCapital({
     starting: Number(s.data?.starting_balance) || 0,
@@ -82,11 +93,12 @@ async function buildContext(sb: Sb) {
     strategies: st.data?.length ?? 0,
     rules: r.data?.length ?? 0,
     sessionToday: latest ? { active: !latest.ended_at, ended: !!latest.ended_at } : null,
-    tradesToday: monthTrades.filter((x) => x.opened_at >= dayStart).length,
+    tradesToday: monthTrades.filter((x) => isToday(x.opened_at)).length,
     blocked: status === "stopped" || status === "loss_limit" || status === "target_hit",
   });
   const insights = buildInsights(deriveSignals(month.data ?? [], st.data ?? [], focus), focus, (n) => `${Math.round(n * 100) / 100} ${cur}`);
   return `الأصول التي يغطيها النظام وتحللها دائماً بدون أي رفض أو اعتذار: XAUUSD (الذهب)، XAGUSD (الفضة)، US500، US100، US30 (يسمّى أيضاً US30USD)، EURUSD، GBPUSD، USDJPY، USOIL (نفط WTI)، وأي زوج عملات. إذا الصورة لواحد منها لا تقل أبداً "خارج نطاق النظام" أو "ما أحلل". العملات الرقمية والأسهم فقط خارج النظام؛ إذا طلبها قله بلطف.
+اليوم عند هادي: ${todayKey} (منطقته ${tz}) — "اليوم" و"هالأسبوع" بتوقيته هو.
 ستريك الانضباط: ${streak.current} يوم سوق متتالي (أفضل ${streak.best}). يزيد لما يسكّر جلسته بمراجعة بدون مخالفة؛ السبت والأحد ما ينحسبون. لما يسكّر جلسة نظيفة هنّيه بالرقم الجديد، ولو قرّب يكسر قاعدة ذكّره إنه بيخسر الستريك.
 ${journeyForPrompt(journey)} إذا ما طلب شي ثاني، وجّهه لهذي الخطوة بجملة واحدة بآخر ردك.
 
@@ -166,7 +178,7 @@ const AGENT_GUIDE = `أنت "سَنَد" — شريك هادي ضد الطمع �
 مهمتك: تحلل صفقاته معه، تفكر معه، تنصحه، تمنعه من الطمع، وتلزمه بالهدف اليومي والأسبوعي والشهري وحدود الخسارة. إذا وصل لهدفه أو حد خسارته قل له يوقف بوضوح.
 إذا ناقصك معلومة (استراتيجيته، حدوده، أهدافه) اسأله سؤال أو سؤالين واضحين.
 عندما يطلب منك أو يذكر شيء يحتاج حفظ أو تعديل أو حذف، أضف إجراء في actions. النظام ينفّذ الإجراءات تلقائيًا، ما عدا الحذف وتخفيف حدود المخاطر وتحريك وقف الخسارة فتحتاج ضغطة موافقة. data نص JSON بهذه الأشكال:
-- update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name"} (أرسل فقط الحقول المذكورة، أرقام موجبة)
+- update_settings: {"starting_balance","daily_target","max_daily_profit","max_daily_loss","max_trades_per_day","max_risk_per_trade","max_daily_risk","max_consecutive_losses","weekly_target","weekly_max_loss","monthly_target","monthly_max_loss","cooldown_minutes","currency","display_name","timezone" (منطقة IANA مثل Asia/Riyadh)} (أرسل فقط الحقول المذكورة، أرقام موجبة)
 - add_strategy: {"name","description","entry_conditions","exit_conditions","markets","timeframes"}
 - add_rule: {"title","description"}
 - set_daily_plan: {"target","max_trades","risk_per_trade","max_loss","note"} — خطة هادي لليوم بأرقامه هو (أرسل المذكور فقط)
@@ -282,8 +294,9 @@ ${ANALYST_SKILLS ? `\nخبرات المحلل:\n${ANALYST_SKILLS}` : ""}`;
 const SHORT_RULE = `- أسلوب الرد إلزامي: مختصر وواضح ومباشر. بدون مقدمات ولا مجاملات ولا كلام زايد ولا تكرار. جمل قصيرة أو نقاط قليلة، وأقصى سؤال واحد بالآخر.`;
 
 async function runAgent(sb: Sb, extra: string, input: Record<string, unknown>[]) {
-  const ctx = await buildContext(sb);
-  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالتاريخ الآن: ${new Date().toISOString()}`, input, AGENT_SCHEMA);
+  const [ctx, tz] = await Promise.all([buildContext(sb), userTz(sb)]);
+  // His wall clock, not the server's UTC: "الحين" and "الليلة" must mean his time.
+  const out = await callAI(`${BASE_PERSONA}\n${AGENT_GUIDE}\n${extra}\n${SHORT_RULE}\n\n${ctx}\nالوقت الآن عند هادي: ${toWallInput(new Date(), tz).replace("T", " ")} (${tz})`, input, AGENT_SCHEMA);
   const parsed = JSON.parse(out) as { reply: string; actions: { type: string; summary: string; data: string }[] };
   return { reply: parsed.reply || "تم.", actions: (parsed.actions ?? []).slice(0, 30) };
 }
@@ -365,7 +378,7 @@ export const morningGreeting = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     try {
       const sb = context.supabase;
-      const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10); // Riyadh date
+      const day = dayKey(new Date(), await userTz(sb));
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "morning").eq("day", day).maybeSingle();
       if (existing) return { created: false };
       const ctx = await buildContext(sb);
@@ -381,7 +394,7 @@ export const eveningReview = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     try {
       const sb = context.supabase;
-      const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+      const day = dayKey(new Date(), await userTz(sb));
       const { data: existing } = await sb.from("notifications").select("id").eq("kind", "evening").eq("day", day).maybeSingle();
       if (existing) return { created: false };
       const ctx = await buildContext(sb);
@@ -458,7 +471,7 @@ const TRADE_SCHEMA = {
             entry: { type: ["number", "null"] }, sl: { type: ["number", "null"] }, tp: { type: ["number", "null"] },
             size: { type: ["number", "null"] }, risk: { type: ["number", "null"] },
             exit_price: { type: ["number", "null"] }, pnl: { type: ["number", "null"] },
-            strategy: { type: ["string", "null"] }, emotion: { type: ["string", "null"] }, notes: { type: ["string", "null"] },
+            strategy: { type: ["string", "null"] }, emotion: { type: ["string", "null"], enum: [...EMOTIONS, null] }, notes: { type: ["string", "null"] },
           },
         },
       },
@@ -485,7 +498,7 @@ export const parseTrade = createServerFn({ method: "POST" })
 - أداة Long/Short Position في TradingView (مستطيل أخضر/أزرق فوق مستطيل أحمر أو العكس): الدخول هو الحد الفاصل بين اللونين، الوقف هو طرف المنطقة الحمراء، والهدف هو طرف المنطقة الخضراء. المنطقة الخضراء فوق = long، تحت = short. اقرأ الأسعار من الملصقات أو من محور السعر يمين الشارت.
 - خطوط الأوامر المفتوحة (Entry/SL/TP أو خطوط أفقية بملصقات سعر)، ونوافذ تأكيد الأمر، وسجل الصفقات في المنصات.
 - إذا كانت الصورة شارت بدون صفقة مرسومة أو أرقام مقروءة، لا تخترع: أعد صفقة واحدة بما ظهر فعلاً (الرمز مثلاً) والباقي null، أو trades فارغة إذا لم يظهر شيء.` : "";
-      const instructions = `استخرج الصفقات من كلام المتداول أو الصورة (لقطة منصة/شارت). لكل صفقة: action="open" لصفقة جديدة، أو "close" إذا يقول إنه أقفل صفقة. symbol بالإنجليزي بصيغة المنصات (الذهب=XAUUSD، الفضة=XAGUSD، ناسداك=US100، النفط=USOIL، داو جونز=US30، يورو دولار=EURUSD). direction long للشراء وshort للبيع. risk مبلغ المخاطرة بالعملة. strategy يجب أن يكون أحد هذه الأسماء بالضبط أو null: ${JSON.stringify((st.data ?? []).map((x) => x.name))}. emotion واحد من: هادئ، واثق، متوتر، متحمس، خائف، غاضب، طمع، أو null. الصفقات المفتوحة حالياً: ${JSON.stringify(open.data ?? [])}. لا تخترع أرقام غير مذكورة — استخدم null. notes ملخص قصير بالعربي.${imageGuide}
+      const instructions = `استخرج الصفقات من كلام المتداول أو الصورة (لقطة منصة/شارت). لكل صفقة: action="open" لصفقة جديدة، أو "close" إذا يقول إنه أقفل صفقة. symbol بالإنجليزي بصيغة المنصات (الذهب=XAUUSD، الفضة=XAGUSD، ناسداك=US100، النفط=USOIL، داو جونز=US30، يورو دولار=EURUSD). direction long للشراء وshort للبيع. risk مبلغ المخاطرة بالعملة. strategy يجب أن يكون أحد هذه الأسماء بالضبط أو null: ${JSON.stringify((st.data ?? []).map((x) => x.name))}. emotion واحد من: ${EMOTIONS.join("، ")}، أو null. الصفقات المفتوحة حالياً: ${JSON.stringify(open.data ?? [])}. لا تخترع أرقام غير مذكورة — استخدم null. notes ملخص قصير بالعربي.${imageGuide}
 message: جملة عربية قصيرة للمتداول: ماذا قرأت، وما الناقص (مثل: "قرأت الرمز XAUUSD، لكن ما فيه دخول أو وقف واضح. ارسم أداة Long Position أو اكتب الأرقام.").`;
       const content: Record<string, unknown>[] = [{ type: "input_text", text: data.text || "استخرج الصفقة من الصورة." }];
       if (data.image) content.push({ type: "input_image", image_url: data.image, detail: "high" });

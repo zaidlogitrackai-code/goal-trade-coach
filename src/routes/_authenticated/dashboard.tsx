@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { settingsQuery, tradesQuery, violationsQuery, todayPlanQuery } from "@/lib/queries";
 import { effectiveDailyTarget } from "@/lib/daily-plan";
-import { computeDayMetrics, computeStatus, startOfToday } from "@/lib/trading-status";
+import { computeDayMetrics, computeStatus } from "@/lib/trading-status";
+import { dayStart, safeTz } from "@/lib/trading-day";
 import { supabase } from "@/integrations/supabase/client";
 import { CoreMetrics } from "@/components/dashboard/core-metrics";
 import { DayFlow } from "@/components/dashboard/day-flow";
@@ -32,7 +33,7 @@ function Dashboard() {
   const s = useQuery(settingsQuery);
   const t = useQuery(tradesQuery);
   const v = useQuery(violationsQuery);
-  const plan = useQuery(todayPlanQuery);
+  const plan = useQuery({ ...todayPlanQuery(s.data?.timezone), enabled: !!s.data });
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
@@ -66,7 +67,7 @@ function Dashboard() {
 
   const settings = { ...s.data, daily_target: effectiveDailyTarget(plan.data?.target, s.data.daily_target) };
   const trades = t.data ?? [];
-  const start = startOfToday().getTime();
+  const start = dayStart(new Date(), settings.timezone).getTime();
   const violationsToday = (v.data ?? []).filter((x) => new Date(x.occurred_at).getTime() >= start).length;
   const metrics = computeDayMetrics(settings, trades, violationsToday);
   const status = computeStatus(settings, metrics);
@@ -87,7 +88,7 @@ function Dashboard() {
     <div className="mx-auto max-w-5xl space-y-5 lg:space-y-6">
       <PageHeader
         title="يومك"
-        subtitle={new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "full", timeZone: settings.timezone || undefined }).format(new Date())}
+        subtitle={new Intl.DateTimeFormat("ar-SA-u-nu-latn", { dateStyle: "full", timeZone: safeTz(settings.timezone) }).format(new Date())}
       />
       <DayFlow flow={flow} />
       <CoreMetrics

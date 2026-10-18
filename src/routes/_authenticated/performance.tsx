@@ -7,6 +7,7 @@ import { OpenTrades } from "@/components/dashboard/open-trades";
 import { Breakdown, CoachInsight, EquityChart, Goals, Kpi, PnlCalendar } from "@/components/performance/widgets";
 import { fmtMoney, settingsQuery, strategiesQuery, tradesQuery } from "@/lib/queries";
 import { equityCurve, groupPnl, tradeStats } from "@/lib/stats";
+import { safeTz } from "@/lib/trading-day";
 import { avgHold, avgR, dailyPnl, delta, expectancy, hourBucket, inRange, maxDrawdown, periodRange, sideSplit, streaks, weekdayName, type Period } from "@/lib/perf";
 
 const PERIODS: { id: Period; label: string }[] = [
@@ -35,7 +36,7 @@ function PerformancePage() {
   if (t.isLoading) return <Loading />;
   const all = t.data ?? [];
   const cur = s.data?.currency ?? "USD";
-  const tz = s.data?.timezone ?? "Asia/Riyadh";
+  const tz = safeTz(s.data?.timezone);
   const startBal = Number(s.data?.starting_balance) || 0;
 
   if (all.length === 0) return (
@@ -120,7 +121,7 @@ function PerformancePage() {
         <Pro label="متوسط مدة الصفقة" v={hold == null ? "—" : hold < 60 ? `${Math.round(hold)} د` : `${(hold / 60).toFixed(1)} س`} />
         <Pro label="متوسط الربح / الخسارة" v={d(`${fmtMoney(k.avgWin, cur)} / ${fmtMoney(-k.avgLoss, cur)}`)} />
         <Pro label="أفضل / أسوأ صفقة" v={d(`${fmtMoney(k.best, cur)} / ${fmtMoney(k.worst, cur)}`)} />
-        <Pro label="شراء / بيع" v={d(`${side.buy.count} (${fmtMoney(side.buy.pnl, cur)}) / ${side.sell.count} (${fmtMoney(side.sell.pnl, cur)})`)} />
+        <Pro label="شراء / بيع" v={d(`${side.long.count} (${fmtMoney(side.long.pnl, cur)}) / ${side.short.count} (${fmtMoney(side.short.pnl, cur)})`)} />
         <Pro label="التزام قائمة الفحص" v={trades.length ? `${checklist.toFixed(0)}%` : "—"} />
       </div>
 

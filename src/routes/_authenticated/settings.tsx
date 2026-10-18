@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Download, Trash2, Shield, Bell, GraduationCap, BookOpen } from "lucide-react";
+import { Moon, Sun, Download, Trash2, Shield, Bell, GraduationCap, BookOpen, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loading, PageHeader } from "@/components/app-shell";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { settingsQuery } from "@/lib/queries";
 import { TRAINING_OFF_CATEGORY, KNOWLEDGE_OFF_CATEGORY } from "@/lib/hidden-notes";
+import { safeTz, zoneList } from "@/lib/trading-day";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -136,6 +137,32 @@ function AiFeatureToggles() {
   );
 }
 
+/** Native picker (a wheel on iPhone): a typo here would silently shift "today" for every limit. */
+function TimezoneField({ value, onChange }: { value: string | null; onChange: (tz: string) => void }) {
+  const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const current = safeTz(value);
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="settings-tz">المنطقة الزمنية</Label>
+      <div className="flex gap-2">
+        <select
+          id="settings-tz"
+          dir="ltr"
+          value={current}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 min-w-0 flex-1 rounded-xl border border-[var(--glass-border)] bg-foreground/5 px-3 text-base"
+        >
+          {zoneList(current, device).map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+        <Button type="button" size="lg" variant="outline" className="px-4" onClick={() => onChange(safeTz(device))}>
+          <LocateFixed className="size-4" /> حدّد تلقائياً
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">بداية يومك وأسبوعك (من الإثنين) وحدودك اليومية تنحسب بهذا التوقيت.</p>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { data, isLoading } = useQuery(settingsQuery);
   const qc = useQueryClient();
@@ -160,7 +187,8 @@ function SettingsPage() {
       .from("trading_settings")
       .update({
         display_name: name ?? data!.display_name,
-        timezone: tz ?? data!.timezone,
+        // A legacy typo shows as Riyadh in the picker, so that is what gets saved.
+        timezone: safeTz(tz ?? data!.timezone),
       })
       .eq("user_id", data!.user_id);
 
@@ -168,7 +196,9 @@ function SettingsPage() {
       toast.error("تعذر حفظ الإعدادات");
       return;
     }
-    qc.invalidateQueries({ queryKey: ["settings"] });
+    await qc.invalidateQueries({ queryKey: ["settings"] });
+    // The bell reads "today" from the saved zone when it fetches: refetch it once the new zone is in.
+    if (tz != null) qc.invalidateQueries({ queryKey: ["notifications"] });
     toast.success("تم حفظ الإعدادات بنجاح");
   }
 
@@ -248,15 +278,7 @@ function SettingsPage() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label>المنطقة الزمنية</Label>
-          <Input
-            dir="ltr"
-            value={tz ?? data.timezone}
-            onChange={(e) => setTz(e.target.value)}
-            placeholder="Asia/Riyadh"
-          />
-        </div>
+        <TimezoneField value={tz ?? data.timezone} onChange={setTz} />
 
         <Button onClick={save}>حفظ التغييرات</Button>
       </div>
