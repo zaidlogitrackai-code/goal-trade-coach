@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { InstallApp } from "@/components/install-app";
 import { supabase } from "@/integrations/supabase/client";
 import { THEME_BOOT_SCRIPT, THEME_COLOR } from "@/lib/theme";
 import { safeLocal, safeSession } from "@/lib/safe-storage";
@@ -153,6 +154,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <Toaster position="top-center" richColors />
+      <InstallApp />
     </QueryClientProvider>
   );
 }
